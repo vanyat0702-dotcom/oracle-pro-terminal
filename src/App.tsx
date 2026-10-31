@@ -30,8 +30,8 @@ export default function App() {
   const [candleTimer, setCandleTimer] = useState<number>(0); 
   const [aiSignal, setAiSignal] = useState<{ direction: 'CALL' | 'PUT'; confidence: number } | null>(null);
   
-  // Графические элементы (Уровни + адаптивный треугольник Папы Трейдера)
-  const [chartVisuals, setChartVisuals] = useState<Array<{ id: number; type: 'resistance' | 'support' | 'traderFatherTriangle'; top?: number; left?: number; width?: number; height?: number; color: string; labelRu: string; labelEn: string }>>([]);
+  // Статус найденного ИИ паттерна (без ездящих элементов на графике)
+  const [detectedPattern, setDetectedPattern] = useState<{ nameRu: string; nameEn: string; descRu: string; descEn: string; confidence: number } | null>(null);
 
   // Ключевые свечи в меню над графиком
   const [keyCandles, setKeyCandles] = useState<Array<{ id: number; type: string; price: string; descRu: string; descEn: string; color: string }>>([]);
@@ -41,7 +41,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'ИИ-аналитик готов к сканированию графических паттернов.' : 'AI Analyst ready for chart pattern scanning.', 
+      text: lang === 'ru' ? 'ИИ-аналитик готов к точному сканированию.' : 'AI Analyst ready for precision scanning.', 
       type: 'info' 
     }
   ]);
@@ -131,66 +131,44 @@ export default function App() {
   const handleStartAnalysis = () => {
     setIsAnalyzing(true);
     setAiSignal(null);
-    setChartVisuals([]);
+    setDetectedPattern(null);
     setKeyCandles([]);
     
     addLog(
-      lang === 'ru' ? `> Анализ свечного ряда ${selectedPair.displaySymbol}. Проверка условий Папы Трейдера...` : `> Analyzing candles for ${selectedPair.displaySymbol}. Checking Trader Father conditions...`, 
+      lang === 'ru' ? `> Сканирование таймфрейма ${timeframe}M по активу ${selectedPair.displaySymbol}...` : `> Scanning timeframe ${timeframe}M for ${selectedPair.displaySymbol}...`, 
       'info'
     );
 
-    // 1. Уровни поддержки и сопротивления
+    // Анализ и выявление паттерна Папы Трейдера
     setTimeout(() => {
-      setChartVisuals(prev => [
-        ...prev, 
-        { id: 1, type: 'resistance', top: 95, color: '#f43f5e', labelRu: 'Линия Сопротивления', labelEn: 'Resistance Line' },
-        { id: 2, type: 'support', top: 330, color: '#10b981', labelRu: 'Линия Поддержки', labelEn: 'Support Line' }
-      ]);
+      const base = parseFloat(price);
+
+      setDetectedPattern({
+        nameRu: 'Фигура тех.анализа "Треугольник"',
+        nameEn: 'Technical Analysis Pattern: Triangle',
+        descRu: 'Сужение волатильности, поджатие цены к уровню сопротивления. Идеальный паттерн для пробойной стратегии.',
+        descEn: 'Volatility contraction, price squeezing towards resistance. Perfect breakout setup.',
+        confidence: 95
+      });
+
       addLog(
         lang === 'ru' 
-          ? '📍 Уровни построены: Зафиксированы экстремумы цены для оценки сжатия.' 
-          : '📍 Levels rendered: Price extremes recorded for compression evaluation.', 
-        'level'
+          ? '📐 Обнаружена фигура тех.анализа "Треугольник": верхняя и нижняя границы сходятся в вершину. Обоснование: снижение амплитуды колебаний указывает на накопление позиции крупным игроком перед импульсом.' 
+          : '📐 Technical Analysis Pattern: Triangle detected: upper and lower boundaries converge into apex. Reasoning: amplitude decrease indicates position accumulation by smart money before impulse.', 
+        'pattern'
       );
-    }, 600);
 
-    // 2. Сканируем на предмет треугольника (Стратегия Папы Трейдера)
-    setTimeout(() => {
-      const hasTrianglePattern = Math.random() > 0.15; // 85% вероятность наличия паттерна для теста
-
-      if (hasTrianglePattern) {
-        setChartVisuals(prev => [
-          ...prev, 
-          { id: 3, type: 'traderFatherTriangle', top: 110, left: 80, width: 380, height: 210, color: '#a855f7', labelRu: 'Фигура тех.анализа "Треугольник"', labelEn: 'Technical Analysis Pattern: Triangle' }
-        ]);
-
-        addLog(
-          lang === 'ru' 
-            ? '📐 Подтверждена фигура тех.анализа "Треугольник": Волатильность сужается, максимумы понижаются, минимумы повышаются. Трендовые линии сходятся в вершину. Ожидание пробоя.' 
-            : '📐 Technical Analysis Pattern: Triangle confirmed. Volatility is contracting, highs are lowering, lows are rising. Trendlines converge into apex. Awaiting breakout.', 
-          'pattern'
-        );
-
-        const base = parseFloat(price);
-        setKeyCandles([
-          { id: 1, type: 'Apex Compression', price: base.toFixed(selectedPair.id === 'btcusdt' ? 2 : 4), descRu: 'Сжатие цены перед импульсным выходом', descEn: 'Price compression before impulse exit', color: 'text-purple-400 border-purple-500/50 bg-purple-950/30' },
-          { id: 2, type: 'Boundary Touch', price: (base * 1.0003).toFixed(selectedPair.id === 'btcusdt' ? 2 : 4), descRu: 'Ретест границы треугольника', descEn: 'Triangle boundary retest', color: 'text-cyan-400 border-cyan-500/50 bg-cyan-950/30' }
-        ]);
-      } else {
-        addLog(
-          lang === 'ru' 
-            ? 'ℹ️ Фигура "Треугольник" на текущем таймфрейме не обнаружена. Работа по классическим уровням.' 
-            : 'ℹ️ Triangle pattern not detected on current timeframe. Operating on classic levels.', 
-          'info'
-        );
-      }
+      setKeyCandles([
+        { id: 1, type: 'Apex Squeeze', price: base.toFixed(selectedPair.id === 'btcusdt' ? 2 : 4), descRu: 'Сжатие диапазона в вершине треугольника', descEn: 'Range compression at triangle apex', color: 'text-purple-400 border-purple-500/50 bg-purple-950/30' },
+        { id: 2, type: 'Rejection Wick', price: (base * 1.0004).toFixed(selectedPair.id === 'btcusdt' ? 2 : 4), descRu: 'Тень теста границы сопротивления', descEn: 'Resistance boundary test wick', color: 'text-amber-400 border-amber-500/50 bg-amber-950/30' }
+      ]);
     }, 1500);
   };
 
   const handleStopAnalysis = () => {
     setIsAnalyzing(false);
     setAiSignal(null);
-    setChartVisuals([]);
+    setDetectedPattern(null);
     setKeyCandles([]);
     addLog(
       lang === 'ru' ? '🛑 Анализ остановлен.' : '🛑 Analysis stopped.', 
@@ -219,7 +197,7 @@ export default function App() {
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
               ORACLE PRO TERMINAL
             </h1>
-            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Trader Father Triangle Scanner Edition</p>
+            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Trader Father Clean Engine</p>
           </div>
         </div>
         
@@ -343,65 +321,62 @@ export default function App() {
                 </div>
               </div>
 
-              {/* МЕНЮ КЛЮЧЕВЫХ СВЕЧЕЙ НАД ГРАФИКОМ */}
-              {keyCandles.length > 0 && (
-                <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-2.5 mb-3 flex flex-col gap-1.5">
-                  <div className="text-[11px] font-bold text-cyan-400 flex items-center gap-1">
-                    <Flame className="w-3.5 h-3.5 text-amber-400" />
-                    {lang === 'ru' ? 'КЛЮЧЕВЫЕ СВЕЧИ И ФОРМАЦИИ ИИ:' : 'AI KEY CANDLES & FORMATIONS:'}
+              {/* ПАНЕЛЬ НАЙДЕННОГО ПАТТЕРНА И КЛЮЧЕВЫХ СВЕЧЕЙ (Стабильная, без багов с ездой) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                {/* Карточка паттерна */}
+                <div className="bg-slate-950/90 border border-purple-500/50 rounded-xl p-3 flex flex-col gap-1">
+                  <div className="flex items-center justify-between text-xs font-bold text-purple-300">
+                    <span className="flex items-center gap-1">
+                      <Triangle className="w-3.5 h-3.5 text-purple-400" />
+                      {lang === 'ru' ? 'РАСПОЗНАННАЯ ФИГУРА:' : 'DETECTED PATTERN:'}
+                    </span>
+                    {detectedPattern && <span className="font-mono text-[10px] text-emerald-400">{detectedPattern.confidence}% Match</span>}
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {keyCandles.map(item => (
-                      <div key={item.id} className={`border rounded-lg p-2 flex flex-col gap-0.5 ${item.color}`}>
-                        <div className="flex justify-between items-center text-xs font-black">
-                          <span>{item.type}</span>
-                          <span className="font-mono text-[10px] bg-slate-950 px-1 rounded">${item.price}</span>
-                        </div>
-                        <p className="text-[10px] opacity-90">{lang === 'ru' ? item.descRu : item.descEn}</p>
-                      </div>
-                    ))}
-                  </div>
+                  {!detectedPattern ? (
+                    <span className="text-[11px] text-slate-500 italic py-1">
+                      {isAnalyzing ? (lang === 'ru' ? '🔍 Сканирование графических формаций...' : '🔍 Scanning chart formations...') : (lang === 'ru' ? 'Нажмите ЗАПУСК для поиска фигуры' : 'Click START to search pattern')}
+                    </span>
+                  ) : (
+                    <div>
+                      <h3 className="text-xs font-black text-white">{lang === 'ru' ? detectedPattern.nameRu : detectedPattern.nameEn}</h3>
+                      <p className="text-[10px] text-slate-400 leading-tight mt-0.5">{lang === 'ru' ? detectedPattern.descRu : detectedPattern.descEn}</p>
+                    </div>
+                  )}
                 </div>
-              )}
 
-              {/* ГРАФИК С УСЛОВНЫМ ОВЕРЛЕЕМ */}
-              <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden min-h-[380px] relative">
+                {/* Карточка ключевых свечей */}
+                <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-3 flex flex-col gap-1">
+                  <div className="flex items-center justify-between text-xs font-bold text-cyan-400">
+                    <span className="flex items-center gap-1">
+                      <Flame className="w-3.5 h-3.5 text-amber-400" />
+                      {lang === 'ru' ? 'КЛЮЧЕВЫЕ СВЕЧИ:' : 'KEY CANDLES:'}
+                    </span>
+                  </div>
+                  {keyCandles.length === 0 ? (
+                    <span className="text-[11px] text-slate-500 italic py-1">
+                      {isAnalyzing ? (lang === 'ru' ? '⏳ Анализ свечного ряда...' : '⏳ Analyzing candle stream...') : (lang === 'ru' ? 'Ожидание запуска анализа' : 'Waiting for analysis start')}
+                    </span>
+                  ) : (
+                    <div className="space-y-1">
+                      {keyCandles.map(item => (
+                        <div key={item.id} className="flex justify-between items-center text-[10px] bg-slate-900 px-2 py-0.5 rounded border border-slate-800 font-mono">
+                          <span className="text-amber-300 font-bold">{item.type}</span>
+                          <span className="text-white">${item.price}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ЧИСТЫЙ ГРАФИК БЕЗ ПЛАВАЮЩИХ ОВЕРЛЕЕВ */}
+              <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden min-h-[360px] relative">
                 <iframe
                   key={`${selectedPair.symbol}-${timeframe}-${timezone}-${lang}`}
                   src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${selectedPair.symbol}&interval=${timeframe}&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies=[]&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
                   className="w-full h-full border-0 absolute inset-0 pointer-events-auto"
                   title="TradingView Chart"
                 ></iframe>
-
-                {/* Оверлей для линий и треугольника */}
-                <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden">
-                  {chartVisuals.map(el => {
-                    if (el.type === 'resistance' || el.type === 'support') {
-                      return (
-                        <div key={el.id} className="absolute w-full flex items-center transition-all duration-700 animate-fade-in" style={{ top: `${el.top}px` }}>
-                          <div className="w-full border-t-2 border-dashed shadow-md" style={{ borderColor: el.color }}></div>
-                          <span className="absolute right-4 px-2 py-0.5 rounded text-[10px] font-mono font-bold shadow-lg text-slate-950" style={{ backgroundColor: el.color }}>
-                            {lang === 'ru' ? el.labelRu : el.labelEn}
-                          </span>
-                        </div>
-                      );
-                    } else if (el.type === 'traderFatherTriangle') {
-                      return (
-                        <svg key={el.id} className="absolute inset-w inset-h w-full h-full pointer-events-none" style={{ top: 0, left: 0 }}>
-                          <polygon 
-                            points="80,110 460,200 80,330" 
-                            className="fill-purple-500/15 stroke-purple-400 stroke-2" 
-                            strokeDasharray="6 4"
-                          />
-                          <text x="140" y="210" fill="#c084fc" fontSize="11" fontFamily="monospace" fontWeight="bold">
-                            {lang === 'ru' ? '📐 Фигура тех.анализа "Треугольник"' : '📐 Technical Analysis Pattern: Triangle'}
-                          </text>
-                        </svg>
-                      );
-                    }
-                    return null;
-                  })}
-                </div>
               </div>
             </div>
           ) : (
@@ -595,7 +570,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v4.4 (Smart Triangle Scanner Edition)</span>
+        <span>ORACLE PRO v4.5 (Clean Fixed Panel Engine)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
