@@ -3,27 +3,16 @@ import { ShieldCheck, Zap, LineChart, Database, TrendingUp, TrendingDown, Refres
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
 
 export default function App() {
-  const [selectedCategory, setSelectedCategory] = useState<'forex' | 'metals' | 'crypto'>('forex');
-  const filteredPairs = TRADING_PAIRS.filter(p => p.category === selectedCategory);
-  
-  const [selectedPair, setSelectedPair] = useState<TradingPair>(filteredPairs[0]);
+  const [selectedPair, setSelectedPair] = useState<TradingPair>(TRADING_PAIRS[11]); // По умолчанию EUR/USD
   const [price, setPrice] = useState<string>(selectedPair.baseRate);
   const [priceChange, setPriceChange] = useState<'up' | 'down' | null>('up');
-  const [timeframe, setTimeframe] = useState<string>("1");
+  const [timeframe, setTimeframe] = useState<string>("5");
   const [wsStatus, setWsStatus] = useState<boolean>(true);
   const [aiSignal, setAiSignal] = useState<{ status: string; confidence: number; type: string }>({
-    status: "АНАЛИЗ КОТИРОВОК И ЛИКВИДНОСТИ...",
-    confidence: 94,
-    type: "PUT (SHORT)"
+    status: "АНАЛИЗ МЕЖБАНКОВСКОГО СТАКАНА...",
+    confidence: 93,
+    type: "ВЫШЕ (CALL)"
   });
-
-  // Автоматический выбор первой пары при смене категории
-  useEffect(() => {
-    const available = TRADING_PAIRS.filter(p => p.category === selectedCategory);
-    if (available.length > 0) {
-      setSelectedPair(available[0]);
-    }
-  }, [selectedCategory]);
 
   // Подключение WebSocket для котировок в шапке
   useEffect(() => {
@@ -34,7 +23,7 @@ export default function App() {
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      const newPrice = parseFloat(data.p).toFixed(selectedPair.category === 'forex' ? 4 : 2);
+      const newPrice = parseFloat(data.p).toFixed(selectedPair.id === 'btcusdt' ? 2 : 4);
       
       setPrice(prev => {
         if (parseFloat(newPrice) > parseFloat(prev)) {
@@ -66,7 +55,7 @@ export default function App() {
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
               ORACLE PRO TERMINAL
             </h1>
-            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Intrade Bar Style Professional Hub</p>
+            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Intrade Bar Mirror Edition</p>
           </div>
         </div>
         
@@ -85,33 +74,20 @@ export default function App() {
       {/* Main Workspace Grid */}
       <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
         
-        {/* Left Column: Categories, Asset Selector & Chart Area */}
+        {/* Left Column: Pairs Bar & Chart Area */}
         <section className="lg:col-span-3 flex flex-col gap-4">
           
-          {/* Category Tabs (Forex, Metals, Crypto) */}
-          <div className="flex gap-2 bg-slate-900/40 p-1.5 rounded-xl border border-slate-800 w-fit">
-            {(['forex', 'metals', 'crypto'] as const).map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-5 py-2 rounded-lg text-xs font-bold uppercase transition-all ${selectedCategory === cat ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' : 'text-slate-400 hover:text-slate-200'}`}
-              >
-                {cat === 'forex' ? '💱 Форекс (Валюты)' : cat === 'metals' ? '🪙 Металлы' : '⚡ Криптовалюты'}
-              </button>
-            ))}
-          </div>
-
-          {/* Asset Selection Bar */}
-          <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4 backdrop-blur flex items-center gap-2 overflow-x-auto">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-400 border-r border-slate-800 mr-2">
+          {/* Assets Selection Bar (Scrollable like Intrade Bar) */}
+          <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-3 backdrop-blur flex items-center gap-2 overflow-x-auto scrollbar-thin scrollbar-thumb-slate-700">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-400 border-r border-slate-800 mr-1 shrink-0">
               <Layers className="w-4 h-4 text-cyan-400" />
-              ВЫБОР:
+              АКТИВЫ:
             </div>
-            {filteredPairs.map((pair) => (
+            {TRADING_PAIRS.map((pair) => (
               <button
                 key={pair.id}
                 onClick={() => setSelectedPair(pair)}
-                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 ${selectedPair.id === pair.id ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20 scale-105' : 'bg-slate-950/60 text-slate-400 border border-slate-800 hover:border-slate-700 hover:text-slate-200'}`}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 ${selectedPair.id === pair.id ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20 scale-105' : 'bg-slate-950/60 text-slate-400 border border-slate-800 hover:border-slate-700 hover:text-slate-200'}`}
               >
                 {pair.displaySymbol}
               </button>
@@ -130,7 +106,7 @@ export default function App() {
                   </span>
                   <span className={`ml-2 inline-flex items-center text-xs font-bold px-2 py-0.5 rounded ${priceChange === 'up' ? 'text-emerald-400 bg-emerald-950' : 'text-rose-400 bg-rose-950'}`}>
                     {priceChange === 'up' ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
-                    {priceChange === 'up' ? '+0.42%' : '-0.18%'}
+                    {priceChange === 'up' ? '+0.25%' : '-0.12%'}
                   </span>
                 </div>
               </div>
@@ -179,13 +155,13 @@ export default function App() {
 
           <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-4 space-y-4">
             <div className="flex justify-between items-center">
-              <span className="text-xs text-slate-400">Актив:</span>
+              <span className="text-xs text-slate-400">Активный инструмент:</span>
               <span className="text-xs font-bold text-cyan-400">{selectedPair.displaySymbol}</span>
             </div>
 
             <div className="flex justify-between items-center">
-              <span className="text-xs text-slate-400">Сигнал:</span>
-              <span className="text-xs font-black px-2.5 py-1 rounded bg-rose-950 text-rose-400 border border-rose-800 animate-pulse">
+              <span className="text-xs text-slate-400">Прогноз Оракула:</span>
+              <span className="text-xs font-black px-2.5 py-1 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 animate-pulse">
                 {aiSignal.type}
               </span>
             </div>
@@ -204,16 +180,16 @@ export default function App() {
               onClick={() => setAiSignal(prev => ({ ...prev, confidence: Math.min(99, prev.confidence + 2) }))}
               className="w-full mt-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold py-2.5 px-4 rounded-lg text-xs transition-all shadow-lg shadow-cyan-500/20 active:scale-95"
             >
-              ПЕРЕСЧИТАТЬ СИГНАЛЫ РЫНКА
+              ПЕРЕСЧИТАТЬ СИГНАЛЫ
             </button>
           </div>
 
           <div className="flex-1 bg-slate-950/40 border border-slate-800/80 rounded-xl p-4 flex flex-col justify-between text-xs text-slate-400">
-            <span className="font-semibold text-slate-300 mb-2">Лог мульти-рынка:</span>
+            <span className="font-semibold text-slate-300 mb-2">Лог терминала:</span>
             <div className="space-y-1 font-mono text-[11px] text-slate-500">
-              <p className="text-emerald-400">› Категория: {selectedCategory.toUpperCase()}</p>
-              <p>› Инструмент: {selectedPair.displaySymbol}</p>
-              <p className="text-cyan-400">› Поток данных стабилен</p>
+              <p className="text-emerald-400">› Пул Intrade Bar синхронизирован</p>
+              <p>› Выбран: {selectedPair.displaySymbol}</p>
+              <p className="text-cyan-400">› Поток котировок активен</p>
             </div>
           </div>
         </aside>
@@ -221,7 +197,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v1.4.0 (Intrade Bar Engine)</span>
+        <span>ORACLE PRO v1.5.0 (Full Intrade Bar Mirror)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
