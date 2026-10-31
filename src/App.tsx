@@ -9,18 +9,18 @@ export default function App() {
   const [timeframe, setTimeframe] = useState<string>("5");
   const [wsStatus, setWsStatus] = useState<boolean>(true);
   
-  // Режим экрана: 'single' (один большой график) или 'quad' (сетка из 4 графиков)
+  // Режим экрана: 'single' (1 график) или 'quad' (4 графика)
   const [viewMode, setViewMode] = useState<'single' | 'quad'>('single');
   
-  // Сетка из 4 активов для мульти-режима
+  // 4 пары для сетки
   const quadPairs = [TRADING_PAIRS[11], TRADING_PAIRS[14], TRADING_PAIRS[19], TRADING_PAIRS[20]]; // EUR/USD, GBP/JPY, USD/JPY, BTC/USDT
 
-  // Состояния для ИИ-аналитики
+  // ИИ-аналитика
   const [aiConfidence, setAiConfidence] = useState<number>(94);
   const [aiDirection, setAiDirection] = useState<'CALL (ВЫШЕ)' | 'PUT (НИЖЕ)'>('CALL (ВЫШЕ)');
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
 
-  // Подключение WebSocket для котировок в шапке
+  // WebSocket котировок
   useEffect(() => {
     setPrice(selectedPair.baseRate);
     setWsStatus(false);
@@ -77,7 +77,7 @@ export default function App() {
         </div>
         
         <div className="flex items-center gap-4 text-xs">
-          {/* Кнопки переключения режима экранов */}
+          {/* Переключатель экранов */}
           <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
             <button
               onClick={() => setViewMode('single')}
@@ -103,10 +103,9 @@ export default function App() {
       {/* Main Workspace Grid */}
       <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
         
-        {/* Left Column: Asset Selection & Charts Area */}
+        {/* Left Column */}
         <section className="lg:col-span-3 flex flex-col gap-4">
           
-          {/* Assets Grid (только для одиночного режима) */}
           {viewMode === 'single' && (
             <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-3.5 backdrop-blur flex flex-col gap-2">
               <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 pb-1 border-b border-slate-800/80">
@@ -129,7 +128,7 @@ export default function App() {
             </div>
           )}
 
-          {/* Charts Container: Single or Quad */}
+          {/* Charts Display */}
           {viewMode === 'single' ? (
             <div className="flex-1 bg-slate-900/40 border border-slate-800 rounded-xl p-6 flex flex-col justify-between relative overflow-hidden backdrop-blur min-h-[500px]">
               <div className="flex justify-between items-center mb-4">
@@ -147,7 +146,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Timeframes */}
                 <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs gap-1">
                   {['1', '5', '15', '60', '240'].map((val) => (
                     <button
@@ -171,7 +169,7 @@ export default function App() {
               </div>
             </div>
           ) : (
-            /* QUAD MODE (4 Графика сразу) */
+            /* QUAD MODE (4 Графика) */
             <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-[600px]">
               {quadPairs.map((pair) => (
                 <div key={pair.id} className="bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex flex-col justify-between relative overflow-hidden backdrop-blur">
@@ -192,7 +190,7 @@ export default function App() {
           )}
         </section>
 
-        {/* Right Panel: AI Analytics Hub */}
+        {/* Right Panel */}
         <aside className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 flex flex-col gap-5 backdrop-blur">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <h2 className="font-bold text-slate-200 flex items-center gap-2 text-sm">
