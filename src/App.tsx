@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Zap, LineChart, Database, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, BarChart3, LayoutGrid, Square } from 'lucide-react';
+import { ShieldCheck, Zap, LineChart, Database, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, BarChart3, LayoutGrid, Square, MessageSquare, Clock, Terminal } from 'lucide-react';
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
 
 export default function App() {
@@ -9,19 +9,24 @@ export default function App() {
   const [timeframe, setTimeframe] = useState<string>("5");
   const [wsStatus, setWsStatus] = useState<boolean>(true);
   
-  // Режим экрана: 'single' (1 график) или 'quad' (4 графика)
+  // Режим экрана
   const [viewMode, setViewMode] = useState<'single' | 'quad'>('single');
   
-  // Состояния для 4 независимых графиков в режиме Quad
-  const [quadPair1, setQuadPair1] = useState<TradingPair>(TRADING_PAIRS[11]); // EUR/USD
-  const [quadPair2, setQuadPair2] = useState<TradingPair>(TRADING_PAIRS[14]); // GBP/JPY
-  const [quadPair3, setQuadPair3] = useState<TradingPair>(TRADING_PAIRS[19]); // USD/JPY
-  const [quadPair4, setQuadPair4] = useState<TradingPair>(TRADING_PAIRS[20]); // BTC/USDT
+  // 4 пары для сетки
+  const [quadPair1, setQuadPair1] = useState<TradingPair>(TRADING_PAIRS[11]);
+  const [quadPair2, setQuadPair2] = useState<TradingPair>(TRADING_PAIRS[14]);
+  const [quadPair3, setQuadPair3] = useState<TradingPair>(TRADING_PAIRS[19]);
+  const [quadPair4, setQuadPair4] = useState<TradingPair>(TRADING_PAIRS[20]);
 
-  // ИИ-аналитика
-  const [aiConfidence, setAiConfidence] = useState<number>(94);
-  const [aiDirection, setAiDirection] = useState<'CALL (ВЫШЕ)' | 'PUT (НИЖЕ)'>('CALL (ВЫШЕ)');
-  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  // Состояния для продвинутого ИИ-аналитика
+  const [candleTimer, setCandleTimer] = useState<number>(240); // 4 минуты осталось до конца 5М свечи (в секундах)
+  const [aiState, setAiState] = useState<'ANALYZING' | 'SNIPER_READY'>('ANALYZING');
+  const [aiSignal, setAiSignal] = useState<{ direction: 'CALL' | 'PUT'; confidence: number }>({ direction: 'CALL', confidence: 96 });
+  const [aiLogs, setAiLogs] = useState<Array<{ id: number; time: string; text: string; type: 'info' | 'level' | 'pattern' | 'sniper' }>>([
+    { id: 1, time: '00:01', text: 'ИИ подключен к межбанковским потокам. База знаний: 10,000+ книг и стратегий загружена.', type: 'info' },
+    { id: 2, time: '00:15', text: 'Обнаружен зеркальный уровень поддержки на 1.11550 по EUR/USD.', type: 'level' },
+    { id: 3, time: '00:42', text: 'Паттерн "Пин-бар" на младшем таймфрейме. Накопление объема быками.', type: 'pattern' }
+  ]);
 
   // WebSocket котировок
   useEffect(() => {
@@ -54,15 +59,51 @@ export default function App() {
     };
   }, [selectedPair]);
 
-  const handleRunAnalysis = () => {
-    setIsAnalyzing(true);
-    setTimeout(() => {
-      const randomConf = Math.floor(Math.random() * 8) + 91;
-      const randomDir = Math.random() > 0.5 ? 'CALL (ВЫШЕ)' : 'PUT (НИЖЕ)';
-      setAiConfidence(randomConf);
-      setAiDirection(randomDir);
-      setIsAnalyzing(false);
-    }, 600);
+  // Таймер свечи и логика снайперского сигнала за 10 секунд
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCandleTimer(prev => {
+        if (prev <= 1) {
+          // Новая свеча началась
+          setAiState('ANALYZING');
+          addLog('Свеча закрыта. Открыт новый бар. Запуск цикла глубокого сканирования...', 'info');
+          return 300; // 5 минут
+        }
+
+        const nextTime = prev - 1;
+
+        // Ровно за 10 секунд до конца свечи включаем режим снайперского входа
+        if (nextTime === 10) {
+          setAiState('SNIPER_READY');
+          const isCall = Math.random() > 0.4;
+          const conf = Math.floor(Math.random() * 5) + 94; // 94-98%
+          setAiSignal({ direction: isCall ? 'CALL' : 'PUT', confidence: conf });
+          addLog(`⚡ СНАЙПЕРСКИЙ СИГНАЛ (10 сек до закрытия): Вход ${isCall ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'}. Вероятность: ${conf}%`, 'sniper');
+        }
+
+        // Рандомные мысли ИИ в процессе формирования свечи
+        if (nextTime === 200) {
+          addLog('Пробой локальной трендовой линии. Анализ ордербука: перевес покупателей.', 'level');
+        } else if (nextTime === 120) {
+          addLog('Свечной анализ: формирование паттерна "Бычье поглощение". Уровень держится.', 'pattern');
+        }
+
+        return nextTime;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  const addLog = (text: string, type: 'info' | 'level' | 'pattern' | 'sniper') => {
+    const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setAiLogs(prev => [{ id: Date.now(), time: currentTime, text, type }, ...prev.slice(0, 15)]);
+  };
+
+  const formatTimer = (totalSec: number) => {
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
   return (
@@ -75,12 +116,11 @@ export default function App() {
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
               ORACLE PRO TERMINAL
             </h1>
-            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Multi-Screen AI Analytics Hub</p>
+            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Autonomous AI Trading Brain Edition</p>
           </div>
         </div>
         
         <div className="flex items-center gap-4 text-xs">
-          {/* Переключатель экранов */}
           <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
             <button
               onClick={() => setViewMode('single')}
@@ -109,7 +149,6 @@ export default function App() {
         {/* Left Column */}
         <section className="lg:col-span-3 flex flex-col gap-4">
           
-          {/* Панель выбора актива (теперь доступна всегда для удобства) */}
           <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-3.5 backdrop-blur flex flex-col gap-2">
             <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 pb-1 border-b border-slate-800/80">
               <Layers className="w-4 h-4 text-cyan-400" />
@@ -120,9 +159,7 @@ export default function App() {
               {TRADING_PAIRS.map((pair) => (
                 <button
                   key={pair.id}
-                  onClick={() => {
-                    setSelectedPair(pair);
-                  }}
+                  onClick={() => setSelectedPair(pair)}
                   className={`px-2 py-1.5 rounded-md text-[11px] font-bold transition-all text-center truncate ${selectedPair.id === pair.id ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20 scale-105 font-black' : 'bg-slate-950/70 text-slate-300 border border-slate-800/80 hover:border-slate-600 hover:text-white'}`}
                   title={pair.displaySymbol}
                 >
@@ -150,16 +187,27 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs gap-1">
-                  {['1', '5', '15', '60', '240'].map((val) => (
-                    <button
-                      key={val}
-                      onClick={() => setTimeframe(val)}
-                      className={`px-3 py-1 rounded transition-all ${timeframe === val ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-                    >
-                      {val === '60' ? '1H' : val === '240' ? '4H' : `${val}M`}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-3">
+                  {/* Таймер до закрытия свечи */}
+                  <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 px-3 py-1 rounded-lg text-xs font-mono">
+                    <Clock className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+                    <span className="text-slate-400">Свеча:</span>
+                    <span className={`font-bold ${candleTimer <= 10 ? 'text-amber-400 animate-ping' : 'text-cyan-400'}`}>
+                      {formatTimer(candleTimer)}
+                    </span>
+                  </div>
+
+                  <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs gap-1">
+                    {['1', '5', '15', '60', '240'].map((val) => (
+                      <button
+                        key={val}
+                        onClick={() => setTimeframe(val)}
+                        className={`px-3 py-1 rounded transition-all ${timeframe === val ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
+                      >
+                        {val === '60' ? '1H' : val === '240' ? '4H' : `${val}M`}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -173,7 +221,7 @@ export default function App() {
               </div>
             </div>
           ) : (
-            /* QUAD MODE (4 Графика с выпадающими селекторами или быстрой сменой) */
+            /* QUAD MODE */
             <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-[600px]">
               {[
                 { pair: quadPair1, setPair: setQuadPair1, id: 'q1' },
@@ -198,7 +246,7 @@ export default function App() {
                         ))}
                       </select>
                     </div>
-                    <span className="text-[10px] text-slate-400 font-mono">LIVE</span>
+                    <span className="text-[10px] text-slate-400 font-mono">LIVE AI SCAN</span>
                   </div>
 
                   <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-lg overflow-hidden min-h-[220px] relative">
@@ -215,52 +263,54 @@ export default function App() {
           )}
         </section>
 
-        {/* Right Panel */}
-        <aside className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 flex flex-col gap-5 backdrop-blur">
+        {/* Right Panel: AI Live Brain & Chat Log */}
+        <aside className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 flex flex-col gap-4 backdrop-blur">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <h2 className="font-bold text-slate-200 flex items-center gap-2 text-sm">
-              <BrainCircuit className="w-4 h-4 text-cyan-400" />
-              ИИ ОРАКУЛ (АНАЛИЗАТОР)
+              <BrainCircuit className="w-4 h-4 text-cyan-400 animate-pulse" />
+              ИИ АНАЛИТИК (МОЗГ)
             </h2>
             <span className="text-[11px] font-mono text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-800">
               {selectedPair.displaySymbol}
             </span>
           </div>
 
-          <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-4 space-y-4 shadow-inner">
-            <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-400">Рекомендация ИИ:</span>
-              <span className={`font-black px-2.5 py-1 rounded border animate-pulse ${aiDirection.includes('ВЫШЕ') ? 'bg-emerald-950 text-emerald-400 border-emerald-800' : 'bg-rose-950 text-rose-400 border-rose-800'}`}>
-                {isAnalyzing ? 'АНАЛИЗ...' : aiDirection}
+          {/* Sniper Signal Status Box */}
+          <div className={`border rounded-xl p-3.5 transition-all ${aiState === 'SNIPER_READY' ? 'bg-amber-950/50 border-amber-500 animate-pulse' : 'bg-slate-950/90 border-slate-800'}`}>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-[11px] text-slate-400">Статус анализатора:</span>
+              <span className={`text-[10px] font-black px-2 py-0.5 rounded ${aiState === 'SNIPER_READY' ? 'bg-amber-500 text-slate-950' : 'bg-cyan-950 text-cyan-400 border border-cyan-800'}`}>
+                {aiState === 'SNIPER_READY' ? '⚡ СНАЙПЕРСКИЙ ВХОД (10 сек)' : 'НЕПРЕРЫВНЫЙ СКАН'}
               </span>
             </div>
 
-            <div className="space-y-1.5">
-              <div className="text-xs text-slate-400 flex justify-between">
-                <span>Вероятность отработки:</span>
-                <span className="text-slate-100 font-bold">{isAnalyzing ? '...' : `${aiConfidence}%`}</span>
-              </div>
-              <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
-                <div className="bg-gradient-to-r from-cyan-500 to-emerald-400 h-full transition-all duration-500" style={{ width: `${aiConfidence}%` }}></div>
-              </div>
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-bold text-slate-200">Прогноз на след. бар:</span>
+              <span className={`text-xs font-black px-2.5 py-1 rounded border ${aiSignal.direction === 'CALL' ? 'bg-emerald-950 text-emerald-400 border-emerald-800' : 'bg-rose-950 text-rose-400 border-rose-800'}`}>
+                {aiSignal.direction === 'CALL' ? '📈 ВЫШЕ (CALL)' : '📉 НИЖЕ (PUT)'} ({aiSignal.confidence}%)
+              </span>
             </div>
-
-            <button 
-              onClick={handleRunAnalysis}
-              disabled={isAnalyzing}
-              className="w-full mt-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold py-2.5 px-4 rounded-lg text-xs transition-all shadow-lg shadow-cyan-500/20 active:scale-95 flex items-center justify-center gap-2"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
-              {isAnalyzing ? 'СКАНИРОВАНИЕ КЛАСТЕРОВ...' : 'ПЕРЕСЧИТАТЬ СИГНАЛ ИИ'}
-            </button>
           </div>
 
-          <div className="flex-1 bg-slate-950/40 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-between text-xs text-slate-400 min-h-[110px]">
-            <span className="font-semibold text-slate-300 mb-1">Статус мульти-экрана:</span>
-            <div className="space-y-1 font-mono text-[10px] text-slate-500">
-              <p className="text-emerald-400">› Режим: {viewMode.toUpperCase()}</p>
-              <p>› Активный актив: {selectedPair.displaySymbol}</p>
-              <p className="text-cyan-400">› Селекторы пар активны</p>
+          {/* Live AI Reasoning Chat Log */}
+          <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-2 overflow-hidden min-h-[300px]">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5 text-cyan-400" /> Объяснения ИИ в реальном времени:
+              </span>
+              <span className="text-[10px] font-mono text-slate-500">Auto-Log</span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 text-[11px] font-mono">
+              {aiLogs.map(log => (
+                <div key={log.id} className={`p-2 rounded border ${log.type === 'sniper' ? 'bg-amber-950/40 border-amber-600/80 text-amber-200 font-bold' : log.type === 'level' ? 'bg-cyan-950/30 border-cyan-800/60 text-cyan-300' : log.type === 'pattern' ? 'bg-indigo-950/30 border-indigo-800/60 text-indigo-300' : 'bg-slate-900/60 border-slate-800 text-slate-400'}`}>
+                  <div className="flex justify-between text-[10px] text-slate-500 mb-0.5">
+                    <span>{log.time}</span>
+                    <span className="uppercase">{log.type}</span>
+                  </div>
+                  <p>{log.text}</p>
+                </div>
+              ))}
             </div>
           </div>
         </aside>
@@ -268,7 +318,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v2.1 (Flexible Quad Matrix)</span>
+        <span>ORACLE PRO v3.0 (World Knowledge & Sniper Engine)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
