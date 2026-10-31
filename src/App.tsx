@@ -3,7 +3,7 @@ import { ShieldCheck, Zap, LineChart, Database, TrendingUp, TrendingDown, Refres
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
 
 export default function App() {
-  const [selectedPair, setSelectedPair] = useState<TradingPair>(TRADING_PAIRS[11]); // По умолчанию EUR/USD
+  const [selectedPair, setSelectedPair] = useState<TradingPair>(TRADING_PAIRS[11]); // EUR/USD по умолчанию
   const [price, setPrice] = useState<string>(selectedPair.baseRate);
   const [priceChange, setPriceChange] = useState<'up' | 'down' | null>('up');
   const [timeframe, setTimeframe] = useState<string>("5");
@@ -74,24 +74,28 @@ export default function App() {
       {/* Main Workspace Grid */}
       <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
         
-        {/* Left Column: Pairs Bar & Chart Area */}
+        {/* Left Column: Compact Grid of Pairs & Chart Area */}
         <section className="lg:col-span-3 flex flex-col gap-4">
           
-          {/* Assets Selection Bar (Scrollable like Intrade Bar) */}
-          <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-3 backdrop-blur flex items-center gap-2 overflow-x-auto scrollbar-thin scrollbar-thumb-slate-700">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-400 border-r border-slate-800 mr-1 shrink-0">
+          {/* Assets Grid (No Scrollbars, Compact & Clean) */}
+          <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-3.5 backdrop-blur flex flex-col gap-2">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 pb-1 border-b border-slate-800/80">
               <Layers className="w-4 h-4 text-cyan-400" />
-              АКТИВЫ:
+              ВЫБОР АКТИВА (INTRADE BAR):
             </div>
-            {TRADING_PAIRS.map((pair) => (
-              <button
-                key={pair.id}
-                onClick={() => setSelectedPair(pair)}
-                className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 ${selectedPair.id === pair.id ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20 scale-105' : 'bg-slate-950/60 text-slate-400 border border-slate-800 hover:border-slate-700 hover:text-slate-200'}`}
-              >
-                {pair.displaySymbol}
-              </button>
-            ))}
+            
+            <div className="grid grid-cols-4 sm:grid-cols-7 md:grid-cols-11 gap-1.5">
+              {TRADING_PAIRS.map((pair) => (
+                <button
+                  key={pair.id}
+                  onClick={() => setSelectedPair(pair)}
+                  className={`px-2 py-1.5 rounded-md text-[11px] font-bold transition-all text-center truncate ${selectedPair.id === pair.id ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20 scale-105 font-black' : 'bg-slate-950/70 text-slate-300 border border-slate-800/80 hover:border-slate-600 hover:text-white'}`}
+                  title={pair.displaySymbol}
+                >
+                  {pair.displaySymbol}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Main Chart Box */}
@@ -187,9 +191,9 @@ export default function App() {
           <div className="flex-1 bg-slate-950/40 border border-slate-800/80 rounded-xl p-4 flex flex-col justify-between text-xs text-slate-400">
             <span className="font-semibold text-slate-300 mb-2">Лог терминала:</span>
             <div className="space-y-1 font-mono text-[11px] text-slate-500">
-              <p className="text-emerald-400">› Пул Intrade Bar синхронизирован</p>
+              <p className="text-emerald-400">› Панель переключена на сетку</p>
               <p>› Выбран: {selectedPair.displaySymbol}</p>
-              <p className="text-cyan-400">› Поток котировок активен</p>
+              <p className="text-cyan-400">› Скроллбар удален успешно</p>
             </div>
           </div>
         </aside>
@@ -197,7 +201,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v1.5.0 (Full Intrade Bar Mirror)</span>
+        <span>ORACLE PRO v1.6.0 (Grid View Edition)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
