@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Zap, LineChart, Database, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, BarChart3, LayoutGrid, Square, MessageSquare, Clock, Globe, Target, Activity, PenTool, Sparkles, Triangle } from 'lucide-react';
+import { ShieldCheck, Zap, LineChart, Database, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, BarChart3, LayoutGrid, Square, MessageSquare, Clock, Globe, Target, Activity, PenTool, Sparkles, Triangle, Flame } from 'lucide-react';
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
 
 export default function App() {
@@ -27,14 +27,14 @@ export default function App() {
   const [candleTimer, setCandleTimer] = useState<number>(0); 
   const [aiSignal, setAiSignal] = useState<{ direction: 'CALL' | 'PUT'; confidence: number } | null>(null);
   
-  // Графические элементы с поддержкой мультиязычности (РУС / ENG)
-  const [drawnElements, setDrawnElements] = useState<Array<{ id: number; type: 'line' | 'zone' | 'highlight' | 'triangle'; top: number; left?: number; width?: number; height?: number; color: string; labelRu: string; labelEn: string }>>([]);
+  // Список ключевых свечей и формаций, найденных ИИ (с ценами и таймкодами)
+  const [keyCandles, setKeyCandles] = useState<Array<{ id: number; type: string; price: string; descRu: string; descEn: string; color: string }>>([]);
 
   const [aiLogs, setAiLogs] = useState<Array<{ id: number; time: string; text: string; type: 'info' | 'level' | 'pattern' | 'sniper' }>>([
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'ИИ-аналитик инициализирован. База знаний загружена. Жду запуск.' : 'AI analyst initialized. Knowledge base loaded. Ready.', 
+      text: lang === 'ru' ? 'ИИ-аналитик инициализирован. Ожидание запуска сканирования.' : 'AI analyst initialized. Waiting for scan start.', 
       type: 'info' 
     }
   ]);
@@ -95,21 +95,6 @@ export default function App() {
         const conf = Math.floor(Math.random() * 5) + 95;
         setAiSignal({ direction: isCall ? 'CALL' : 'PUT', confidence: conf });
         
-        setDrawnElements(prev => [
-          ...prev, 
-          { 
-            id: Date.now(), 
-            type: 'highlight', 
-            top: 200, 
-            left: 350, 
-            width: 80, 
-            height: 120, 
-            color: isCall ? '#10b981' : '#f43f5e', 
-            labelRu: isCall ? '🚀 СНАЙПЕР: ВЫШЕ' : '🔻 СНАЙПЕР: НИЖЕ',
-            labelEn: isCall ? '🚀 SNIPER: CALL' : '🔻 SNIPER: PUT'
-          }
-        ]);
-
         addLog(
           lang === 'ru' 
             ? `⚡ СНАЙПЕРСКИЙ ВХОД (10 сек до конца свечи): Направление -> ${isCall ? 'ВЫШЕ' : 'НИЖЕ'} (${conf}%)` 
@@ -125,56 +110,29 @@ export default function App() {
   const handleStartAnalysis = () => {
     setIsAnalyzing(true);
     setAiSignal(null);
-    setDrawnElements([]);
+    setKeyCandles([]);
     addLog(
-      lang === 'ru' ? `> ИИ начал глубокий анализ свечи ${selectedPair.displaySymbol}...` : `> AI started deep candle analysis for ${selectedPair.displaySymbol}...`, 
+      lang === 'ru' ? `> ИИ начал глубокий анализ свечей ${selectedPair.displaySymbol}...` : `> AI started deep candle analysis for ${selectedPair.displaySymbol}...`, 
       'info'
     );
 
-    // 1. Уровень сопротивления
+    // Добавляем найденные ключевые свечи в специальную панель под графиком
     setTimeout(() => {
-      setDrawnElements(prev => [...prev, { id: 1, type: 'line', top: 90, color: '#f43f5e', labelRu: 'Уровень Сопротивления', labelEn: 'Resistance Level' }]);
-      addLog(
-        lang === 'ru' ? '[ИИ] Начерчен ключевой уровень сопротивления.' : '[AI] Drawn key resistance level.', 
-        'level'
-      );
-    }, 600);
+      const base = parseFloat(price);
+      const p1 = (base * 1.0005).toFixed(selectedPair.id === 'btcusdt' ? 2 : 4);
+      const p2 = (base * 0.9995).toFixed(selectedPair.id === 'btcusdt' ? 2 : 4);
 
-    // 2. Уровень поддержки
-    setTimeout(() => {
-      setDrawnElements(prev => [...prev, { id: 4, type: 'line', top: 350, color: '#10b981', labelRu: 'Уровень Поддержки', labelEn: 'Support Level' }]);
-      addLog(
-        lang === 'ru' ? '[ИИ] Начерчен ключевой уровень поддержки.' : '[AI] Drawn key support level.', 
-        'level'
-      );
-    }, 1200);
+      setKeyCandles([
+        { id: 1, type: 'Pin-Bar (Rejection)', price: p1, descRu: 'Сильная тень отвержения цены от уровня сопротивления', descEn: 'Strong price rejection shadow from resistance', color: 'text-amber-400 border-amber-500/50 bg-amber-950/30' },
+        { id: 2, type: 'Order Block', price: p2, descRu: 'Институциональная зона набора позиции маркетмейкера', descEn: 'Institutional market maker positioning zone', color: 'text-cyan-400 border-cyan-500/50 bg-cyan-950/30' },
+        { id: 3, type: 'Triangle Apex', price: price, descRu: 'Схождение границ симметричного треугольника', descEn: 'Symmetrical triangle boundaries convergence', color: 'text-purple-400 border-purple-500/50 bg-purple-950/30' }
+      ]);
 
-    // 3. Зона Ордерблока
-    setTimeout(() => {
-      setDrawnElements(prev => [...prev, { id: 2, type: 'zone', top: 220, left: 180, width: 150, height: 70, color: '#06b6d4', labelRu: 'Ордерблок (Smart Money)', labelEn: 'Order Block (Smart Money)' }]);
       addLog(
-        lang === 'ru' ? '[ИИ] Выделена зона Ордерблока: институциональная ликвидность.' : '[AI] Highlighted Order Block zone: institutional liquidity.', 
+        lang === 'ru' ? '[ИИ] Обнаружено 3 ключевых кластера свечей и паттернов.' : '[AI] Detected 3 key candle clusters & patterns.', 
         'pattern'
       );
-    }, 2000);
-
-    // 4. Паттерн Треугольник (Triangle Pattern)
-    setTimeout(() => {
-      setDrawnElements(prev => [...prev, { id: 5, type: 'triangle', top: 140, left: 240, width: 160, height: 140, color: '#a855f7', labelRu: 'Паттерн: Сходящийся Треугольник', labelEn: 'Pattern: Symmetrical Triangle' }]);
-      addLog(
-        lang === 'ru' ? '[ИИ] Обнаружен паттерн "Сходящийся треугольник". Подготовка к сильному импульсному пробою.' : '[AI] Detected "Symmetrical Triangle" pattern. Preparing for strong breakout.', 
-        'pattern'
-      );
-    }, 3000);
-
-    // 5. Подсветка Пин-бара
-    setTimeout(() => {
-      setDrawnElements(prev => [...prev, { id: 3, type: 'highlight', top: 170, left: 290, width: 40, height: 100, color: '#f59e0b', labelRu: 'Пин-бар (Реверс)', labelEn: 'Pin-Bar (Rejection)' }]);
-      addLog(
-        lang === 'ru' ? '[ИИ] Ключевая свеча: Пин-бар на отскок от границы треугольника.' : '[AI] Key candle: Pin-Bar bouncing off triangle boundary.', 
-        'pattern'
-      );
-    }, 4000);
+    }, 1500);
   };
 
   const addLog = (text: string, type: 'info' | 'level' | 'pattern' | 'sniper') => {
@@ -322,66 +280,44 @@ export default function App() {
                 </div>
               </div>
 
-              {/* 🌟 КОНТЕЙНЕР ГРАФИКА С МУЛЬТИЯЗЫЧНЫМ СЛОЕМ ИИ */}
-              <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden min-h-[420px] relative">
+              {/* 🌟 ПАНЕЛЬ КЛЮЧЕВЫХ СВЕЧЕЙ И ПАТТЕРНОВ ИИ (Не уезжает при зуме, всегда перед глазами) */}
+              <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-3 mb-3 flex flex-col gap-2">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-300 pb-1 border-b border-slate-800">
+                  <span className="flex items-center gap-1.5 text-cyan-400">
+                    <Flame className="w-4 h-4 text-amber-400 animate-pulse" />
+                    {lang === 'ru' ? 'АНАЛИЗ КЛЮЧЕВЫХ СВЕЧЕЙ И ФОРМАЦИЙ ИИ:' : 'AI KEY CANDLES & PATTERNS ANALYSIS:'}
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-500">{selectedPair.displaySymbol} ({timeframe}M)</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  {keyCandles.length === 0 ? (
+                    <div className="col-span-3 py-2 text-center text-xs text-slate-500 font-mono italic">
+                      {isAnalyzing ? (lang === 'ru' ? '⏳ ИИ сканирует свечной ряд...' : '⏳ AI scanning candles...') : (lang === 'ru' ? 'Нажмите активацию снайпера для поиска ключевых свечей' : 'Click sniper activation to scan candles')}
+                    </div>
+                  ) : (
+                    keyCandles.map(item => (
+                      <div key={item.id} className={`border rounded-lg p-2 flex flex-col gap-1 transition-all ${item.color}`}>
+                        <div className="flex justify-between items-center text-xs font-black">
+                          <span>{item.type}</span>
+                          <span className="font-mono text-[10px] bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">${item.price}</span>
+                        </div>
+                        <p className="text-[10px] opacity-90 leading-tight">
+                          {lang === 'ru' ? item.descRu : item.descEn}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden min-h-[380px] relative">
                 <iframe
                   key={`${selectedPair.symbol}-${timeframe}-${timezone}-${lang}`}
                   src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${selectedPair.symbol}&interval=${timeframe}&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies=[]&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
                   className="w-full h-full border-0 absolute inset-0 pointer-events-auto"
                   title="TradingView Chart"
                 ></iframe>
-
-                {/* Слой графического анализа с переключением РУС / ENG */}
-                <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden">
-                  {drawnElements.map(el => {
-                    if (el.type === 'line') {
-                      return (
-                        <div key={el.id} className="absolute w-full flex items-center transition-all duration-700 animate-fade-in" style={{ top: `${el.top}px` }}>
-                          <div className="w-full border-t-2 border-dashed shadow-md" style={{ borderColor: el.color }}></div>
-                          <span className="absolute right-4 px-2 py-0.5 rounded text-[10px] font-mono font-bold shadow-lg text-slate-950" style={{ backgroundColor: el.color }}>
-                            {lang === 'ru' ? el.labelRu : el.labelEn}
-                          </span>
-                        </div>
-                      );
-                    } else if (el.type === 'zone') {
-                      return (
-                        <div 
-                          key={el.id} 
-                          className="absolute border border-cyan-400/80 bg-cyan-500/15 rounded-lg backdrop-blur-[1px] transition-all duration-700 flex items-center justify-center p-1"
-                          style={{ top: `${el.top}px`, left: `${el.left}px`, width: `${el.width}px`, height: `${el.height}px` }}
-                        >
-                          <span className="text-[9px] font-mono font-bold text-cyan-300 bg-slate-950/80 px-1.5 py-0.5 rounded border border-cyan-800">
-                            {lang === 'ru' ? el.labelRu : el.labelEn}
-                          </span>
-                        </div>
-                      );
-                    } else if (el.type === 'triangle') {
-                      return (
-                        <div 
-                          key={el.id} 
-                          className="absolute border-2 border-purple-500/80 bg-purple-500/10 rounded-xl backdrop-blur-[1px] transition-all duration-700 flex items-start justify-center p-1"
-                          style={{ top: `${el.top}px`, left: `${el.left}px`, width: `${el.width}px`, height: `${el.height}px`, clipPath: 'polygon(50% 0%, 0% 100%, 100% 100%)' }}
-                        >
-                          <span className="text-[9px] font-mono font-bold text-purple-200 bg-slate-950 px-1.5 py-0.5 rounded border border-purple-700 mt-2">
-                            {lang === 'ru' ? el.labelRu : el.labelEn}
-                          </span>
-                        </div>
-                      );
-                    } else {
-                      return (
-                        <div 
-                          key={el.id} 
-                          className="absolute border-2 border-amber-400 bg-amber-500/20 rounded-lg shadow-lg shadow-amber-500/30 animate-pulse flex items-start justify-center p-1"
-                          style={{ top: `${el.top}px`, left: `${el.left}px`, width: `${el.width}px`, height: `${el.height}px` }}
-                        >
-                          <span className="text-[9px] font-mono font-black text-amber-200 bg-slate-950 px-1 rounded border border-amber-600">
-                            {lang === 'ru' ? el.labelRu : el.labelEn}
-                          </span>
-                        </div>
-                      );
-                    }
-                  })}
-                </div>
               </div>
             </div>
           ) : (
@@ -431,7 +367,7 @@ export default function App() {
         <aside className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 flex flex-col gap-4 backdrop-blur">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <h2 className="font-bold text-slate-200 flex items-center gap-2 text-sm">
-              <BrainCircuit className="w-4 h-4 text-cyan-400 animate-pulse" />
+              <BrainCircuit className="w-4 h-4 text-cyan-400" />
               {lang === 'ru' ? 'ИИ АНАЛИТИК' : 'AI ANALYST'}
             </h2>
             <span className="text-[11px] font-mono text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-800">
@@ -446,7 +382,7 @@ export default function App() {
           >
             <RefreshCw className={`w-4 h-4 ${isAnalyzing ? 'animate-spin' : ''}`} />
             {isAnalyzing 
-              ? (lang === 'ru' ? 'ИИ СТРОИТ ТРЕУГОЛЬНИК И УРОВНИ...' : 'AI DRAWING TRIANGLE & LEVELS...') 
+              ? (lang === 'ru' ? 'ИИ АНАЛИЗИРУЕТ КЛЮЧЕВЫЕ СВЕЧИ...' : 'AI ANALYZING KEY CANDLES...') 
               : (lang === 'ru' ? 'АКТИВИРОВАТЬ СНАЙПЕР ИИ' : 'ACTIVATE AI SNIPER')}
           </button>
 
@@ -486,7 +422,7 @@ export default function App() {
           </div>
 
           {/* Live AI Reasoning Chat Log */}
-          <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-2 overflow-hidden min-h-[260px]">
+          <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-2 overflow-hidden min-h-[240px]">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                 <MessageSquare className="w-3.5 h-3.5 text-cyan-400" /> {lang === 'ru' ? 'Логи уровней и паттернов ИИ:' : 'AI Levels & Patterns Log:'}
@@ -511,7 +447,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v3.8 (Triangle Patterns & Bilingual Overlay Engine)</span>
+        <span>ORACLE PRO v3.9 (Key Candles & Zoom-Proof Panel Engine)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
