@@ -196,7 +196,7 @@ export default function App() {
       </main>
 
       {/* Footer */}
-      55      <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
+      <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
         <span>ORACLE PRO v1.2.0 (TradingView Embedded)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
