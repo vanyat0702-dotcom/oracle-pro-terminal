@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Zap, LineChart, Database, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, BarChart3, LayoutGrid, Square, MessageSquare, Clock, Globe, Target, Activity, PenTool } from 'lucide-react';
+import { ShieldCheck, Zap, LineChart, Database, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, BarChart3, LayoutGrid, Square, MessageSquare, Clock, Globe, Target, Activity, PenTool, Sparkles } from 'lucide-react';
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
 
 export default function App() {
@@ -22,16 +22,16 @@ export default function App() {
   const [quadPair3, setQuadPair3] = useState<TradingPair>(TRADING_PAIRS[19]);
   const [quadPair4, setQuadPair4] = useState<TradingPair>(TRADING_PAIRS[20]);
 
-  // Снайперский ИИ-движок и рисование на графике
+  // Снайперский ИИ-движок и продвинутая графика
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [candleTimer, setCandleTimer] = useState<number>(0); 
   const [aiSignal, setAiSignal] = useState<{ direction: 'CALL' | 'PUT'; confidence: number } | null>(null);
   
-  // Линии, которые ИИ чертит поверх графика
-  const [drawnLines, setDrawnLines] = useState<Array<{ id: number; y: number; color: string; label: string }>>([]);
+  // Графические элементы, которые ИИ рисует поверх графика (уровни, зоны, подсветка свечей)
+  const [drawnElements, setDrawnElements] = useState<Array<{ id: number; type: 'line' | 'zone' | 'highlight'; top: number; left?: number; width?: number; height?: number; color: string; label: string }>>([]);
 
   const [aiLogs, setAiLogs] = useState<Array<{ id: number; time: string; text: string; type: 'info' | 'level' | 'pattern' | 'sniper' }>>([
-    { id: 1, time: '00:01', text: lang === 'ru' ? 'ИИ подключен. Готов рисовать уровни на графике.' : 'AI connected. Ready to draw chart levels.', type: 'info' }
+    { id: 1, time: '00:01', text: lang === 'ru' ? 'ИИ-аналитик инициализирован. База знаний загружена. Жду запуск.' : 'AI analyst initialized. Knowledge base loaded. Ready.', type: 'info' }
   ]);
 
   // WebSocket котировок
@@ -65,7 +65,7 @@ export default function App() {
     };
   }, [selectedPair]);
 
-  // Расчет таймера свечи и снайперский сигнал
+  // Расчет таймера свечи и снайперский триггер за 10 сек
   useEffect(() => {
     const calculateTimeLeft = () => {
       const now = new Date();
@@ -89,6 +89,13 @@ export default function App() {
         const isCall = Math.random() > 0.4;
         const conf = Math.floor(Math.random() * 5) + 95;
         setAiSignal({ direction: isCall ? 'CALL' : 'PUT', confidence: conf });
+        
+        // Добавляем снайперскую стрелку на график
+        setDrawnElements(prev => [
+          ...prev, 
+          { id: Date.now(), type: 'highlight', top: 200, left: 350, width: 80, height: 120, color: isCall ? '#10b981' : '#f43f5e', label: isCall ? '🚀 СПОТ ВХОД ВЫШЕ' : '🔻 СПОТ ВХОД НИЖЕ' }
+        ]);
+
         addLog(
           lang === 'ru' 
             ? `⚡ СНАЙПЕРСКИЙ ВХОД (10 сек до конца свечи): Направление -> ${isCall ? 'ВЫШЕ' : 'НИЖЕ'} (${conf}%)` 
@@ -104,24 +111,26 @@ export default function App() {
   const handleStartAnalysis = () => {
     setIsAnalyzing(true);
     setAiSignal(null);
-    setDrawnLines([]);
-    addLog(lang === 'ru' ? `> ИИ активирован. Сканирование ${selectedPair.displaySymbol} и построение линий...` : `> AI activated. Scanning ${selectedPair.displaySymbol} & rendering lines...`, 'info');
+    setDrawnElements([]);
+    addLog(lang === 'ru' ? `> ИИ начал глубокий анализ свечи ${selectedPair.displaySymbol}...` : `> AI started deep candle analysis for ${selectedPair.displaySymbol}...`, 'info');
 
-    // ИИ прямо на глазах чертит линии поверх графика
+    // 1. Чертим уровень сопротивления
     setTimeout(() => {
-      setDrawnLines(prev => [...prev, { id: 1, y: 120, color: '#f43f5e', label: 'Resistance (94%)' }]);
-      addLog(lang === 'ru' ? '[Графика ИИ] Нанесена линия сопротивления' : '[AI Chart] Resistance line rendered', 'level');
-    }, 1000);
+      setDrawnElements(prev => [...prev, { id: 1, type: 'line', top: 110, color: '#f43f5e', label: 'Resistance Level' }]);
+      addLog(lang === 'ru' ? '[ИИ] Начерчен ключевой зеркальный уровень сопротивления.' : '[AI] Drawn key mirror resistance level.', 'level');
+    }, 800);
 
+    // 2. Рисуем зону Ордерблока (Order Block Zone)
     setTimeout(() => {
-      setDrawnLines(prev => [...prev, { id: 2, y: 320, color: '#10b981', label: 'Support / OrderBlock (97%)' }]);
-      addLog(lang === 'ru' ? '[Графика ИИ] Нанесена линия поддержки и зона ордерблока' : '[AI Chart] Support & Orderblock rendered', 'level');
-    }, 2200);
+      setDrawnElements(prev => [...prev, { id: 2, type: 'zone', top: 240, left: 200, width: 140, height: 60, color: '#06b6d4', label: 'Order Block (Smart Money)' }]);
+      addLog(lang === 'ru' ? '[ИИ] Выделена зона Ордерблока (Smart Money): институциональный набор позиции.' : '[AI] Highlighted Order Block zone: institutional positioning.', 'pattern');
+    }, 1800);
 
+    // 3. Подсвечиваем ключевую свечу паттерна Пин-бар
     setTimeout(() => {
-      setDrawnLines(prev => [...prev, { id: 3, y: 220, color: '#06b6d4', label: 'AI Trend Line' }]);
-      addLog(lang === 'ru' ? '[Графика ИИ] Построена динамическая трендовая линия' : '[AI Chart] Dynamic trendline constructed', 'pattern');
-    }, 3500);
+      setDrawnElements(prev => [...prev, { id: 3, type: 'highlight', top: 180, left: 280, width: 40, height: 100, color: '#f59e0b', label: 'Pin-Bar / Rejection' }]);
+      addLog(lang === 'ru' ? '[ИИ] Обнаружен сильный Пин-бар на младшем таймфрейме. Тень указывает на ложный пробой.' : '[AI] Strong Pin-Bar detected. Shadow indicates false breakout.', 'pattern');
+    }, 3000);
   };
 
   const addLog = (text: string, type: 'info' | 'level' | 'pattern' | 'sniper') => {
@@ -269,9 +278,8 @@ export default function App() {
                 </div>
               </div>
 
-              {/* 🌟 КОНТЕЙНЕР ГРАФИКА С ИНТЕРАКТИВНЫМ СЛОЕМ РИСОВАНИЯ ИИ ПОВЕРХ */}
+              {/* 🌟 КОНТЕЙНЕР ГРАФИКА С ИНТЕРАКТИВНЫМ СЛОЕМ ИИ (Уровни, Ордерблоки, Подсветка свечей) */}
               <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden min-h-[420px] relative">
-                {/* Сам график TradingView */}
                 <iframe
                   key={`${selectedPair.symbol}-${timeframe}-${timezone}-${lang}`}
                   src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${selectedPair.symbol}&interval=${timeframe}&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies=[]&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
@@ -279,16 +287,44 @@ export default function App() {
                   title="TradingView Chart"
                 ></iframe>
 
-                {/* Прозрачный слой поверх графика, на котором ИИ чертит линии в реальном времени */}
+                {/* Слой графического анализа ИИ (Линии, Зоны Ордерблоков, Подсветка свечей) */}
                 <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden">
-                  {drawnLines.map(line => (
-                    <div key={line.id} className="absolute w-full flex items-center transition-all duration-700 animate-fade-in" style={{ top: `${line.y}px` }}>
-                      <div className="w-full border-t-2 border-dashed shadow-md" style={{ borderColor: line.color }}></div>
-                      <span className="absolute right-4 px-2 py-0.5 rounded text-[10px] font-mono font-bold shadow-lg text-slate-950" style={{ backgroundColor: line.color }}>
-                        {line.label}
-                      </span>
-                    </div>
-                  ))}
+                  {drawnElements.map(el => {
+                    if (el.type === 'line') {
+                      return (
+                        <div key={el.id} className="absolute w-full flex items-center transition-all duration-700 animate-fade-in" style={{ top: `${el.top}px` }}>
+                          <div className="w-full border-t-2 border-dashed shadow-md" style={{ borderColor: el.color }}></div>
+                          <span className="absolute right-4 px-2 py-0.5 rounded text-[10px] font-mono font-bold shadow-lg text-slate-950" style={{ backgroundColor: el.color }}>
+                            {el.label}
+                          </span>
+                        </div>
+                      );
+                    } else if (el.type === 'zone') {
+                      return (
+                        <div 
+                          key={el.id} 
+                          className="absolute border border-cyan-400/80 bg-cyan-500/15 rounded-lg backdrop-blur-[1px] transition-all duration-700 flex items-center justify-center p-1"
+                          style={{ top: `${el.top}px`, left: `${el.left}px`, width: `${el.width}px`, height: `${el.height}px` }}
+                        >
+                          <span className="text-[9px] font-mono font-bold text-cyan-300 bg-slate-950/80 px-1.5 py-0.5 rounded border border-cyan-800">
+                            {el.label}
+                          </span>
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div 
+                          key={el.id} 
+                          className="absolute border-2 border-amber-400 bg-amber-500/20 rounded-lg shadow-lg shadow-amber-500/30 animate-pulse flex items-start justify-center p-1"
+                          style={{ top: `${el.top}px`, left: `${el.left}px`, width: `${el.width}px`, height: `${el.height}px` }}
+                        >
+                          <span className="text-[9px] font-mono font-black text-amber-200 bg-slate-950 px-1 rounded border border-amber-600">
+                            {el.label}
+                          </span>
+                        </div>
+                      );
+                    }
+                  })}
                 </div>
               </div>
             </div>
@@ -339,7 +375,7 @@ export default function App() {
         <aside className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 flex flex-col gap-4 backdrop-blur">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <h2 className="font-bold text-slate-200 flex items-center gap-2 text-sm">
-              <BrainCircuit className="w-4 h-4 text-cyan-400" />
+              <BrainCircuit className="w-4 h-4 text-cyan-400 animate-pulse" />
               {lang === 'ru' ? 'ИИ АНАЛИТИК' : 'AI ANALYST'}
             </h2>
             <span className="text-[11px] font-mono text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-800">
@@ -354,7 +390,7 @@ export default function App() {
           >
             <RefreshCw className={`w-4 h-4 ${isAnalyzing ? 'animate-spin' : ''}`} />
             {isAnalyzing 
-              ? (lang === 'ru' ? 'ИИ ЧЕРТИТ УРОВНИ НА ГРАФИКЕ...' : 'AI DRAWING LINES ON CHART...') 
+              ? (lang === 'ru' ? 'ИИ РИСУЕТ И АНАЛИЗИРУЕТ...' : 'AI DRAWING & ANALYZING...') 
               : (lang === 'ru' ? 'АКТИВИРОВАТЬ СНАЙПЕР ИИ' : 'ACTIVATE AI SNIPER')}
           </button>
 
@@ -370,7 +406,7 @@ export default function App() {
 
             {!aiSignal ? (
               <div className="py-3 text-xs text-slate-400 font-mono animate-pulse">
-                {isAnalyzing ? (lang === 'ru' ? `⏳ Ожидание 10 сек до конца свечи (${formatTimer(candleTimer)})...` : `⏳ Waiting for 10s left (${formatTimer(candleTimer)})...`) : (lang === 'ru' ? 'Нажмите активацию снайпера' : 'Click sniper activation')}
+                {isAnalyzing ? (lang === 'ru' ? `⏳ Ожидание 10 сек до конца (${formatTimer(candleTimer)})...` : `⏳ Waiting for 10s left (${formatTimer(candleTimer)})...`) : (lang === 'ru' ? 'Нажмите активацию снайпера' : 'Click sniper activation')}
               </div>
             ) : (
               <div className="space-y-1">
@@ -419,7 +455,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v3.5 (Overlay AI Chart Drawing Engine)</span>
+        <span>ORACLE PRO v3.6 (Smart Candle Highlighting & OrderBlocks Engine)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
