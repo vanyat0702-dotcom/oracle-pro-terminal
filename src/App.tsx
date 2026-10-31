@@ -12,7 +12,7 @@ export default function App() {
   // Режим экрана: 'single' (один большой график) или 'quad' (сетка из 4 графиков)
   const [viewMode, setViewMode] = useState<'single' | 'quad'>('single');
   
-сетка из 4 активов для мульти-режима
+  // Сетка из 4 активов для мульти-режима
   const quadPairs = [TRADING_PAIRS[11], TRADING_PAIRS[14], TRADING_PAIRS[19], TRADING_PAIRS[20]]; // EUR/USD, GBP/JPY, USD/JPY, BTC/USDT
 
   // Состояния для ИИ-аналитики
