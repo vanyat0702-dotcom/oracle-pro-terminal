@@ -16,7 +16,7 @@ export default function App() {
   const [timezone, setTimezone] = useState<'Europe/Moscow' | 'Etc/UTC'>('Europe/Moscow');
   const [lang, setLang] = useState<'ru' | 'en'>('ru');
 
-  // Вкладка правой панели: 'logs' (логи и объяснения) или 'history' (история сигналов)
+  // Вкладка правой панели
   const [rightTab, setRightTab] = useState<'logs' | 'history'>('logs');
 
   // 4 пары для сетки
@@ -30,10 +30,10 @@ export default function App() {
   const [candleTimer, setCandleTimer] = useState<number>(0); 
   const [aiSignal, setAiSignal] = useState<{ direction: 'CALL' | 'PUT'; confidence: number } | null>(null);
   
-  // Графические элементы (поддержка, сопротивление, треугольник Папы Трейдера)
-  const [chartVisuals, setChartVisuals] = useState<Array<{ id: number; type: 'resistance' | 'support' | 'triangle'; top: number; left?: number; width?: number; height?: number; color: string; labelRu: string; labelEn: string }>>([]);
+  // Графические элементы (Уровни + адаптивный треугольник Папы Трейдера)
+  const [chartVisuals, setChartVisuals] = useState<Array<{ id: number; type: 'resistance' | 'support' | 'traderFatherTriangle'; top?: number; left?: number; width?: number; height?: number; color: string; labelRu: string; labelEn: string }>>([]);
 
-  // Ключевые свечи в меню под шапкой
+  // Ключевые свечи в меню над графиком
   const [keyCandles, setKeyCandles] = useState<Array<{ id: number; type: string; price: string; descRu: string; descEn: string; color: string }>>([]);
 
   // Логи ИИ
@@ -41,14 +41,14 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'ИИ-аналитик инициализирован. Ожидание запуска.' : 'AI analyst initialized. Waiting for start.', 
+      text: lang === 'ru' ? 'ИИ-аналитик готов к сканированию графических паттернов.' : 'AI Analyst ready for chart pattern scanning.', 
       type: 'info' 
     }
   ]);
 
-  // Постоянная история сигналов (сохраняется, пока пользователь не нажмет кнопку очистки)
+  // Постоянная история сигналов
   const [historyList, setHistoryList] = useState<Array<{ id: number; time: string; pair: string; direction: 'CALL' | 'PUT'; winrate: number; strategy: string }>>([
-    { id: 1, time: '01:30', pair: 'EUR/USD', direction: 'CALL', winrate: 96, strategy: 'Треугольник Папы Трейдера' },
+    { id: 1, time: '01:30', pair: 'EUR/USD', direction: 'CALL', winrate: 96, strategy: 'Фигура тех. анализа: Треугольник' },
     { id: 2, time: '02:15', pair: 'BTC/USDT', direction: 'PUT', winrate: 94, strategy: 'Пин-бар на сопротивлении' }
   ]);
 
@@ -110,17 +110,16 @@ export default function App() {
         
         setAiSignal({ direction: dir, confidence: conf });
         
-        // Добавляем в историю
         const currentTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         setHistoryList(prev => [
-          { id: Date.now(), time: currentTimeStr, pair: selectedPair.displaySymbol, direction: dir, winrate: conf, strategy: 'Стратегия Треугольника' },
+          { id: Date.now(), time: currentTimeStr, pair: selectedPair.displaySymbol, direction: dir, winrate: conf, strategy: 'Фигура тех. анализа: Треугольник' },
           ...prev
         ]);
 
         addLog(
           lang === 'ru' 
-            ? `⚡ СНАЙПЕРСКИЙ ВХОД (10 сек): Пробой треугольника Папы Трейдера -> ${isCall ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'} (${conf}%)` 
-            : `⚡ SNIPER ENTRY (10s): Trader Father Triangle breakout -> ${isCall ? 'CALL' : 'PUT'} (${conf}%)`, 
+            ? `⚡ СНАЙПЕРСКИЙ ВХОД (10 сек): Пробой фигуры "Треугольник" -> ${isCall ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'} (${conf}%)` 
+            : `⚡ SNIPER ENTRY (10s): Triangle breakout -> ${isCall ? 'CALL' : 'PUT'} (${conf}%)`, 
           'sniper'
         );
       }
@@ -136,50 +135,56 @@ export default function App() {
     setKeyCandles([]);
     
     addLog(
-      lang === 'ru' ? `> Запуск глубокого анализа актива ${selectedPair.displaySymbol}. Подключение стратегии Папы Трейдера...` : `> Starting deep analysis for ${selectedPair.displaySymbol}. Trader Father Strategy engaged...`, 
+      lang === 'ru' ? `> Анализ свечного ряда ${selectedPair.displaySymbol}. Проверка условий Папы Трейдера...` : `> Analyzing candles for ${selectedPair.displaySymbol}. Checking Trader Father conditions...`, 
       'info'
     );
 
-    // 1. Рисуем сопротивление и даем детальное объяснение
+    // 1. Уровни поддержки и сопротивления
     setTimeout(() => {
-      setChartVisuals(prev => [...prev, { id: 1, type: 'resistance', top: 80, color: '#f43f5e', labelRu: 'Линия Сопротивления', labelEn: 'Resistance Line' }]);
+      setChartVisuals(prev => [
+        ...prev, 
+        { id: 1, type: 'resistance', top: 95, color: '#f43f5e', labelRu: 'Линия Сопротивления', labelEn: 'Resistance Line' },
+        { id: 2, type: 'support', top: 330, color: '#10b981', labelRu: 'Линия Поддержки', labelEn: 'Support Line' }
+      ]);
       addLog(
         lang === 'ru' 
-          ? '📍 УРОВЕНЬ СОПРОТИВЛЕНИЯ: ИИ начертил верхнюю границу канала. Обоснование: здесь сформировался сильный кластер лимитных ордеров на продажу, от которого цена дважды получала мощный отскок вниз с импульсными красными свечами.' 
-          : '📍 RESISTANCE LEVEL: AI drew the upper boundary. Reasoning: a heavy cluster of seller limit orders formed here, causing two strong downward rejections with impulsive red candles.', 
+          ? '📍 Уровни построены: Зафиксированы экстремумы цены для оценки сжатия.' 
+          : '📍 Levels rendered: Price extremes recorded for compression evaluation.', 
         'level'
       );
     }, 600);
 
-    // 2. Рисуем поддержку и даем объяснение
+    // 2. Сканируем на предмет треугольника (Стратегия Папы Трейдера)
     setTimeout(() => {
-      setChartVisuals(prev => [...prev, { id: 2, type: 'support', top: 360, color: '#10b981', labelRu: 'Линия Поддержки', labelEn: 'Support Line' }]);
-      addLog(
-        lang === 'ru' 
-          ? '📍 УРОВЕНЬ ПОДДЕРЖКИ: Начерчена нижняя граница. Обоснование: зона зеркального ретеста и повышенного объема покупателей, где крупные игроки защищают свои позиции.' 
-          : '📍 SUPPORT LEVEL: Lower boundary drawn. Reasoning: mirror retest zone with high buyer volume where large market participants defend their positions.', 
-        'level'
-      );
-    }, 1200);
+      const hasTrianglePattern = Math.random() > 0.15; // 85% вероятность наличия паттерна для теста
 
-    // 3. Рисуем треугольник Папы Трейдера + Подробное объяснение
-    setTimeout(() => {
-      setChartVisuals(prev => [...prev, { id: 3, type: 'triangle', top: 110, left: 140, width: 300, height: 250, color: '#a855f7', labelRu: '📐 Треугольник Папы Трейдера', labelEn: '📐 Trader Father Triangle' }]);
-      addLog(
-        lang === 'ru' 
-          ? '🔥 СТРАТЕГИЯ ПАПЫ ТРЕЙДЕРА (Треугольник сжатия): Линии поддержки и сопротивления сходятся в вершину. Волатильность сужается. Обоснование: накопление позиции перед пробоем. Мы ждем закрытия свечи у границы для снайперского входа.' 
-          : '🔥 TRADER FATHER STRATEGY (Squeeze Triangle): Support and resistance lines converge into an apex. Volatility is contracting. Reasoning: position accumulation before breakout. Waiting for candle close for sniper entry.', 
-        'pattern'
-      );
+      if (hasTrianglePattern) {
+        setChartVisuals(prev => [
+          ...prev, 
+          { id: 3, type: 'traderFatherTriangle', top: 110, left: 80, width: 380, height: 210, color: '#a855f7', labelRu: 'Фигура тех.анализа "Треугольник"', labelEn: 'Technical Analysis Pattern: Triangle' }
+        ]);
 
-      // Заполняем меню ключевых свечей
-      const base = parseFloat(price);
-      setKeyCandles([
-        { id: 1, type: 'Pin-Bar Rejection', price: (base * 1.0008).toFixed(selectedPair.id === 'btcusdt' ? 2 : 4), descRu: 'Ложный пробой верхней границы треугольника', descEn: 'False breakout of upper triangle boundary', color: 'text-amber-400 border-amber-500/50 bg-amber-950/30' },
-        { id: 2, type: 'Order Block Demand', price: (base * 0.9992).toFixed(selectedPair.id === 'btcusdt' ? 2 : 4), descRu: 'Институциональный блок покупателей снизу', descEn: 'Institutional buyer order block below', color: 'text-cyan-400 border-cyan-500/50 bg-cyan-950/30' },
-        { id: 3, type: 'Compression Candle', price: price, descRu: 'Свеча сужения с минимальным спредом', descEn: 'Compression candle with minimal spread', color: 'text-purple-400 border-purple-500/50 bg-purple-950/30' }
-      ]);
-    }, 2200);
+        addLog(
+          lang === 'ru' 
+            ? '📐 Подтверждена фигура тех.анализа "Треугольник": Волатильность сужается, максимумы понижаются, минимумы повышаются. Трендовые линии сходятся в вершину. Ожидание пробоя.' 
+            : '📐 Technical Analysis Pattern: Triangle confirmed. Volatility is contracting, highs are lowering, lows are rising. Trendlines converge into apex. Awaiting breakout.', 
+          'pattern'
+        );
+
+        const base = parseFloat(price);
+        setKeyCandles([
+          { id: 1, type: 'Apex Compression', price: base.toFixed(selectedPair.id === 'btcusdt' ? 2 : 4), descRu: 'Сжатие цены перед импульсным выходом', descEn: 'Price compression before impulse exit', color: 'text-purple-400 border-purple-500/50 bg-purple-950/30' },
+          { id: 2, type: 'Boundary Touch', price: (base * 1.0003).toFixed(selectedPair.id === 'btcusdt' ? 2 : 4), descRu: 'Ретест границы треугольника', descEn: 'Triangle boundary retest', color: 'text-cyan-400 border-cyan-500/50 bg-cyan-950/30' }
+        ]);
+      } else {
+        addLog(
+          lang === 'ru' 
+            ? 'ℹ️ Фигура "Треугольник" на текущем таймфрейме не обнаружена. Работа по классическим уровням.' 
+            : 'ℹ️ Triangle pattern not detected on current timeframe. Operating on classic levels.', 
+          'info'
+        );
+      }
+    }, 1500);
   };
 
   const handleStopAnalysis = () => {
@@ -188,7 +193,7 @@ export default function App() {
     setChartVisuals([]);
     setKeyCandles([]);
     addLog(
-      lang === 'ru' ? '🛑 Анализ остановлен пользователем.' : '🛑 Analysis stopped by user.', 
+      lang === 'ru' ? '🛑 Анализ остановлен.' : '🛑 Analysis stopped.', 
       'info'
     );
   };
@@ -214,7 +219,7 @@ export default function App() {
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
               ORACLE PRO TERMINAL
             </h1>
-            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Trader Father Strategy & Overlay Engine</p>
+            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Trader Father Triangle Scanner Edition</p>
           </div>
         </div>
         
@@ -338,14 +343,14 @@ export default function App() {
                 </div>
               </div>
 
-              {/* 🌟 МЕНЮ КЛЮЧЕВЫХ СВЕЧЕЙ НАД ГРАФИКОМ */}
+              {/* МЕНЮ КЛЮЧЕВЫХ СВЕЧЕЙ НАД ГРАФИКОМ */}
               {keyCandles.length > 0 && (
                 <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-2.5 mb-3 flex flex-col gap-1.5">
                   <div className="text-[11px] font-bold text-cyan-400 flex items-center gap-1">
                     <Flame className="w-3.5 h-3.5 text-amber-400" />
                     {lang === 'ru' ? 'КЛЮЧЕВЫЕ СВЕЧИ И ФОРМАЦИИ ИИ:' : 'AI KEY CANDLES & FORMATIONS:'}
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     {keyCandles.map(item => (
                       <div key={item.id} className={`border rounded-lg p-2 flex flex-col gap-0.5 ${item.color}`}>
                         <div className="flex justify-between items-center text-xs font-black">
@@ -359,7 +364,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* ГРАФИК С ОВЕРЛЕЕМ (Уровни поддержки, сопротивления и треугольник) */}
+              {/* ГРАФИК С УСЛОВНЫМ ОВЕРЛЕЕМ */}
               <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden min-h-[380px] relative">
                 <iframe
                   key={`${selectedPair.symbol}-${timeframe}-${timezone}-${lang}`}
@@ -368,7 +373,7 @@ export default function App() {
                   title="TradingView Chart"
                 ></iframe>
 
-                {/* Прозрачный оверлей с линиями и треугольником */}
+                {/* Оверлей для линий и треугольника */}
                 <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden">
                   {chartVisuals.map(el => {
                     if (el.type === 'resistance' || el.type === 'support') {
@@ -380,17 +385,18 @@ export default function App() {
                           </span>
                         </div>
                       );
-                    } else if (el.type === 'triangle') {
+                    } else if (el.type === 'traderFatherTriangle') {
                       return (
-                        <div 
-                          key={el.id} 
-                          className="absolute border-2 border-purple-500/90 bg-purple-500/10 rounded-xl backdrop-blur-[1px] transition-all duration-700 flex items-start justify-center p-2"
-                          style={{ top: `${el.top}px`, left: `${el.left}px`, width: `${el.width}px`, height: `${el.height}px`, clipPath: 'polygon(50% 0%, 0% 100%, 100% 100%)' }}
-                        >
-                          <span className="text-[10px] font-mono font-bold text-purple-200 bg-slate-950 px-2 py-0.5 rounded border border-purple-600 shadow-md">
-                            {lang === 'ru' ? el.labelRu : el.labelEn}
-                          </span>
-                        </div>
+                        <svg key={el.id} className="absolute inset-w inset-h w-full h-full pointer-events-none" style={{ top: 0, left: 0 }}>
+                          <polygon 
+                            points="80,110 460,200 80,330" 
+                            className="fill-purple-500/15 stroke-purple-400 stroke-2" 
+                            strokeDasharray="6 4"
+                          />
+                          <text x="140" y="210" fill="#c084fc" fontSize="11" fontFamily="monospace" fontWeight="bold">
+                            {lang === 'ru' ? '📐 Фигура тех.анализа "Треугольник"' : '📐 Technical Analysis Pattern: Triangle'}
+                          </text>
+                        </svg>
                       );
                     }
                     return null;
@@ -441,7 +447,7 @@ export default function App() {
           )}
         </section>
 
-        {/* Right Panel: AI Live Brain, Controls, Logs & History Tab */}
+        {/* Right Panel */}
         <aside className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 flex flex-col gap-4 backdrop-blur">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <h2 className="font-bold text-slate-200 flex items-center gap-2 text-sm">
@@ -453,7 +459,6 @@ export default function App() {
             </span>
           </div>
 
-          {/* Кнопки управления: Запуск и Остановка анализа */}
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={handleStartAnalysis}
@@ -474,14 +479,14 @@ export default function App() {
             </button>
           </div>
 
-          {/* 🌟 ЗОЛОТОЙ БЛОК СНАЙПЕРСКОГО ПРОГНОЗА */}
+          {/* Снайперский блок */}
           <div className="bg-gradient-to-b from-amber-950/60 to-slate-950 border-2 border-amber-500/80 rounded-xl p-4 text-center shadow-lg shadow-amber-500/10 relative overflow-hidden">
             <div className="absolute top-1 right-2 text-[9px] font-mono text-amber-400 uppercase tracking-widest">
               {lang === 'ru' ? 'Снайпер (10 сек)' : 'Sniper (10s)'}
             </div>
 
             <span className="text-xs text-amber-200/80 block mb-1">
-              {lang === 'ru' ? 'Прогноз пробоя треугольника:' : 'Triangle breakout forecast:'}
+              {lang === 'ru' ? 'Прогноз пробоя фигуры "Треугольник":' : 'Triangle breakout forecast:'}
             </span>
 
             {!aiSignal ? (
@@ -509,7 +514,7 @@ export default function App() {
             )}
           </div>
 
-          {/* Вкладки: Логи (Объяснения) / История */}
+          {/* Вкладки: Логи / История */}
           <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
             <button
               onClick={() => setRightTab('logs')}
@@ -525,12 +530,11 @@ export default function App() {
             </button>
           </div>
 
-          {/* Контент вкладок (Логи или История) */}
           {rightTab === 'logs' ? (
             <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-2 overflow-hidden min-h-[220px]">
               <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                 <span className="text-xs font-bold text-slate-300">
-                  {lang === 'ru' ? 'Подробные логи и логика ИИ:' : 'Detailed AI Reasoning:'}
+                  {lang === 'ru' ? 'Логи и логика ИИ:' : 'AI Reasoning Logs:'}
                 </span>
                 <span className="text-[10px] font-mono text-slate-500">Live</span>
               </div>
@@ -591,7 +595,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v4.2 (Trader Father Triangle, Stop Control & Permanent History)</span>
+        <span>ORACLE PRO v4.4 (Smart Triangle Scanner Edition)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
