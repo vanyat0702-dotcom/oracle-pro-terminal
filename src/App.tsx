@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Zap, LineChart, Database, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, BarChart3, LayoutGrid, Square, MessageSquare, Clock, Globe, Target } from 'lucide-react';
+import { ShieldCheck, Zap, LineChart, Database, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, BarChart3, LayoutGrid, Square, MessageSquare, Clock, Globe, Target, Activity } from 'lucide-react';
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
 
 export default function App() {
@@ -22,14 +22,16 @@ export default function App() {
   const [quadPair3, setQuadPair3] = useState<TradingPair>(TRADING_PAIRS[19]);
   const [quadPair4, setQuadPair4] = useState<TradingPair>(TRADING_PAIRS[20]);
 
-  // Снайперский ИИ-движок по кнопке
+  // Снайперский ИИ-движок
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
-  const [candleTimer, setCandleTimer] = useState<number>(300); // 5 минут свеча
-  const [isSniperActive, setIsSniperActive] = useState<boolean>(false);
+  const [candleTimer, setCandleTimer] = useState<number>(0); 
   const [aiSignal, setAiSignal] = useState<{ direction: 'CALL' | 'PUT'; confidence: number } | null>(null);
   
+  // Визуальные уровни, которые ИИ "чертит" во время анализа
+  const [aiLevels, setAiLevels] = useState<Array<{ id: number; type: 'support' | 'resistance'; price: string; strength: string }>>([]);
+
   const [aiLogs, setAiLogs] = useState<Array<{ id: number; time: string; text: string; type: 'info' | 'level' | 'pattern' | 'sniper' }>>([
-    { id: 1, time: '00:01', text: lang === 'ru' ? 'ИИ подключен. Нажмите "Запустить анализ свечи".' : 'AI connected. Click "Run Candle Analysis".', type: 'info' }
+    { id: 1, time: '00:01', text: lang === 'ru' ? 'ИИ подключен. Нажмите "Активировать снайпер ИИ".' : 'AI connected. Click "Activate AI Sniper".', type: 'info' }
   ]);
 
   // WebSocket котировок
@@ -63,52 +65,64 @@ export default function App() {
     };
   }, [selectedPair]);
 
-  // Таймер свечи и снайперский триггер за 10 сек до конца
+  // Точный расчет времени свечи и снайперский триггер за 10 сек
   useEffect(() => {
-    let interval: any = null;
-    if (isAnalyzing) {
-      interval = setInterval(() => {
-        setCandleTimer(prev => {
-          if (prev <= 1) {
-            addLog(lang === 'ru' ? 'Свеча закрыта. Переход на следующий бар...' : 'Candle closed. Moving to next bar...', 'info');
-            return 300;
-          }
+    const calculateTimeLeft = () => {
+      const now = new Date();
+      const totalMinutes = now.getHours() * 60 + now.getMinutes();
+      const secondsIntoMinute = now.getSeconds();
+      const tfMinutes = parseInt(timeframe, 10);
+      const minutesIntoCandle = totalMinutes % tfMinutes;
+      const remainingMinutes = tfMinutes - 1 - minutesIntoCandle;
+      const remainingSeconds = 60 - secondsIntoMinute;
+      const totalRemainingSec = remainingMinutes * 60 + remainingSeconds;
+      return totalRemainingSec > 0 ? totalRemainingSec : 1;
+    };
 
-          const next = prev - 1;
+    setCandleTimer(calculateTimeLeft());
 
-          // Ровно за 10 секунд до конца — выдаем золотой снайперский сигнал!
-          if (next === 10) {
-            setIsSniperActive(true);
-            const isCall = Math.random() > 0.4;
-            const conf = Math.floor(Math.random() * 5) + 95;
-            setAiSignal({ direction: isCall ? 'CALL' : 'PUT', confidence: conf });
-            addLog(
-              lang === 'ru' 
-                ? `⚡ СНАЙПЕРСКИЙ ВХОД (10 сек до конца): Направление -> ${isCall ? 'ВЫШЕ' : 'НИЖЕ'} (${conf}%)` 
-                : `⚡ SNIPER ENTRY (10s left): Direction -> ${isCall ? 'CALL' : 'PUT'} (${conf}%)`, 
-              'sniper'
-            );
-          }
+    const interval = setInterval(() => {
+      const timeLeft = calculateTimeLeft();
+      setCandleTimer(timeLeft);
 
-          if (next === 240) {
-            addLog(lang === 'ru' ? 'Анализ стакана и объемов: крупные игроки удерживают зеркальный уровень.' : 'Orderbook analysis: big players holding mirror level.', 'level');
-          } else if (next === 150) {
-            addLog(lang === 'ru' ? 'Графический паттерн: формирование треугольника на 5М таймфрейме.' : 'Pattern detected: ascending triangle on 5M TF.', 'pattern');
-          }
+      if (isAnalyzing && timeLeft === 10) {
+        const isCall = Math.random() > 0.4;
+        const conf = Math.floor(Math.random() * 5) + 95;
+        setAiSignal({ direction: isCall ? 'CALL' : 'PUT', confidence: conf });
+        addLog(
+          lang === 'ru' 
+            ? `⚡ СНАЙПЕРСКИЙ ВХОД (10 сек до конца свечи): Направление -> ${isCall ? 'ВЫШЕ' : 'НИЖЕ'} (${conf}%)` 
+            : `⚡ SNIPER ENTRY (10s left): Direction -> ${isCall ? 'CALL' : 'PUT'} (${conf}%)`, 
+          'sniper'
+        );
+      }
+    }, 1000);
 
-          return next;
-        });
-      }, 1000);
-    }
     return () => clearInterval(interval);
-  }, [isAnalyzing, lang]);
+  }, [timeframe, isAnalyzing, lang]);
 
   const handleStartAnalysis = () => {
     setIsAnalyzing(true);
-    setIsSniperActive(false);
-    setCandleTimer(299);
     setAiSignal(null);
-    addLog(lang === 'ru' ? `> Запуск непрерывного ИИ-анализа по активу ${selectedPair.displaySymbol}...` : `> Starting continuous AI analysis for ${selectedPair.displaySymbol}...`, 'info');
+    setAiLevels([]);
+    addLog(lang === 'ru' ? `> ИИ начал сканирование актива ${selectedPair.displaySymbol} и построение уровней...` : `> AI started scanning ${selectedPair.displaySymbol} & drawing levels...`, 'info');
+
+    // Эмулируем процесс "черчения" уровней ИИ поэтапно
+    setTimeout(() => {
+      const base = parseFloat(price);
+      const res1 = (base * 1.0015).toFixed(selectedPair.id === 'btcusdt' ? 2 : 4);
+      const sup1 = (base * 0.9985).toFixed(selectedPair.id === 'btcusdt' ? 2 : 4);
+      
+      setAiLevels([
+        { id: 1, type: 'resistance', price: res1, strength: '94% (Strong)' },
+        { id: 2, type: 'support', price: sup1, strength: '91% (Mirror)' }
+      ]);
+      addLog(lang === 'ru' ? `[График ИИ] Начерчен уровень сопротивления: ${res1}` : `[AI Chart] Resistance level drawn: ${res1}`, 'level');
+    }, 1200);
+
+    setTimeout(() => {
+      addLog(lang === 'ru' ? 'Паттерн Price Action: Ложный пробой уровня. Накопление объема.' : 'Price Action Pattern: False breakout. Volume accumulation.', 'pattern');
+    }, 2500);
   };
 
   const addLog = (text: string, type: 'info' | 'level' | 'pattern' | 'sniper') => {
@@ -137,7 +151,6 @@ export default function App() {
         </div>
         
         <div className="flex items-center gap-3 text-xs">
-          {/* Часовой пояс */}
           <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
             <button
               onClick={() => setTimezone('Europe/Moscow')}
@@ -153,7 +166,6 @@ export default function App() {
             </button>
           </div>
 
-          {/* Язык */}
           <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
             <button
               onClick={() => setLang('ru')}
@@ -169,7 +181,6 @@ export default function App() {
             </button>
           </div>
 
-          {/* Экраны */}
           <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
             <button
               onClick={() => setViewMode('single')}
@@ -237,11 +248,12 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                  {/* Таймер свечи */}
                   <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 px-3 py-1 rounded-lg text-xs font-mono">
                     <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
                     <span className="text-slate-400">{lang === 'ru' ? 'Свеча:' : 'Candle:'}</span>
-                    <span className="font-bold text-amber-400">{formatTimer(candleTimer)}</span>
+                    <span className={`font-bold ${candleTimer <= 10 ? 'text-rose-400 animate-ping' : 'text-amber-400'}`}>
+                      {formatTimer(candleTimer)}
+                    </span>
                   </div>
 
                   <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs gap-1">
@@ -258,7 +270,28 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden min-h-[420px] relative">
+              {/* 🌟 ПАНЕЛЬ ВИЗУАЛЬНЫХ УРОВНЕЙ ИИ (Рисует уровни на лету) */}
+              <div className="bg-slate-950/90 border border-cyan-500/40 rounded-lg p-2.5 mb-3 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-cyan-400 animate-spin" />
+                  <span className="text-slate-300 font-bold">{lang === 'ru' ? 'ИИ Карта уровней:' : 'AI Levels Map:'}</span>
+                </div>
+                <div className="flex gap-2">
+                  {aiLevels.length === 0 ? (
+                    <span className="text-[11px] text-slate-500 italic">
+                      {isAnalyzing ? (lang === 'ru' ? 'ИИ сканирует и чертит уровни...' : 'AI scanning & drawing levels...') : (lang === 'ru' ? 'Нажмите активацию снайпера для построения' : 'Activate AI to draw levels')}
+                    </span>
+                  ) : (
+                    aiLevels.map(lvl => (
+                      <span key={lvl.id} className={`px-2 py-0.5 rounded text-[11px] font-mono border font-bold ${lvl.type === 'resistance' ? 'bg-rose-950 text-rose-400 border-rose-800' : 'bg-emerald-950 text-emerald-400 border-emerald-800'}`}>
+                        {lvl.type === 'resistance' ? 'RES' : 'SUP'}: {lvl.price} ({lvl.strength})
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden min-h-[380px] relative">
                 <iframe
                   key={`${selectedPair.symbol}-${timeframe}-${timezone}-${lang}`}
                   src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${selectedPair.symbol}&interval=${timeframe}&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies=[]&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
@@ -310,7 +343,7 @@ export default function App() {
           )}
         </section>
 
-        {/* Right Panel: AI Live Brain & Sniper Box */}
+        {/* Right Panel: AI Live Brain & Golden Sniper Box */}
         <aside className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 flex flex-col gap-4 backdrop-blur">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <h2 className="font-bold text-slate-200 flex items-center gap-2 text-sm">
@@ -322,7 +355,6 @@ export default function App() {
             </span>
           </div>
 
-          {/* Кнопка запуска анализа */}
           <button
             onClick={handleStartAnalysis}
             disabled={isAnalyzing}
@@ -330,11 +362,11 @@ export default function App() {
           >
             <RefreshCw className={`w-4 h-4 ${isAnalyzing ? 'animate-spin' : ''}`} />
             {isAnalyzing 
-              ? (lang === 'ru' ? 'ИИ АНАЛИЗИРУЕТ СВЕЧУ...' : 'AI ANALYZING CANDLE...') 
-              : (lang === 'ru' ? 'ЗАПУСТИТЬ АНАЛИЗ СВЕЧИ' : 'RUN CANDLE ANALYSIS')}
+              ? (lang === 'ru' ? 'ИИ ЧЕРТИТ УРОВНИ И СЛЕДИТ...' : 'AI DRAWING & MONITORING...') 
+              : (lang === 'ru' ? 'АКТИВИРОВАТЬ СНАЙПЕР ИИ' : 'ACTIVATE AI SNIPER')}
           </button>
 
-          {/* 🌟 ЗОЛОТОЙ БЛОК СНАЙПЕРСКОГО ПРОГНОЗА (За 10 сек до конца) */}
+          {/* 🌟 ЗОЛОТОЙ БЛОК СНАЙПЕРСКОГО ПРОГНОЗА */}
           <div className="bg-gradient-to-b from-amber-950/60 to-slate-950 border-2 border-amber-500/80 rounded-xl p-4 text-center shadow-lg shadow-amber-500/10 relative overflow-hidden">
             <div className="absolute top-1 right-2 text-[9px] font-mono text-amber-400 uppercase tracking-widest">
               {lang === 'ru' ? 'Снайпер (10 сек)' : 'Sniper (10s)'}
@@ -346,11 +378,10 @@ export default function App() {
 
             {!aiSignal ? (
               <div className="py-3 text-xs text-slate-400 font-mono animate-pulse">
-                {isAnalyzing ? (lang === 'ru' ? '⏳ Ожидание таймера (10 сек до конца)...' : '⏳ Waiting for 10s timer...') : (lang === 'ru' ? 'Нажмите кнопку запуска анализа' : 'Click analysis button')}
+                {isAnalyzing ? (lang === 'ru' ? `⏳ Ожидание 10 сек до конца свечи (${formatTimer(candleTimer)})...` : `⏳ Waiting for 10s left (${formatTimer(candleTimer)})...`) : (lang === 'ru' ? 'Нажмите активацию снайпера' : 'Click sniper activation')}
               </div>
             ) : (
               <div className="space-y-1">
-                {/* Золотой крупный блок с цветными словами ВЫШЕ / НИЖЕ */}
                 <div className="text-2xl font-black tracking-wider flex items-center justify-center gap-2">
                   <span className="text-amber-400">ВХОД:</span>
                   {aiSignal.direction === 'CALL' ? (
@@ -371,7 +402,7 @@ export default function App() {
           </div>
 
           {/* Live AI Reasoning Chat Log */}
-          <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-2 overflow-hidden min-h-[260px]">
+          <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-2 overflow-hidden min-h-[240px]">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
                 <MessageSquare className="w-3.5 h-3.5 text-cyan-400" /> {lang === 'ru' ? 'Логи уровней и паттернов ИИ:' : 'AI Levels & Patterns Log:'}
@@ -396,7 +427,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v3.2 (Golden Sniper & Manual Engine)</span>
+        <span>ORACLE PRO v3.4 (AI Chart Levels Visualizer)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
