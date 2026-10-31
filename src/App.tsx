@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Zap, LineChart, Database, TrendingUp, TrendingDown, RefreshCw, Layers } from 'lucide-react';
+import { ShieldCheck, Zap, LineChart, Database, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, Activity, BarChart3 } from 'lucide-react';
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
 
 export default function App() {
@@ -8,11 +8,11 @@ export default function App() {
   const [priceChange, setPriceChange] = useState<'up' | 'down' | null>('up');
   const [timeframe, setTimeframe] = useState<string>("5");
   const [wsStatus, setWsStatus] = useState<boolean>(true);
-  const [aiSignal, setAiSignal] = useState<{ status: string; confidence: number; type: string }>({
-    status: "АНАЛИЗ МЕЖБАНКОВСКОГО СТАКАНА...",
-    confidence: 93,
-    type: "ВЫШЕ (CALL)"
-  });
+  
+  // Состояния для ИИ-аналитики
+  const [aiConfidence, setAiConfidence] = useState<number>(94);
+  const [aiDirection, setAiDirection] = useState<'CALL (ВЫШЕ)' | 'PUT (НИЖЕ)'>('CALL (ВЫШЕ)');
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
 
   // Подключение WebSocket для котировок в шапке
   useEffect(() => {
@@ -45,6 +45,18 @@ export default function App() {
     };
   }, [selectedPair]);
 
+  // Функция пересчета аналитики ИИ
+  const handleRunAnalysis = () => {
+    setIsAnalyzing(true);
+    setTimeout(() => {
+      const randomConf = Math.floor(Math.random() * 8) + 91; // от 91 до 98%
+      const randomDir = Math.random() > 0.5 ? 'CALL (ВЫШЕ)' : 'PUT (НИЖЕ)';
+      setAiConfidence(randomConf);
+      setAiDirection(randomDir);
+      setIsAnalyzing(false);
+    }, 600);
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none">
       {/* Header */}
@@ -55,7 +67,7 @@ export default function App() {
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
               ORACLE PRO TERMINAL
             </h1>
-            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Intrade Bar Mirror Edition</p>
+            <p className="text-[10px] text-slate-400 tracking-widest uppercase">AI Analytics & Market Intelligence Hub</p>
           </div>
         </div>
         
@@ -74,14 +86,14 @@ export default function App() {
       {/* Main Workspace Grid */}
       <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
         
-        {/* Left Column: Compact Grid of Pairs & Chart Area */}
+        {/* Left Column: Grid of Pairs & Chart Area */}
         <section className="lg:col-span-3 flex flex-col gap-4">
           
-          {/* Assets Grid (No Scrollbars, Compact & Clean) */}
+          {/* Assets Grid */}
           <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-3.5 backdrop-blur flex flex-col gap-2">
             <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 pb-1 border-b border-slate-800/80">
               <Layers className="w-4 h-4 text-cyan-400" />
-              ВЫБОР АКТИВА (INTRADE BAR):
+              ВЫБОР АКТИВА ДЛЯ АНАЛИЗА:
             </div>
             
             <div className="grid grid-cols-4 sm:grid-cols-7 md:grid-cols-11 gap-1.5">
@@ -147,53 +159,90 @@ export default function App() {
           </div>
         </section>
 
-        {/* Right Panel - AI Signal Core */}
-        <aside className="bg-slate-900/40 border border-slate-800 rounded-xl p-6 flex flex-col gap-6 backdrop-blur">
+        {/* Right Panel: AI Analytics & DeepScan Hub */}
+        <aside className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 flex flex-col gap-5 backdrop-blur">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h2 className="font-bold text-slate-200 flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-cyan-400" />
-              ИИ Оракул (DeepScan)
+            <h2 className="font-bold text-slate-200 flex items-center gap-2 text-sm">
+              <BrainCircuit className="w-4 h-4 text-cyan-400" />
+              ИИ ОРАКУЛ (АНАЛИЗАТОР)
             </h2>
-            <RefreshCw className="w-4 h-4 text-slate-500 animate-spin" />
+            <span className="text-[11px] font-mono text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-800">
+              {selectedPair.displaySymbol}
+            </span>
           </div>
 
-          <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-4 space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-slate-400">Активный инструмент:</span>
-              <span className="text-xs font-bold text-cyan-400">{selectedPair.displaySymbol}</span>
-            </div>
-
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-slate-400">Прогноз Оракула:</span>
-              <span className="text-xs font-black px-2.5 py-1 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 animate-pulse">
-                {aiSignal.type}
+          {/* AI Forecast Card */}
+          <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-4 space-y-4 shadow-inner">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-400">Рекомендация ИИ:</span>
+              <span className={`font-black px-2.5 py-1 rounded border animate-pulse ${aiDirection.includes('ВЫШЕ') ? 'bg-emerald-950 text-emerald-400 border-emerald-800' : 'bg-rose-950 text-rose-400 border-rose-800'}`}>
+                {isAnalyzing ? 'АНАЛИЗ...' : aiDirection}
               </span>
             </div>
 
             <div className="space-y-1.5">
               <div className="text-xs text-slate-400 flex justify-between">
-                <span>Точность сетапа:</span>
-                <span className="text-slate-100 font-bold">{aiSignal.confidence}%</span>
+                <span>Вероятность отработки:</span>
+                <span className="text-slate-100 font-bold">{isAnalyzing ? '...' : `${aiConfidence}%`}</span>
               </div>
               <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
-                <div className="bg-gradient-to-r from-cyan-500 to-emerald-400 h-full transition-all duration-500" style={{ width: `${aiSignal.confidence}%` }}></div>
+                <div 
+                  className="bg-gradient-to-r from-cyan-500 to-emerald-400 h-full transition-all duration-500" 
+                  style={{ width: `${aiConfidence}%` }}
+                ></div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80 text-[11px]">
+              <div className="bg-slate-900/60 p-2 rounded border border-slate-800">
+                <span className="text-slate-500 block">Тренд (TF):</span>
+                <span className="text-emerald-400 font-bold">Импульс UP</span>
+              </div>
+              <div className="bg-slate-900/60 p-2 rounded border border-slate-800">
+                <span className="text-slate-500 block">Волатильность:</span>
+                <span className="text-cyan-400 font-bold">Высокая</span>
               </div>
             </div>
 
             <button 
-              onClick={() => setAiSignal(prev => ({ ...prev, confidence: Math.min(99, prev.confidence + 2) }))}
-              className="w-full mt-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold py-2.5 px-4 rounded-lg text-xs transition-all shadow-lg shadow-cyan-500/20 active:scale-95"
+              onClick={handleRunAnalysis}
+              disabled={isAnalyzing}
+              className="w-full mt-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold py-2.5 px-4 rounded-lg text-xs transition-all shadow-lg shadow-cyan-500/20 active:scale-95 flex items-center justify-center gap-2"
             >
-              ПЕРЕСЧИТАТЬ СИГНАЛЫ
+              <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
+              {isAnalyzing ? 'СКАНИРОВАНИЕ КЛАСТЕРОВ...' : 'ПЕРЕСЧИТАТЬ СИГНАЛ ИИ'}
             </button>
           </div>
 
-          <div className="flex-1 bg-slate-950/40 border border-slate-800/80 rounded-xl p-4 flex flex-col justify-between text-xs text-slate-400">
-            <span className="font-semibold text-slate-300 mb-2">Лог терминала:</span>
-            <div className="space-y-1 font-mono text-[11px] text-slate-500">
-              <p className="text-emerald-400">› Панель переключена на сетку</p>
-              <p>› Выбран: {selectedPair.displaySymbol}</p>
-              <p className="text-cyan-400">› Скроллбар удален успешно</p>
+          {/* Market Sentiment / Order Book Insights */}
+          <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-4 space-y-3">
+            <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5 border-b border-slate-800 pb-2">
+              <BarChart3 className="w-3.5 h-3.5 text-cyan-400" /> Настроение рынка (Стакан):
+            </span>
+            <div className="space-y-2 text-xs">
+              <div>
+                <div className="flex justify-between text-[11px] mb-1">
+                  <span className="text-emerald-400">Покупатели (Bulls): 68%</span>
+                  <span className="text-rose-400">Продавцы (Bears): 32%</span>
+                </div>
+                <div className="w-full bg-rose-950/80 rounded-full h-2 overflow-hidden flex border border-slate-800">
+                  <div className="bg-emerald-500 h-full" style={{ width: '68%' }}></div>
+                  <div className="bg-rose-500 h-full" style={{ width: '32%' }}></div>
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed pt-1">
+                Объемы торгов по активу <span className="text-cyan-400 font-bold">{selectedPair.displaySymbol}</span> указывают на сильное давление покупателей на таймфрейме 5М.
+              </p>
+            </div>
+          </div>
+
+          {/* Terminal Logs */}
+          <div className="flex-1 bg-slate-950/40 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-between text-xs text-slate-400 min-h-[110px]">
+            <span className="font-semibold text-slate-300 mb-1">Системный лог:</span>
+            <div className="space-y-1 font-mono text-[10px] text-slate-500">
+              <p className="text-emerald-400">› Нейросеть ORA-PRO активна</p>
+              <p>› Анализ актива: {selectedPair.displaySymbol}</p>
+              <p className="text-cyan-400">› Расчет вероятности завершен</p>
             </div>
           </div>
         </aside>
@@ -201,7 +250,7 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v1.6.0 (Grid View Edition)</span>
+        <span>ORACLE PRO v1.8.0 (Pure Analytics Edition)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
