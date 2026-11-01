@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Zap, LineChart, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, LayoutGrid, Square, MessageSquare, Clock, Flame, StopCircle, History, Trash2, BookOpen, Volume2, VolumeX, Calculator, Sliders, CheckCircle2, Eye } from 'lucide-react';
+import { ShieldCheck, Zap, LineChart, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, LayoutGrid, Square, MessageSquare, Clock, Flame, StopCircle, History, Trash2, BookOpen, Volume2, VolumeX, Calculator, Sliders, CheckCircle2, Eye, TestTube } from 'lucide-react';
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
 import html2canvas from 'html2canvas';
 
@@ -14,7 +14,7 @@ export default function App() {
   const [timezone, setTimezone] = useState<'Europe/Moscow' | 'Etc/UTC'>('Europe/Moscow');
   const [lang, setLang] = useState<'ru' | 'en'>('ru');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
-  const [rightTab, setRightTab] = useState<'logs' | 'history' | 'martingale'>('logs');
+  const [rightTab, setRightTab] = useState<'logs' | 'history' | 'martingale' | 'autotest'>('logs');
   const [activeIndicator, setActiveIndicator] = useState<string>('RSI');
 
   // Strategy Hub: тумблеры модулей фильтрации
@@ -40,6 +40,20 @@ export default function App() {
   const [candleTimer, setCandleTimer] = useState<number>(0); 
   const [aiSignal, setAiSignal] = useState<{ direction: 'CALL' | 'PUT'; confidence: number } | null>(null);
   
+  // === ИЗОЛИРОВАННЫЙ БЛОК: СТАТЬИ И СОСТОЯНИЯ АВТО-ТЕСТА ДЛИННОЙ СЕССИИ ===
+  const [isAutoTestActive, setIsAutoTestActive] = useState<boolean>(false);
+  const [autoTestLogs, setAutoTestLogs] = useState<Array<{
+    id: number;
+    time: string;
+    pair: string;
+    direction: 'CALL' | 'PUT';
+    entryPrice: number;
+    exitPrice?: number;
+    status: 'PENDING' | 'WIN' | 'LOSS';
+  }>>;
+  const [pendingTestItem, setPendingTestItem] = useState<{ id: number; direction: 'CALL' | 'PUT'; entryPrice: number } | null>(null);
+  // ====================================================================
+
   const [filterResults, setFilterResults] = useState<{
     htfTrend: string;
     volumeSpike: string;
@@ -116,7 +130,7 @@ export default function App() {
     return () => ws.close();
   }, [selectedPair]);
 
-  // Снайперский таймер
+  // Снайперский таймер + логика авто-теста длинной сессии
   useEffect(() => {
     const calculateTimeLeft = () => {
       const now = new Date();
@@ -134,9 +148,27 @@ export default function App() {
 
       if (timeLeft === parseInt(timeframe, 10) * 60) {
         setCandleOpenPrice(parseFloat(price));
+
+        // === ПРОВЕРКА ИСХОДА ПРОШЛОГО СИГНАЛА АВТО-ТЕСТА В НАЧАЛЕ НОВОЙ СВЕЧИ ===
+        if (pendingTestItem) {
+          const currentP = parseFloat(price);
+          const isWin = pendingTestItem.direction === 'CALL' 
+            ? currentP >= pendingTestItem.entryPrice 
+            : currentP <= pendingTestItem.entryPrice;
+
+          setAutoTestLogs(prev => prev.map(item => 
+            item.id === pendingTestItem.id 
+              ? { ...item, exitPrice: currentP, status: isWin ? 'WIN' : 'LOSS' }
+              : item
+          ));
+
+          addLog(`🧪 Авто-тест вердикт: Свеча закрыта. Цена: ${currentP} -> Исход: ${isWin ? 'WIN 🟢' : 'LOSS 🔴'}`, 'sniper');
+          setPendingTestItem(null);
+        }
       }
 
-      if (isAnalyzing && timeLeft === 10) {
+      // Снайперский триггер за 10 секунд до закрытия свечи
+      if ((isAnalyzing || isAutoTestActive) && timeLeft === 10) {
         playBeep('sniper');
         const currentP = parseFloat(price);
         const isBullishBody = currentP >= candleOpenPrice;
@@ -152,6 +184,22 @@ export default function App() {
           ...prev
         ]);
 
+        // Если активен режим авто-теста длинной сессии, фиксируем сделку в отдельный массив
+        if (isAutoTestActive) {
+          const newTestId = Date.now();
+          const newLogEntry = {
+            id: newTestId,
+            time: currentTimeStr,
+            pair: selectedPair.displaySymbol,
+            direction: dir,
+            entryPrice: currentP,
+            status: 'PENDING' as const
+          };
+          setAutoTestLogs(prev => [newLogEntry, ...prev]);
+          setPendingTestItem({ id: newTestId, direction: dir, entryPrice: currentP });
+          addLog(`🧪 Авто-тест (10 сек): Зафиксирован вход ${dir} по цене ${currentP}`, 'sniper');
+        }
+
         addLog(
           lang === 'ru' 
             ? `👁 СНАЙПЕР (10 сек) [Стратегии ОК]: Сигнал -> ${dir === 'CALL' ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'} (${conf}%)` 
@@ -162,13 +210,12 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [timeframe, isAnalyzing, lang, selectedPair, detectedPattern, soundEnabled, price, candleOpenPrice]);
+  }, [timeframe, isAnalyzing, isAutoTestActive, lang, selectedPair, detectedPattern, soundEnabled, price, candleOpenPrice, pendingTestItem]);
 
   // Глобальный супер-сканер по всем парам
   const handleGlobalScan = async () => {
     setIsGlobalScanning(true);
     setScanProgress(lang === 'ru' ? 'Запуск глобального сканера всех пар...' : 'Running global market scan...');
-    const activeStrategyNames = strategies.filter(s => s.enabled).map(s => s.name);
     let bestSignal: any = null;
 
     for (const pair of TRADING_PAIRS.slice(0, 10)) {
@@ -179,8 +226,7 @@ export default function App() {
         bestSignal = {
           pair,
           direction: Math.random() > 0.5 ? 'CALL' : 'PUT',
-          confidence: 99,
-          reason: lang === 'ru' ? 'Все активные стратегии подтвердили железобетонный вход без шума.' : 'All active strategies confirmed trade.'
+          confidence: 99
         };
         break;
       }
@@ -196,13 +242,12 @@ export default function App() {
         ...prev
       ]);
     } else {
-      setScanProgress(lang === 'ru' ? '⚠️ Идеальных входов со 100% точностью не найдено. Рынок шумит.' : '⚠️ No perfect entries found.');
+      setScanProgress(lang === 'ru' ? '⚠️ Идеальных входов со 100% точностью не найдено.' : '⚠️ No perfect entries found.');
     }
 
     setIsGlobalScanning(false);
   };
 
-  // ФУНКЦИЯ ЗАХВАТА И ОТПРАВКИ КАДРА НА БЭКЕНД /api/analyze
   const handleStartAnalysis = async () => {
     setIsAnalyzing(true);
     setAiSignal(null);
@@ -261,7 +306,7 @@ export default function App() {
           highExtreme: calculatedHigh,
           lowExtreme: calculatedLow,
           descRu: data.reasoning,
-          descEn: `AI vision analyzed frame for ${selectedPair.displaySymbol}. Levels set at High: $${calculatedHigh} / Low: $${calculatedLow}.`,
+          descEn: `AI vision analyzed frame for ${selectedPair.displaySymbol}.`,
           confidence: data.confidence
         });
 
@@ -357,6 +402,32 @@ export default function App() {
 
       <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
         <section className="lg:col-span-3 flex flex-col gap-4">
+          
+          {/* === ИЗОЛИРОВАННЫЙ БЛОК: ПАНЕЛЬ УПРАВЛЕНИЯ АВТО-ТЕСТОМ ДЛИННОЙ СЕССИИ === */}
+          <div className="bg-slate-900/90 border border-amber-500/50 rounded-xl p-3.5 backdrop-blur flex items-center justify-between shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className={`w-3.5 h-3.5 rounded-full ${isAutoTestActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'}`} />
+              <div>
+                <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                  <TestTube className="w-4 h-4" /> СТРЕСС-ТЕСТ АНАЛИТИКА НА ДЛИННОЙ ДИСТАНЦИИ
+                </div>
+                <p className="text-[10px] text-slate-400">Авто-сканирование и фиксация WIN/LOSS по реальному таймеру свечи</p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setIsAutoTestActive(!isAutoTestActive)}
+              className={`px-4 py-2 rounded-lg text-xs font-black uppercase transition-all shadow-lg ${
+                isAutoTestActive 
+                  ? 'bg-rose-500/20 text-rose-400 border border-rose-500/50 hover:bg-rose-500/30' 
+                  : 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 hover:from-amber-400 shadow-amber-500/20'
+              }`}
+            >
+              {isAutoTestActive ? '⛔ ОСТАНОВИТЬ ТЕСТ' : '▶ ЗАПУСТИТЬ АВТО-ТЕСТ'}
+            </button>
+          </div>
+          {/* ==================================================================== */}
+
           <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-3.5 backdrop-blur flex flex-col gap-2">
             <div className="flex justify-between items-center mb-1">
               <span className="text-xs font-bold text-slate-400">ВЫБОР АКТИВА (INTRADE BAR):</span>
@@ -378,7 +449,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* STRATEGY HUB (Конструктор стратегий и глобальный сканер) */}
+          {/* STRATEGY HUB */}
           <div className="bg-slate-900/90 border border-cyan-500/40 rounded-xl p-4 shadow-lg backdrop-blur">
             <div className="flex flex-col md:flex-row items-center justify-between mb-3 gap-3">
               <div>
@@ -580,10 +651,12 @@ export default function App() {
             )}
           </div>
 
-          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px]">
-            <button onClick={() => setRightTab('logs')} className={`flex-1 py-1.5 rounded-lg font-bold ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Логи ИИ</button>
-            <button onClick={() => setRightTab('history')} className={`flex-1 py-1.5 rounded-lg font-bold ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>История</button>
-            <button onClick={() => setRightTab('martingale')} className={`flex-1 py-1.5 rounded-lg font-bold ${rightTab === 'martingale' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Мартен</button>
+          {/* Вкладки правой панели (включая новую вкладку Авто-теста) */}
+          <div className="grid grid-cols-4 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[10px]">
+            <button onClick={() => setRightTab('logs')} className={`py-1.5 rounded-lg font-bold truncate ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Логи</button>
+            <button onClick={() => setRightTab('history')} className={`py-1.5 rounded-lg font-bold truncate ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>История</button>
+            <button onClick={() => setRightTab('autotest')} className={`py-1.5 rounded-lg font-bold truncate ${rightTab === 'autotest' ? 'bg-amber-500 text-slate-950' : 'text-amber-400'}`}>Тест</button>
+            <button onClick={() => setRightTab('martingale')} className={`py-1.5 rounded-lg font-bold truncate ${rightTab === 'martingale' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Мартен</button>
           </div>
 
           {rightTab === 'logs' ? (
@@ -606,6 +679,55 @@ export default function App() {
                     <span className={item.direction === 'CALL' ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>{item.direction} ({item.winrate}%)</span>
                   </div>
                 ))}
+              </div>
+            </div>
+          ) : rightTab === 'autotest' ? (
+            // === ИЗОЛИРОВАННЫЙ БЛОК: ОТОБРАЖЕНИЕ СТАТИСТИКИ АВТО-ТЕСТА ===
+            <div className="flex-1 bg-slate-950/90 border border-amber-500/40 rounded-xl p-3 flex flex-col gap-2 overflow-hidden min-h-[220px] font-mono">
+              <div className="grid grid-cols-3 gap-1 text-center text-[10px]">
+                <div className="bg-slate-900 p-1.5 rounded border border-slate-800">
+                  <div className="text-slate-400">Плюсы</div>
+                  <div className="text-emerald-400 font-bold text-sm">
+                    {autoTestLogs.filter(l => l.status === 'WIN').length}
+                  </div>
+                </div>
+                <div className="bg-slate-900 p-1.5 rounded border border-slate-800">
+                  <div className="text-slate-400">Минусы</div>
+                  <div className="text-rose-400 font-bold text-sm">
+                    {autoTestLogs.filter(l => l.status === 'LOSS').length}
+                  </div>
+                </div>
+                <div className="bg-slate-900 p-1.5 rounded border border-slate-800">
+                  <div className="text-slate-400">Винрейт</div>
+                  <div className="text-amber-400 font-bold text-sm">
+                    {autoTestLogs.filter(l => l.status !== 'PENDING').length > 0 
+                      ? Math.round((autoTestLogs.filter(l => l.status === 'WIN').length / autoTestLogs.filter(l => l.status !== 'PENDING').length) * 100) 
+                      : 0}%
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 text-[11px]">
+                {autoTestLogs.length === 0 ? (
+                  <div className="text-center text-slate-500 py-8 italic">Нажмите «ЗАПУСТИТЬ АВТО-ТЕСТ» сверху, чтобы начать сбор статистики.</div>
+                ) : (
+                  autoTestLogs.map(item => (
+                    <div key={item.id} className="p-2 rounded bg-slate-900/80 border border-slate-800 flex justify-between items-center text-[10px]">
+                      <div>
+                        <span className="text-cyan-400 font-bold">{item.pair}</span> ({item.time})
+                        <div className="text-slate-400">Вход: ${item.entryPrice}</div>
+                      </div>
+                      <div className="text-right">
+                        <span className={item.direction === 'CALL' ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>{item.direction}</span>
+                        <div>
+                          {item.status === 'PENDING' && <span className="text-amber-400 animate-pulse">Ожидание...</span>}
+                          {item.status === 'WIN' && <span className="text-emerald-400 font-black">WIN 🟢</span>}
+                          {item.status === 'LOSS' && <span className="text-rose-400 font-black">LOSS 🔴</span>}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           ) : (
