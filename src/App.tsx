@@ -14,10 +14,9 @@ export default function App() {
   const [timezone, setTimezone] = useState<'Europe/Moscow' | 'Etc/UTC'>('Europe/Moscow');
   const [lang, setLang] = useState<'ru' | 'en'>('ru');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
-  const [rightTab, setRightTab] = useState<'logs' | 'history' | 'martingale' | 'autotest'>('logs');
+  const [rightTab, setRightTab] = useState<'logs' | 'history' | 'martingale' | 'autotest'>('autotest');
   const [activeIndicator, setActiveIndicator] = useState<string>('RSI');
 
-  // Strategy Hub: тумблеры модулей фильтрации
   const [strategies, setStrategies] = useState([
     { id: 'body_breakout', name: 'Защита тела свечи', enabled: true, desc: 'Фильтрация пробоев по телам, игнор теней' },
     { id: 'rsi_bollinger', name: 'RSI + Bollinger Reversal', enabled: true, desc: 'Перекупленность на границах канала' },
@@ -40,7 +39,6 @@ export default function App() {
   const [candleTimer, setCandleTimer] = useState<number>(0); 
   const [aiSignal, setAiSignal] = useState<{ direction: 'CALL' | 'PUT'; confidence: number } | null>(null);
   
-  // === ИЗОЛИРОВАННЫЙ БЛОК: СТАТЬИ И СОСТОЯНИЯ АВТО-ТЕСТА ДЛИННОЙ СЕССИИ ===
   const [isAutoTestActive, setIsAutoTestActive] = useState<boolean>(false);
   const [autoTestLogs, setAutoTestLogs] = useState<Array<{
     id: number;
@@ -52,7 +50,7 @@ export default function App() {
     status: 'PENDING' | 'WIN' | 'LOSS';
   }>>([]);
   const [pendingTestItems, setPendingTestItems] = useState<Array<{ id: number; direction: 'CALL' | 'PUT'; entryPrice: number }>>([]);
-  // ====================================================================
+  const [lastTriggeredSec, setLastTriggeredSec] = useState<number | null>(null);
 
   const [filterResults, setFilterResults] = useState<{
     htfTrend: string;
@@ -99,14 +97,11 @@ export default function App() {
   };
 
   const [candleOpenPrice, setCandleOpenPrice] = useState<number>(parseFloat(selectedPair.baseRate));
-  const [prevPriceRef, setPrevPriceRef] = useState<number>(parseFloat(selectedPair.baseRate));
 
-  // WebSocket котировок Binance
   useEffect(() => {
     const baseP = parseFloat(selectedPair.baseRate);
     setPrice(selectedPair.baseRate);
     setCandleOpenPrice(baseP);
-    setPrevPriceRef(baseP);
     setWsStatus(false);
 
     const ws = new WebSocket(`wss://stream.binance.com:9443/ws/${selectedPair.wsSymbol}@trade`);
@@ -122,7 +117,6 @@ export default function App() {
         else if (newPriceVal < oldVal) setPriceChange('down');
         return formattedPrice;
       });
-      setPrevPriceRef(newPriceVal);
       setWsStatus(true);
     };
 
@@ -130,7 +124,6 @@ export default function App() {
     return () => ws.close();
   }, [selectedPair]);
 
-  // Снайперский таймер + Непрерывная логика авто-теста
   useEffect(() => {
     const calculateTimeLeft = () => {
       const now = new Date();
@@ -140,15 +133,17 @@ export default function App() {
       return remaining > 0 ? remaining : tfSecs;
     };
 
+    const tfSecsTotal = parseInt(timeframe, 10) * 60;
     setCandleTimer(calculateTimeLeft());
 
     const interval = setInterval(() => {
       const timeLeft = calculateTimeLeft();
       setCandleTimer(timeLeft);
 
-      // Закрытие свечи (00:00) -> Проверка активных сделок авто-теста
-      if (timeLeft === parseInt(timeframe, 10) * 60) {
+      // Закрытие свечи (00:00) -> Проверка сделок
+      if (timeLeft === tfSecsTotal) {
         setCandleOpenPrice(parseFloat(price));
+        setLastTriggeredSec(null); // Сброс триггера на новую свечу
 
         if (pendingTestItems.length > 0) {
           const currentP = parseFloat(price);
@@ -171,9 +166,14 @@ export default function App() {
         }
       }
 
-      // Снайперский триггер ровно за 10 секунд до конца текущей свечи (вход на следующую свечу)
-      if ((isAnalyzing || isAutoTestActive) && timeLeft === 10) {
+      // Снайперский триггер в диапазоне последних 10 секунд (от 10 до 1), чтобы гарантированно не пропустить вход
+      const canTrigger = isAnalyzing || isAutoTestActive;
+      const isWithinWindow = timeLeft <= 10 && timeLeft >= 1;
+
+      if (canTrigger && isWithinWindow && lastTriggeredSec !== timeLeft) {
+        setLastTriggeredSec(timeLeft);
         playBeep('sniper');
+        
         const currentP = parseFloat(price);
         const isBullishBody = currentP >= candleOpenPrice;
         const dir: 'CALL' | 'PUT' = isBullishBody ? 'CALL' : 'PUT';
@@ -188,7 +188,6 @@ export default function App() {
           ...prev
         ]);
 
-        // Если авто-тест включен — регистрируем прогноз на СЛЕДУЮЩУЮ свечу
         if (isAutoTestActive) {
           const newTestId = Date.now();
           const newLogEntry = {
@@ -201,22 +200,21 @@ export default function App() {
           };
           setAutoTestLogs(prev => [newLogEntry, ...prev]);
           setPendingTestItems(prev => [...prev, { id: newTestId, direction: dir, entryPrice: currentP }]);
-          addLog(`🧪 Авто-тест (10 сек до свечи N+1): Зафиксирован сигнал ${dir} поцене $${currentP}`, 'sniper');
+          addLog(`🧪 Авто-тест (${timeLeft} сек до свечи N+1): Зафиксирован сигнал ${dir} по цене $${currentP}`, 'sniper');
         }
 
         addLog(
           lang === 'ru' 
-            ? `👁 СНАЙПЕР (10 сек) [Стратегии ОК]: Сигнал -> ${dir === 'CALL' ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'} (${conf}%)` 
-            : `👁 SNIPER (10s) [Strategies OK]: Signal -> ${dir} (${conf}%)`, 
+            ? `👁 СНАЙПЕР (${timeLeft} сек) [Стратегии ОК]: Сигнал -> ${dir === 'CALL' ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'} (${conf}%)` 
+            : `👁 SNIPER (${timeLeft}s) [Strategies OK]: Signal -> ${dir} (${conf}%)`, 
           'sniper'
         );
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [timeframe, isAnalyzing, isAutoTestActive, lang, selectedPair, detectedPattern, soundEnabled, price, candleOpenPrice, pendingTestItems]);
+  }, [timeframe, isAnalyzing, isAutoTestActive, lang, selectedPair, detectedPattern, soundEnabled, price, candleOpenPrice, pendingTestItems, lastTriggeredSec]);
 
-  // Глобальный супер-сканер по всем парам
   const handleGlobalScan = async () => {
     setIsGlobalScanning(true);
     setScanProgress(lang === 'ru' ? 'Запуск глобального сканера всех пар...' : 'Running global market scan...');
@@ -407,7 +405,6 @@ export default function App() {
       <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
         <section className="lg:col-span-3 flex flex-col gap-4">
           
-          {/* === ИЗОЛИРОВАННЫЙ БЛОК: ПАНЕЛЬ УПРАВЛЕНИЯ АВТО-ТЕСТОМ ДЛИННОЙ СЕССИИ === */}
           <div className="bg-slate-900/90 border border-amber-500/50 rounded-xl p-3.5 backdrop-blur flex items-center justify-between shadow-lg">
             <div className="flex items-center gap-3">
               <div className={`w-3.5 h-3.5 rounded-full ${isAutoTestActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'}`} />
@@ -430,7 +427,6 @@ export default function App() {
               {isAutoTestActive ? '⛔ ОСТАНОВИТЬ ТЕСТ' : '▶ ЗАПУСТИТЬ АВТО-ТЕСТ'}
             </button>
           </div>
-          {/* ==================================================================== */}
 
           <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-3.5 backdrop-blur flex flex-col gap-2">
             <div className="flex justify-between items-center mb-1">
@@ -509,7 +505,6 @@ export default function App() {
             )}
           </div>
 
-          {/* КОНТЕЙНЕР ГРАФИКА ДЛЯ ЗАХВАТА ИИ */}
           <div id="chart-container" className="flex-1 bg-slate-900/40 border border-slate-800 rounded-xl p-6 flex flex-col justify-between relative overflow-hidden backdrop-blur min-h-[500px]">
             {viewMode === 'single' ? (
               <>
@@ -686,7 +681,6 @@ export default function App() {
               </div>
             </div>
           ) : rightTab === 'autotest' ? (
-            // === ОТОБРАЖЕНИЕ СТАТИСТИКИ АВТО-ТЕСТА ===
             <div className="flex-1 bg-slate-950/90 border border-amber-500/40 rounded-xl p-3 flex flex-col gap-2 overflow-hidden min-h-[220px] font-mono">
               <div className="grid grid-cols-3 gap-1 text-center text-[10px]">
                 <div className="bg-slate-900 p-1.5 rounded border border-slate-800">
