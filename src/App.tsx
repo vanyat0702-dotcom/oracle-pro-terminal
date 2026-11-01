@@ -51,7 +51,7 @@ export default function App() {
     exitPrice?: number;
     status: 'PENDING' | 'WIN' | 'LOSS';
   }>>([]);
-  const [pendingTestItem, setPendingTestItem] = useState<{ id: number; direction: 'CALL' | 'PUT'; entryPrice: number } | null>(null);
+  const [pendingTestItems, setPendingTestItems] = useState<Array<{ id: number; direction: 'CALL' | 'PUT'; entryPrice: number }>>([]);
   // ====================================================================
 
   const [filterResults, setFilterResults] = useState<{
@@ -130,7 +130,7 @@ export default function App() {
     return () => ws.close();
   }, [selectedPair]);
 
-  // Снайперский таймер + логика авто-теста длинной сессии
+  // Снайперский таймер + Непрерывная логика авто-теста
   useEffect(() => {
     const calculateTimeLeft = () => {
       const now = new Date();
@@ -146,28 +146,32 @@ export default function App() {
       const timeLeft = calculateTimeLeft();
       setCandleTimer(timeLeft);
 
+      // Закрытие свечи (00:00) -> Проверка активных сделок авто-теста
       if (timeLeft === parseInt(timeframe, 10) * 60) {
         setCandleOpenPrice(parseFloat(price));
 
-        // === ПРОВЕРКА ИСХОДА ПРОШЛОГО СИГНАЛА АВТО-ТЕСТА В НАЧАЛЕ НОВОЙ СВЕЧИ ===
-        if (pendingTestItem) {
+        if (pendingTestItems.length > 0) {
           const currentP = parseFloat(price);
-          const isWin = pendingTestItem.direction === 'CALL' 
-            ? currentP >= pendingTestItem.entryPrice 
-            : currentP <= pendingTestItem.entryPrice;
 
-          setAutoTestLogs(prev => prev.map(item => 
-            item.id === pendingTestItem.id 
-              ? { ...item, exitPrice: currentP, status: isWin ? 'WIN' : 'LOSS' }
-              : item
-          ));
+          pendingTestItems.forEach(pending => {
+            const isWin = pending.direction === 'CALL' 
+              ? currentP >= pending.entryPrice 
+              : currentP <= pending.entryPrice;
 
-          addLog(`🧪 Авто-тест вердикт: Свеча закрыта. Цена: ${currentP} -> Исход: ${isWin ? 'WIN 🟢' : 'LOSS 🔴'}`, 'sniper');
-          setPendingTestItem(null);
+            setAutoTestLogs(prev => prev.map(item => 
+              item.id === pending.id 
+                ? { ...item, exitPrice: currentP, status: isWin ? 'WIN' : 'LOSS' }
+                : item
+            ));
+
+            addLog(`🧪 Исход авто-теста #${pending.id}: Вход $${pending.entryPrice} -> Закрытие $${currentP} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
+          });
+
+          setPendingTestItems([]);
         }
       }
 
-      // Снайперский триггер за 10 секунд до закрытия свечи
+      // Снайперский триггер ровно за 10 секунд до конца текущей свечи (вход на следующую свечу)
       if ((isAnalyzing || isAutoTestActive) && timeLeft === 10) {
         playBeep('sniper');
         const currentP = parseFloat(price);
@@ -184,7 +188,7 @@ export default function App() {
           ...prev
         ]);
 
-        // Если активен режим авто-теста длинной сессии, фиксируем сделку в отдельный массив
+        // Если авто-тест включен — регистрируем прогноз на СЛЕДУЮЩУЮ свечу
         if (isAutoTestActive) {
           const newTestId = Date.now();
           const newLogEntry = {
@@ -196,8 +200,8 @@ export default function App() {
             status: 'PENDING' as const
           };
           setAutoTestLogs(prev => [newLogEntry, ...prev]);
-          setPendingTestItem({ id: newTestId, direction: dir, entryPrice: currentP });
-          addLog(`🧪 Авто-тест (10 сек): Зафиксирован вход ${dir} по цене ${currentP}`, 'sniper');
+          setPendingTestItems(prev => [...prev, { id: newTestId, direction: dir, entryPrice: currentP }]);
+          addLog(`🧪 Авто-тест (10 сек до свечи N+1): Зафиксирован сигнал ${dir} поцене $${currentP}`, 'sniper');
         }
 
         addLog(
@@ -210,7 +214,7 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [timeframe, isAnalyzing, isAutoTestActive, lang, selectedPair, detectedPattern, soundEnabled, price, candleOpenPrice, pendingTestItem]);
+  }, [timeframe, isAnalyzing, isAutoTestActive, lang, selectedPair, detectedPattern, soundEnabled, price, candleOpenPrice, pendingTestItems]);
 
   // Глобальный супер-сканер по всем парам
   const handleGlobalScan = async () => {
@@ -411,13 +415,13 @@ export default function App() {
                 <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
                   <TestTube className="w-4 h-4" /> СТРЕСС-ТЕСТ АНАЛИТИКА НА ДЛИННОЙ ДИСТАНЦИИ
                 </div>
-                <p className="text-[10px] text-slate-400">Авто-сканирование и фиксация WIN/LOSS по реальному таймеру свечи</p>
+                <p className="text-[10px] text-slate-400">Непрерывный авто-анализ и вход на следующую свечу за 10 сек до закрытия</p>
               </div>
             </div>
 
             <button
               onClick={() => setIsAutoTestActive(!isAutoTestActive)}
-              className={`px-4 py-2 rounded-lg text-xs font-black uppercase transition-all shadow-lg ${
+              className={`px-4 py-2 rounded-lg text-xs font-black uppercase transition-all shadow-lg cursor-pointer ${
                 isAutoTestActive 
                   ? 'bg-rose-500/20 text-rose-400 border border-rose-500/50 hover:bg-rose-500/30' 
                   : 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 hover:from-amber-400 shadow-amber-500/20'
@@ -651,7 +655,7 @@ export default function App() {
             )}
           </div>
 
-          {/* Вкладки правой панели (включая новую вкладку Авто-теста) */}
+          {/* Вкладки правой панели */}
           <div className="grid grid-cols-4 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[10px]">
             <button onClick={() => setRightTab('logs')} className={`py-1.5 rounded-lg font-bold truncate ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Логи</button>
             <button onClick={() => setRightTab('history')} className={`py-1.5 rounded-lg font-bold truncate ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>История</button>
@@ -682,7 +686,7 @@ export default function App() {
               </div>
             </div>
           ) : rightTab === 'autotest' ? (
-            // === ИЗОЛИРОВАННЫЙ БЛОК: ОТОБРАЖЕНИЕ СТАТИСТИКИ АВТО-ТЕСТА ===
+            // === ОТОБРАЖЕНИЕ СТАТИСТИКИ АВТО-ТЕСТА ===
             <div className="flex-1 bg-slate-950/90 border border-amber-500/40 rounded-xl p-3 flex flex-col gap-2 overflow-hidden min-h-[220px] font-mono">
               <div className="grid grid-cols-3 gap-1 text-center text-[10px]">
                 <div className="bg-slate-900 p-1.5 rounded border border-slate-800">
@@ -709,7 +713,7 @@ export default function App() {
 
               <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 text-[11px]">
                 {autoTestLogs.length === 0 ? (
-                  <div className="text-center text-slate-500 py-8 italic">Нажмите «ЗАПУСТИТЬ АВТО-ТЕСТ» сверху, чтобы начать сбор статистики.</div>
+                  <div className="text-center text-slate-500 py-8 italic">Нажмите «ЗАПУСТИТЬ АВТО-ТЕСТ» сверху, чтобы начать непрерывный сбор статистики.</div>
                 ) : (
                   autoTestLogs.map(item => (
                     <div key={item.id} className="p-2 rounded bg-slate-900/80 border border-slate-800 flex justify-between items-center text-[10px]">
@@ -720,7 +724,7 @@ export default function App() {
                       <div className="text-right">
                         <span className={item.direction === 'CALL' ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>{item.direction}</span>
                         <div>
-                          {item.status === 'PENDING' && <span className="text-amber-400 animate-pulse">Ожидание...</span>}
+                          {item.status === 'PENDING' && <span className="text-amber-400 animate-pulse">На свече N+1...</span>}
                           {item.status === 'WIN' && <span className="text-emerald-400 font-black">WIN 🟢</span>}
                           {item.status === 'LOSS' && <span className="text-rose-400 font-black">LOSS 🔴</span>}
                         </div>
