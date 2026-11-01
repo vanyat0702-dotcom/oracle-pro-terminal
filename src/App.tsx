@@ -145,7 +145,7 @@ export default function App() {
     return () => ws.close();
   }, [selectedPair]);
 
-  // СТРОГАЯ ЛОГИКА ТАЙМЕРА И УЧЕТА СВЕЧИ N+1
+  // СТРОГАЯ ЛОГИКА ТАЙМЕРА И СДВИНУТОГО ОЖИДАНИЯ СВЕЧИ N+1
   useEffect(() => {
     const calculateCandleInfo = () => {
       const now = new Date();
@@ -178,11 +178,10 @@ export default function App() {
         setCandleOpenPrice(currentPriceVal);
         hasTriggeredCurrentCandleRef.current = false;
 
-        // ПРОВЕРКА СДЕЛКИТ: проверяем сделки, у которых targetCandleIndex совпадает с закрывшейся свечой
+        // ПРОВЕРКА СДЕЛОК: проверяем те, у которых наступил целевой индекс свечи
         const completedItems = pendingItemsRef.current.filter(item => item.targetCandleIndex === candleIndex);
         
         if (completedItems.length > 0) {
-          // Удаляем проверенные сделки из очереди
           setPendingTestItems(prev => prev.filter(item => item.targetCandleIndex !== candleIndex));
 
           completedItems.forEach(pending => {
@@ -196,12 +195,12 @@ export default function App() {
                 : item
             ));
 
-            addLog(`🧪 Итог сделки на N+1 (Закрытие свечи #${candleIndex}): Вход $${pending.entryPrice} -> Закрытие $${currentPriceVal} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
+            addLog(`🧪 Итог по закрытию свечи #${candleIndex}: Вход $${pending.entryPrice} -> Закрытие $${currentPriceVal} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
           });
         }
       }
 
-      // СИГНАЛ РОВНО ЗА 10 СЕКУНД ДО КОНЦА ТЕКУЩЕЙ СВЕЧИ N
+      // СИГНАЛ РОВНО ЗА 10 СЕКУНД ДО КОНЦА ТЕКУЩЕЙ СВЕЧИ
       const canTrigger = isAnalyzingRef.current || isAutoTestActiveRef.current;
 
       if (canTrigger && remaining === 10 && !hasTriggeredCurrentCandleRef.current) {
@@ -223,7 +222,10 @@ export default function App() {
 
         if (isAutoTestActiveRef.current) {
           const newTestId = Date.now();
-          const targetCandle = candleIndex + 1; // Назначаем строго следующую свечу N+1
+          // СДВИГ: Чтобы дождаться полного закрытия СЛЕДУЮЩЕЙ свечи N+1, 
+          // целевой индекс должен быть текущий + 2 (текущая N заканчивается через 10 сек, 
+          // следующая N+1 полностью длится весь следующий период и закрывается на индексе candleIndex + 2).
+          const targetCandle = candleIndex + 2;
 
           const newLogEntry = {
             id: newTestId,
@@ -238,13 +240,13 @@ export default function App() {
           setAutoTestLogs(prev => [newLogEntry, ...prev]);
           setPendingTestItems(prev => [...prev, { id: newTestId, direction: dir, entryPrice: currentPriceVal, targetCandleIndex: targetCandle }]);
           
-          addLog(`🧪 Сигнал (10 сек до конца свечи N): Прогноз ${dir} на свечу #${targetCandle} по цене $${currentPriceVal}. Ждем полного закрытия N+1.`, 'sniper');
+          addLog(`🧪 Сигнал (10 сек до конца свечи): Прогноз ${dir} по цене $${currentPriceVal}. Ожидание закрытия свечи N+1 (#${targetCandle}).`, 'sniper');
         }
 
         addLog(
           lang === 'ru' 
-            ? `👁 СНАЙПЕР (10 сек): Прогноз на свечу N+1 -> ${dir === 'CALL' ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'} (${conf}%)` 
-            : `👁 SNIPER (10s): Forecast N+1 -> ${dir} (${conf}%)`, 
+            ? `👁 СНАЙПЕР (10 сек): Прогноз -> ${dir === 'CALL' ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'} (${conf}%)` 
+            : `👁 SNIPER (10s): Forecast -> ${dir} (${conf}%)`, 
           'sniper'
         );
       }
