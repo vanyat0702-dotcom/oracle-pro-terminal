@@ -50,7 +50,7 @@ export default function App() {
     status: 'PENDING' | 'WIN' | 'LOSS';
   }>>([]);
   const [pendingTestItems, setPendingTestItems] = useState<Array<{ id: number; direction: 'CALL' | 'PUT'; entryPrice: number }>>([]);
-  const [lastTriggeredSec, setLastTriggeredSec] = useState<number | null>(null);
+  const [hasTriggeredThisCandle, setHasTriggeredThisCandle] = useState<boolean>(false);
 
   const [filterResults, setFilterResults] = useState<{
     htfTrend: string;
@@ -140,12 +140,13 @@ export default function App() {
       const timeLeft = calculateTimeLeft();
       setCandleTimer(timeLeft);
 
-      // Закрытие свечи (00:00) -> Проверка сделок
+      // Закрытие свечи (00:00) -> Срочный сброс и проверка сделок
       if (timeLeft === tfSecsTotal) {
         setCandleOpenPrice(parseFloat(price));
-        setLastTriggeredSec(null); // Сброс триггера на новую свечу
+        setHasTriggeredThisCandle(false);
 
         if (pendingTestItems.length > 0) {
+          // Гарантированно берем текущую актуальную цену из стейта в момент закрытия
           const currentP = parseFloat(price);
 
           pendingTestItems.forEach(pending => {
@@ -166,12 +167,11 @@ export default function App() {
         }
       }
 
-      // Снайперский триггер в диапазоне последних 10 секунд (от 10 до 1), чтобы гарантированно не пропустить вход
       const canTrigger = isAnalyzing || isAutoTestActive;
-      const isWithinWindow = timeLeft <= 10 && timeLeft >= 1;
+      const isTargetSecond = timeLeft === 10;
 
-      if (canTrigger && isWithinWindow && lastTriggeredSec !== timeLeft) {
-        setLastTriggeredSec(timeLeft);
+      if (canTrigger && isTargetSecond && !hasTriggeredThisCandle) {
+        setHasTriggeredThisCandle(true);
         playBeep('sniper');
         
         const currentP = parseFloat(price);
@@ -200,20 +200,20 @@ export default function App() {
           };
           setAutoTestLogs(prev => [newLogEntry, ...prev]);
           setPendingTestItems(prev => [...prev, { id: newTestId, direction: dir, entryPrice: currentP }]);
-          addLog(`🧪 Авто-тест (${timeLeft} сек до свечи N+1): Зафиксирован сигнал ${dir} по цене $${currentP}`, 'sniper');
+          addLog(`🧪 Авто-тест (10 сек до свечи N+1): Зафиксирован сигнал ${dir} по цене $${currentP}`, 'sniper');
         }
 
         addLog(
           lang === 'ru' 
-            ? `👁 СНАЙПЕР (${timeLeft} сек) [Стратегии ОК]: Сигнал -> ${dir === 'CALL' ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'} (${conf}%)` 
-            : `👁 SNIPER (${timeLeft}s) [Strategies OK]: Signal -> ${dir} (${conf}%)`, 
+            ? `👁 СНАЙПЕР (10 сек) [Стратегии ОК]: Сигнал -> ${dir === 'CALL' ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'} (${conf}%)` 
+            : `👁 SNIPER (10s) [Strategies OK]: Signal -> ${dir} (${conf}%)`, 
           'sniper'
         );
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [timeframe, isAnalyzing, isAutoTestActive, lang, selectedPair, detectedPattern, soundEnabled, price, candleOpenPrice, pendingTestItems, lastTriggeredSec]);
+  }, [timeframe, isAnalyzing, isAutoTestActive, lang, selectedPair, detectedPattern, soundEnabled, price, candleOpenPrice, pendingTestItems, hasTriggeredThisCandle]);
 
   const handleGlobalScan = async () => {
     setIsGlobalScanning(true);
@@ -449,62 +449,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* STRATEGY HUB */}
-          <div className="bg-slate-900/90 border border-cyan-500/40 rounded-xl p-4 shadow-lg backdrop-blur">
-            <div className="flex flex-col md:flex-row items-center justify-between mb-3 gap-3">
-              <div>
-                <h3 className="text-cyan-400 font-bold text-sm flex items-center gap-2">
-                  ⚙️ Strategy Hub (Мультистратегический конструктор)
-                </h3>
-                <p className="text-[11px] text-slate-400">Включай нужные модули для отсеивания рыночного шума и ложных входов</p>
-              </div>
-              
-              <button
-                onClick={handleGlobalScan}
-                disabled={isGlobalScanning}
-                className="w-full md:w-auto bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 text-white font-bold px-4 py-2 rounded-lg shadow-lg shadow-emerald-500/20 text-xs transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
-              >
-                {isGlobalScanning ? '🌐 Сканирование рынка...' : '🔍 ГЛОБАЛЬНЫЙ СУПЕР-СКАНЕР'}
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2.5">
-              {strategies.map((strat) => (
-                <div 
-                  key={strat.id} 
-                  className={`p-2.5 rounded-lg border transition-all flex items-center justify-between ${
-                    strat.enabled 
-                      ? 'bg-slate-800/90 border-cyan-500/50 shadow-md shadow-cyan-500/10' 
-                      : 'bg-slate-950/40 border-slate-800 opacity-60'
-                  }`}
-                >
-                  <div>
-                    <div className="font-semibold text-white text-xs">{strat.name}</div>
-                    <div className="text-[10px] text-slate-400">{strat.desc}</div>
-                  </div>
-                  
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={strat.enabled}
-                      onChange={() => {
-                        setStrategies(strategies.map(s => s.id === strat.id ? { ...s, enabled: !s.enabled } : s));
-                      }}
-                      className="sr-only peer"
-                    />
-                    <div className="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-cyan-500"></div>
-                  </label>
-                </div>
-              ))}
-            </div>
-
-            {scanProgress && (
-              <div className="mt-2.5 p-2 bg-slate-950 rounded text-center text-xs font-mono text-cyan-300 border border-cyan-900/50">
-                {scanProgress}
-              </div>
-            )}
-          </div>
-
           <div id="chart-container" className="flex-1 bg-slate-900/40 border border-slate-800 rounded-xl p-6 flex flex-col justify-between relative overflow-hidden backdrop-blur min-h-[500px]">
             {viewMode === 'single' ? (
               <>
@@ -606,7 +550,6 @@ export default function App() {
           </div>
         </section>
 
-        {/* Правая панель */}
         <aside className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 flex flex-col gap-4 backdrop-blur">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <h2 className="font-bold text-slate-200 flex items-center gap-2 text-sm">
@@ -650,7 +593,6 @@ export default function App() {
             )}
           </div>
 
-          {/* Вкладки правой панели */}
           <div className="grid grid-cols-4 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[10px]">
             <button onClick={() => setRightTab('logs')} className={`py-1.5 rounded-lg font-bold truncate ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Логи</button>
             <button onClick={() => setRightTab('history')} className={`py-1.5 rounded-lg font-bold truncate ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>История</button>
