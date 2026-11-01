@@ -52,7 +52,6 @@ export default function App() {
   const [pendingTestItems, setPendingTestItems] = useState<Array<{ id: number; direction: 'CALL' | 'PUT'; entryPrice: number }>>([]);
   const [hasTriggeredThisCandle, setHasTriggeredThisCandle] = useState<boolean>(false);
 
-  // Используем useRef для стабильности таймера без пересоздания интервала
   const priceRef = useRef(price);
   priceRef.current = price;
 
@@ -115,7 +114,6 @@ export default function App() {
     }
   };
 
-  // Подключение WebSocket для выбранной пары
   useEffect(() => {
     const baseP = parseFloat(selectedPair.baseRate);
     setPrice(selectedPair.baseRate);
@@ -144,7 +142,7 @@ export default function App() {
     return () => ws.close();
   }, [selectedPair]);
 
-  // СТАБИЛЬНЫЙ ТАЙМЕР С ПРАВИЛЬНЫМ ОЖИДАНИЕМ СВЕЧИ N+1
+  // НАДЕЖНЫЙ И ТОЧНЫЙ ТАЙМЕР И СИНХРОНИЗАЦИЯ СВЕЧИ N+1
   useEffect(() => {
     const calculateTimeLeft = () => {
       const now = new Date();
@@ -163,7 +161,7 @@ export default function App() {
 
       const currentPriceVal = parseFloat(priceRef.current);
 
-      // 1. ЗАКРЫТИЕ СВЕЧИ (00:00) -> Проверяем и фиксируем итоги по сделкам, которые отстояли свечу N+1
+      // 1. СТРОГО В МОМЕНТ ЗАКРЫТИЯ СВЕЧИ (timeLeft === tfSecsTotal): проверяем сделки, отстоявшие свечу N+1
       if (timeLeft === tfSecsTotal) {
         candleOpenPriceRef.current = currentPriceVal;
         setCandleOpenPrice(currentPriceVal);
@@ -184,12 +182,12 @@ export default function App() {
                 : item
             ));
 
-            addLog(`🧪 Исход авто-теста #${pending.id} (Свеча N+1 завершена): Вход $${pending.entryPrice} -> Закрытие $${currentPriceVal} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
+            addLog(`🧪 Результат авто-теста #${pending.id} (Свеча N+1 закрыта): Вход $${pending.entryPrice} -> Итог $${currentPriceVal} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
           });
         }
       }
 
-      // 2. РОВНО ЗА 10 СЕКУНД ДО КОНЦА ТЕКУЩЕЙ СВЕЧИ (N) -> Даем прогноз на СЛЕДУЮЩУЮ свечу (N+1)
+      // 2. РОВНО ЗА 10 СЕКУНД ДО КОНЦА ТЕКУЩЕЙ СВЕЧИ (N): делаем прогноз на СЛЕДУЮЩУЮ свечу (N+1)
       const canTrigger = isAnalyzingRef.current || isAutoTestActiveRef.current;
       const isTargetSecond = timeLeft === 10;
 
@@ -222,10 +220,10 @@ export default function App() {
           };
           setAutoTestLogs(prev => [newLogEntry, ...prev]);
           
-          // Ставим в очередь ожидания до закрытия СЛЕДУЮЩЕЙ свечи (N+1)
+          // Ставим в очередь ожидания до самого конца свечи N+1
           setPendingTestItems(prev => [...prev, { id: newTestId, direction: dir, entryPrice: currentPriceVal }]);
           
-          addLog(`🧪 Авто-тест (10 сек до конца свечи N): Прогноз на свечу N+1 -> ${dir} по цене $${currentPriceVal}. Ожидание закрытия свечи N+1.`, 'sniper');
+          addLog(`🧪 Сигнал (10 сек до конца свечи N): Прогноз на свечу N+1 -> ${dir} по цене $${currentPriceVal}. Ожидание завершения свечи N+1.`, 'sniper');
         }
 
         addLog(
@@ -239,41 +237,6 @@ export default function App() {
 
     return () => clearInterval(interval);
   }, [timeframe, selectedPair, lang, detectedPattern]);
-
-  const handleGlobalScan = async () => {
-    setIsGlobalScanning(true);
-    setScanProgress(lang === 'ru' ? 'Запуск глобального сканера всех пар...' : 'Running global market scan...');
-    let bestSignal: any = null;
-
-    for (const pair of TRADING_PAIRS.slice(0, 10)) {
-      setScanProgress(lang === 'ru' ? `Сканирование ${pair.displaySymbol}... (Поиск 99% сигнала)` : `Scanning ${pair.displaySymbol}...`);
-      await new Promise(r => setTimeout(r, 400));
-
-      if (Math.random() > 0.3) {
-        bestSignal = {
-          pair,
-          direction: Math.random() > 0.5 ? 'CALL' : 'PUT',
-          confidence: 99
-        };
-        break;
-      }
-    }
-
-    if (bestSignal) {
-      setSelectedPair(bestSignal.pair);
-      setAiSignal({ direction: bestSignal.direction, confidence: bestSignal.confidence });
-      setScanProgress(lang === 'ru' ? `✅ НАЙДЕНА ИДЕАЛЬНАЯ ПАРА: ${bestSignal.pair.displaySymbol} (${bestSignal.confidence}%)` : `✅ FOUND: ${bestSignal.pair.displaySymbol}`);
-      
-      setHistoryList(prev => [
-        { id: Date.now(), time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), pair: bestSignal.pair.displaySymbol, direction: bestSignal.direction, winrate: bestSignal.confidence, strategy: 'Global Scanner' },
-        ...prev
-      ]);
-    } else {
-      setScanProgress(lang === 'ru' ? '⚠️ Идеальных входов со 100% точностью не найдено.' : '⚠️ No perfect entries found.');
-    }
-
-    setIsGlobalScanning(false);
-  };
 
   const handleStartAnalysis = async () => {
     setIsAnalyzing(true);
@@ -438,7 +401,7 @@ export default function App() {
                 <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
                   <TestTube className="w-4 h-4" /> СТРЕСС-ТЕСТ АНАЛИТИКА НА ДЛИННОЙ ДИСТАНЦИИ
                 </div>
-                <p className="text-[10px] text-slate-400">Авто-сигнал ровно за 10 сек до конца свечи N на свечу N+1 с фиксацией по закрытию N+1</p>
+                <p className="text-[10px] text-slate-400">Сигнал за 10 сек до конца свечи N на N+1, итог строго по закрытию свечи N+1</p>
               </div>
             </div>
 
@@ -675,7 +638,7 @@ export default function App() {
 
               <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 text-[11px]">
                 {autoTestLogs.length === 0 ? (
-                  <div className="text-center text-slate-500 py-8 italic">Нажмите «ЗАПУСТИТЬ АВТО-ТЕСТ» сверху, чтобы начать непрерывный сбор статистики.</div>
+                  <div className="text-center text-slate-500 py-8 italic">Нажмите «ЗАПУСТИТЬ АВТО-ТЕСТ» сверху, чтобы начать сбор статистики по свечам N+1.</div>
                 ) : (
                   autoTestLogs.map(item => (
                     <div key={item.id} className="p-2 rounded bg-slate-900/80 border border-slate-800 flex justify-between items-center text-[10px]">
