@@ -140,29 +140,29 @@ export default function App() {
       const timeLeft = calculateTimeLeft();
       setCandleTimer(timeLeft);
 
-      // 1. СТРОГО В МОМЕНТ ЗАКРЫТИЯ СВЕЧИ (00:00) -> Проверяем сделку СВЕЧИ N+1, которая только что завершилась
+      // 1. СТРОГО В МОМЕНТ ЗАКРЫТИЯ СВЕЧИ (00:00) -> Проверяем сделку СВЕЧИ N+1
       if (timeLeft === tfSecsTotal) {
-        setCandleOpenPrice(parseFloat(price));
+        const closingPrice = parseFloat(price); // Фиксируем точную цену закрытия
+        setCandleOpenPrice(closingPrice);
         setHasTriggeredThisCandle(false); // Сбрасываем флаг для новой свечи
 
         if (pendingTestItems.length > 0) {
-          const currentP = parseFloat(price);
+          setPendingTestItems(currentPending => {
+            currentPending.forEach(pending => {
+              const isWin = pending.direction === 'CALL' 
+                ? closingPrice >= pending.entryPrice 
+                : closingPrice <= pending.entryPrice;
 
-          pendingTestItems.forEach(pending => {
-            const isWin = pending.direction === 'CALL' 
-              ? currentP >= pending.entryPrice 
-              : currentP <= pending.entryPrice;
+              setAutoTestLogs(prev => prev.map(item => 
+                item.id === pending.id 
+                  ? { ...item, exitPrice: closingPrice, status: isWin ? 'WIN' : 'LOSS' }
+                  : item
+              ));
 
-            setAutoTestLogs(prev => prev.map(item => 
-              item.id === pending.id 
-                ? { ...item, exitPrice: currentP, status: isWin ? 'WIN' : 'LOSS' }
-                : item
-            ));
-
-            addLog(`🧪 Исход авто-теста #${pending.id} (Свеча N+1 завершена): Вход $${pending.entryPrice} -> Закрытие $${currentP} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
+              addLog(`🧪 Исход авто-теста #${pending.id} (Свеча N+1 завершена): Вход $${pending.entryPrice} -> Закрытие $${closingPrice} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
+            });
+            return [];
           });
-
-          setPendingTestItems([]);
         }
       }
 
@@ -171,7 +171,7 @@ export default function App() {
       const isTargetSecond = timeLeft === 10;
 
       if (canTrigger && isTargetSecond && !hasTriggeredThisCandle) {
-        setHasTriggeredThisCandle(true); // Блокируем повторные срабатывания на этой свече
+        setHasTriggeredThisCandle(true);
         playBeep('sniper');
         
         const currentP = parseFloat(price);
