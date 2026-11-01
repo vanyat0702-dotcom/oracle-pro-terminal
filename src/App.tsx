@@ -140,13 +140,12 @@ export default function App() {
       const timeLeft = calculateTimeLeft();
       setCandleTimer(timeLeft);
 
-      // Закрытие свечи (00:00) -> Срочный сброс и проверка сделок
+      // 1. СТРОГО В МОМЕНТ ЗАКРЫТИЯ СВЕЧИ (00:00) -> Проверяем сделку СВЕЧИ N+1, которая только что завершилась
       if (timeLeft === tfSecsTotal) {
         setCandleOpenPrice(parseFloat(price));
-        setHasTriggeredThisCandle(false);
+        setHasTriggeredThisCandle(false); // Сбрасываем флаг для новой свечи
 
         if (pendingTestItems.length > 0) {
-          // Гарантированно берем текущую актуальную цену из стейта в момент закрытия
           const currentP = parseFloat(price);
 
           pendingTestItems.forEach(pending => {
@@ -160,18 +159,19 @@ export default function App() {
                 : item
             ));
 
-            addLog(`🧪 Исход авто-теста #${pending.id}: Вход $${pending.entryPrice} -> Закрытие $${currentP} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
+            addLog(`🧪 Исход авто-теста #${pending.id} (Свеча N+1 завершена): Вход $${pending.entryPrice} -> Закрытие $${currentP} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
           });
 
           setPendingTestItems([]);
         }
       }
 
+      // 2. СТРОГО ЗА 10 СЕКУНД ДО КОНЦА ТЕКУЩЕЙ СВЕЧИ -> Выдаем РОВНО ОДИН сигнал на следующую свечу (N+1)
       const canTrigger = isAnalyzing || isAutoTestActive;
       const isTargetSecond = timeLeft === 10;
 
       if (canTrigger && isTargetSecond && !hasTriggeredThisCandle) {
-        setHasTriggeredThisCandle(true);
+        setHasTriggeredThisCandle(true); // Блокируем повторные срабатывания на этой свече
         playBeep('sniper');
         
         const currentP = parseFloat(price);
@@ -200,13 +200,13 @@ export default function App() {
           };
           setAutoTestLogs(prev => [newLogEntry, ...prev]);
           setPendingTestItems(prev => [...prev, { id: newTestId, direction: dir, entryPrice: currentP }]);
-          addLog(`🧪 Авто-тест (10 сек до свечи N+1): Зафиксирован сигнал ${dir} по цене $${currentP}`, 'sniper');
+          addLog(`🧪 Авто-тест (10 сек до конца свечи N): Прогноз на свечу N+1 -> ${dir} по цене $${currentP}`, 'sniper');
         }
 
         addLog(
           lang === 'ru' 
-            ? `👁 СНАЙПЕР (10 сек) [Стратегии ОК]: Сигнал -> ${dir === 'CALL' ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'} (${conf}%)` 
-            : `👁 SNIPER (10s) [Strategies OK]: Signal -> ${dir} (${conf}%)`, 
+            ? `👁 СНАЙПЕР (10 сек) [Строго 1 сигнал]: Прогноз на свечу N+1 -> ${dir === 'CALL' ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'} (${conf}%)` 
+            : `👁 SNIPER (10s) [Single Signal]: Forecast N+1 -> ${dir} (${conf}%)`, 
           'sniper'
         );
       }
@@ -412,7 +412,7 @@ export default function App() {
                 <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
                   <TestTube className="w-4 h-4" /> СТРЕСС-ТЕСТ АНАЛИТИКА НА ДЛИННОЙ ДИСТАНЦИИ
                 </div>
-                <p className="text-[10px] text-slate-400">Непрерывный авто-анализ и вход на следующую свечу за 10 сек до закрытия</p>
+                <p className="text-[10px] text-slate-400">Авто-сигнал ровно за 10 сек до конца свечи N на свечу N+1 без дублирования</p>
               </div>
             </div>
 
