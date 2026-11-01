@@ -173,9 +173,8 @@ export default function App() {
 
     for (const pair of TRADING_PAIRS.slice(0, 10)) {
       setScanProgress(lang === 'ru' ? `Сканирование ${pair.displaySymbol}... (Поиск 99% сигнала)` : `Scanning ${pair.displaySymbol}...`);
-      await new Promise(r => setTimeout(r, 600)); // Имитация параллельного сканирования шлюза
+      await new Promise(r => setTimeout(r, 400));
 
-      // Симуляция поиска идеального входа по активным стратегиям
       if (Math.random() > 0.3) {
         bestSignal = {
           pair,
@@ -515,7 +514,6 @@ export default function App() {
                 </div>
               </>
             ) : (
-              // Сетка из 4 графиков
               <div className="grid grid-cols-2 gap-4 flex-1 h-full min-h-[500px]">
                 {[quadPair1, quadPair2, quadPair3, quadPair4].map((qp, idx) => (
                   <div key={idx} className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col">
