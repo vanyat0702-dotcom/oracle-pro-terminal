@@ -52,7 +52,7 @@ export default function App() {
   const [pendingTestItems, setPendingTestItems] = useState<Array<{ id: number; direction: 'CALL' | 'PUT'; entryPrice: number }>>([]);
   const [hasTriggeredThisCandle, setHasTriggeredThisCandle] = useState<boolean>(false);
 
-  // Используем useRef, чтобы таймер всегда видел актуальные данные без сброса интервала
+  // Используем useRef для стабильности таймера без пересоздания интервала
   const priceRef = useRef(price);
   priceRef.current = price;
 
@@ -144,7 +144,7 @@ export default function App() {
     return () => ws.close();
   }, [selectedPair]);
 
-  // СТАБИЛЬНЫЙ ТАЙМЕР (Запускается один раз при смене таймфрейма)
+  // СТАБИЛЬНЫЙ ТАЙМЕР С ПРАВИЛЬНЫМ ОЖИДАНИЕМ СВЕЧИ N+1
   useEffect(() => {
     const calculateTimeLeft = () => {
       const now = new Date();
@@ -163,7 +163,7 @@ export default function App() {
 
       const currentPriceVal = parseFloat(priceRef.current);
 
-      // 1. ЗАКРЫТИЕ СВЕЧИ (00:00) -> Проверка и закрытие сделки по свече N+1
+      // 1. ЗАКРЫТИЕ СВЕЧИ (00:00) -> Проверяем и фиксируем итоги по сделкам, которые отстояли свечу N+1
       if (timeLeft === tfSecsTotal) {
         candleOpenPriceRef.current = currentPriceVal;
         setCandleOpenPrice(currentPriceVal);
@@ -171,7 +171,7 @@ export default function App() {
 
         if (pendingItemsRef.current.length > 0) {
           const itemsToCheck = [...pendingItemsRef.current];
-          setPendingTestItems([]);
+          setPendingTestItems([]); // Очищаем пул ожидания
 
           itemsToCheck.forEach(pending => {
             const isWin = pending.direction === 'CALL' 
@@ -184,12 +184,12 @@ export default function App() {
                 : item
             ));
 
-            addLog(`🧪 Исход авто-теста #${pending.id} (Свеча завершена): Вход $${pending.entryPrice} -> Закрытие $${currentPriceVal} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
+            addLog(`🧪 Исход авто-теста #${pending.id} (Свеча N+1 завершена): Вход $${pending.entryPrice} -> Закрытие $${currentPriceVal} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
           });
         }
       }
 
-      // 2. РОВНО ЗА 10 СЕКУНД ДО КОНЦА -> Выдача сигнала на свечу N+1
+      // 2. РОВНО ЗА 10 СЕКУНД ДО КОНЦА ТЕКУЩЕЙ СВЕЧИ (N) -> Даем прогноз на СЛЕДУЮЩУЮ свечу (N+1)
       const canTrigger = isAnalyzingRef.current || isAutoTestActiveRef.current;
       const isTargetSecond = timeLeft === 10;
 
@@ -221,8 +221,11 @@ export default function App() {
             status: 'PENDING' as const
           };
           setAutoTestLogs(prev => [newLogEntry, ...prev]);
+          
+          // Ставим в очередь ожидания до закрытия СЛЕДУЮЩЕЙ свечи (N+1)
           setPendingTestItems(prev => [...prev, { id: newTestId, direction: dir, entryPrice: currentPriceVal }]);
-          addLog(`🧪 Авто-тест (10 сек до конца свечи): Прогноз на свечу N+1 -> ${dir} по цене $${currentPriceVal}`, 'sniper');
+          
+          addLog(`🧪 Авто-тест (10 сек до конца свечи N): Прогноз на свечу N+1 -> ${dir} по цене $${currentPriceVal}. Ожидание закрытия свечи N+1.`, 'sniper');
         }
 
         addLog(
@@ -435,7 +438,7 @@ export default function App() {
                 <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
                   <TestTube className="w-4 h-4" /> СТРЕСС-ТЕСТ АНАЛИТИКА НА ДЛИННОЙ ДИСТАНЦИИ
                 </div>
-                <p className="text-[10px] text-slate-400">Авто-сигнал ровно за 10 сек до конца свечи N на свечу N+1 без дублирования</p>
+                <p className="text-[10px] text-slate-400">Авто-сигнал ровно за 10 сек до конца свечи N на свечу N+1 с фиксацией по закрытию N+1</p>
               </div>
             </div>
 
@@ -683,7 +686,7 @@ export default function App() {
                       <div className="text-right">
                         <span className={item.direction === 'CALL' ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>{item.direction}</span>
                         <div>
-                          {item.status === 'PENDING' && <span className="text-amber-400 animate-pulse">На свече N+1...</span>}
+                          {item.status === 'PENDING' && <span className="text-amber-400 animate-pulse">Ожидание N+1...</span>}
                           {item.status === 'WIN' && <span className="text-emerald-400 font-black">WIN 🟢</span>}
                           {item.status === 'LOSS' && <span className="text-rose-400 font-black">LOSS 🔴</span>}
                         </div>
