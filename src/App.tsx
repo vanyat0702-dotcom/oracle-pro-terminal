@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, Zap, LineChart, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, LayoutGrid, Square, MessageSquare, Clock, Flame, StopCircle, History, Trash2, BookOpen, Volume2, VolumeX, Calculator, Sliders, CheckCircle2, Eye, TestTube } from 'lucide-react';
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
 import html2canvas from 'html2canvas';
@@ -52,6 +52,25 @@ export default function App() {
   const [pendingTestItems, setPendingTestItems] = useState<Array<{ id: number; direction: 'CALL' | 'PUT'; entryPrice: number }>>([]);
   const [hasTriggeredThisCandle, setHasTriggeredThisCandle] = useState<boolean>(false);
 
+  // Используем useRef, чтобы таймер всегда видел актуальные данные без сброса интервала
+  const priceRef = useRef(price);
+  priceRef.current = price;
+
+  const candleOpenPriceRef = useRef<number>(parseFloat(selectedPair.baseRate));
+  const [candleOpenPrice, setCandleOpenPrice] = useState<number>(parseFloat(selectedPair.baseRate));
+
+  const isAutoTestActiveRef = useRef(isAutoTestActive);
+  isAutoTestActiveRef.current = isAutoTestActive;
+
+  const isAnalyzingRef = useRef(isAnalyzing);
+  isAnalyzingRef.current = isAnalyzing;
+
+  const hasTriggeredRef = useRef(hasTriggeredThisCandle);
+  hasTriggeredRef.current = hasTriggeredThisCandle;
+
+  const pendingItemsRef = useRef(pendingTestItems);
+  pendingItemsRef.current = pendingTestItems;
+
   const [filterResults, setFilterResults] = useState<{
     htfTrend: string;
     volumeSpike: string;
@@ -96,11 +115,12 @@ export default function App() {
     }
   };
 
-  const [candleOpenPrice, setCandleOpenPrice] = useState<number>(parseFloat(selectedPair.baseRate));
-
+  // Подключение WebSocket для выбранной пары
   useEffect(() => {
     const baseP = parseFloat(selectedPair.baseRate);
     setPrice(selectedPair.baseRate);
+    priceRef.current = selectedPair.baseRate;
+    candleOpenPriceRef.current = baseP;
     setCandleOpenPrice(baseP);
     setWsStatus(false);
 
@@ -117,13 +137,14 @@ export default function App() {
         else if (newPriceVal < oldVal) setPriceChange('down');
         return formattedPrice;
       });
-      setWsStatus(true);
+      wsStatus !== true && setWsStatus(true);
     };
 
     ws.onerror = () => setWsStatus(false);
     return () => ws.close();
   }, [selectedPair]);
 
+  // СТАБИЛЬНЫЙ ТАЙМЕР (Запускается один раз при смене таймфрейма)
   useEffect(() => {
     const calculateTimeLeft = () => {
       const now = new Date();
@@ -140,42 +161,43 @@ export default function App() {
       const timeLeft = calculateTimeLeft();
       setCandleTimer(timeLeft);
 
-      // 1. СТРОГО В МОМЕНТ ЗАКРЫТИЯ СВЕЧИ (00:00) -> Проверяем сделку СВЕЧИ N+1
+      const currentPriceVal = parseFloat(priceRef.current);
+
+      // 1. ЗАКРЫТИЕ СВЕЧИ (00:00) -> Проверка и закрытие сделки по свече N+1
       if (timeLeft === tfSecsTotal) {
-        const closingPrice = parseFloat(price); // Фиксируем точную цену закрытия
-        setCandleOpenPrice(closingPrice);
-        setHasTriggeredThisCandle(false); // Сбрасываем флаг для новой свечи
+        candleOpenPriceRef.current = currentPriceVal;
+        setCandleOpenPrice(currentPriceVal);
+        setHasTriggeredThisCandle(false);
 
-        if (pendingTestItems.length > 0) {
-          setPendingTestItems(currentPending => {
-            currentPending.forEach(pending => {
-              const isWin = pending.direction === 'CALL' 
-                ? closingPrice >= pending.entryPrice 
-                : closingPrice <= pending.entryPrice;
+        if (pendingItemsRef.current.length > 0) {
+          const itemsToCheck = [...pendingItemsRef.current];
+          setPendingTestItems([]);
 
-              setAutoTestLogs(prev => prev.map(item => 
-                item.id === pending.id 
-                  ? { ...item, exitPrice: closingPrice, status: isWin ? 'WIN' : 'LOSS' }
-                  : item
-              ));
+          itemsToCheck.forEach(pending => {
+            const isWin = pending.direction === 'CALL' 
+              ? currentPriceVal >= pending.entryPrice 
+              : currentPriceVal <= pending.entryPrice;
 
-              addLog(`🧪 Исход авто-теста #${pending.id} (Свеча N+1 завершена): Вход $${pending.entryPrice} -> Закрытие $${closingPrice} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
-            });
-            return [];
+            setAutoTestLogs(prev => prev.map(item => 
+              item.id === pending.id 
+                ? { ...item, exitPrice: currentPriceVal, status: isWin ? 'WIN' : 'LOSS' }
+                : item
+            ));
+
+            addLog(`🧪 Исход авто-теста #${pending.id} (Свеча завершена): Вход $${pending.entryPrice} -> Закрытие $${currentPriceVal} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
           });
         }
       }
 
-      // 2. СТРОГО ЗА 10 СЕКУНД ДО КОНЦА ТЕКУЩЕЙ СВЕЧИ -> Выдаем РОВНО ОДИН сигнал на следующую свечу (N+1)
-      const canTrigger = isAnalyzing || isAutoTestActive;
+      // 2. РОВНО ЗА 10 СЕКУНД ДО КОНЦА -> Выдача сигнала на свечу N+1
+      const canTrigger = isAnalyzingRef.current || isAutoTestActiveRef.current;
       const isTargetSecond = timeLeft === 10;
 
-      if (canTrigger && isTargetSecond && !hasTriggeredThisCandle) {
+      if (canTrigger && isTargetSecond && !hasTriggeredRef.current) {
         setHasTriggeredThisCandle(true);
         playBeep('sniper');
         
-        const currentP = parseFloat(price);
-        const isBullishBody = currentP >= candleOpenPrice;
+        const isBullishBody = currentPriceVal >= candleOpenPriceRef.current;
         const dir: 'CALL' | 'PUT' = isBullishBody ? 'CALL' : 'PUT';
         const conf = 99;
         const stratName = detectedPattern ? (lang === 'ru' ? detectedPattern.nameRu : detectedPattern.nameEn) : 'Strategy Hub Matrix';
@@ -188,19 +210,19 @@ export default function App() {
           ...prev
         ]);
 
-        if (isAutoTestActive) {
+        if (isAutoTestActiveRef.current) {
           const newTestId = Date.now();
           const newLogEntry = {
             id: newTestId,
             time: currentTimeStr,
             pair: selectedPair.displaySymbol,
             direction: dir,
-            entryPrice: currentP,
+            entryPrice: currentPriceVal,
             status: 'PENDING' as const
           };
           setAutoTestLogs(prev => [newLogEntry, ...prev]);
-          setPendingTestItems(prev => [...prev, { id: newTestId, direction: dir, entryPrice: currentP }]);
-          addLog(`🧪 Авто-тест (10 сек до конца свечи N): Прогноз на свечу N+1 -> ${dir} по цене $${currentP}`, 'sniper');
+          setPendingTestItems(prev => [...prev, { id: newTestId, direction: dir, entryPrice: currentPriceVal }]);
+          addLog(`🧪 Авто-тест (10 сек до конца свечи): Прогноз на свечу N+1 -> ${dir} по цене $${currentPriceVal}`, 'sniper');
         }
 
         addLog(
@@ -213,7 +235,7 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [timeframe, isAnalyzing, isAutoTestActive, lang, selectedPair, detectedPattern, soundEnabled, price, candleOpenPrice, pendingTestItems, hasTriggeredThisCandle]);
+  }, [timeframe, selectedPair, lang, detectedPattern]);
 
   const handleGlobalScan = async () => {
     setIsGlobalScanning(true);
@@ -290,6 +312,7 @@ export default function App() {
       
       if (data.success) {
         const currentBase = parseFloat(price);
+        candleOpenPriceRef.current = currentBase;
         setCandleOpenPrice(currentBase);
         const calculatedHigh = (currentBase * 1.0012).toFixed(selectedPair.id === 'btcusdt' ? 2 : 4);
         const calculatedLow = (currentBase * 0.9988).toFixed(selectedPair.id === 'btcusdt' ? 2 : 4);
