@@ -34,7 +34,7 @@ export default function App() {
 
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [candleTimer, setCandleTimer] = useState<number>(0); 
-  const [aiSignal, setAiSignal] = useState<{ direction: 'CALL' | 'PUT'; confidence: number } | null>(null);
+  const [aiSignal, setAiSignal] = useState<{ direction: 'CALL' | 'PUT'; confidence: number; nextCandleTime?: string } | null>(null);
   
   const [isAutoTestActive, setIsAutoTestActive] = useState<boolean>(false);
   const [autoTestLogs, setAutoTestLogs] = useState<Array<{
@@ -166,7 +166,7 @@ export default function App() {
     currentCandleIndexRef.current = initialInfo.candleIndex;
 
     const interval = setInterval(() => {
-      const { candleIndex, remaining } = calculateCandleInfo();
+      const { candleIndex, remaining, tfSecs } = calculateCandleInfo();
       setCandleTimer(remaining);
 
       const currentPriceVal = parseFloat(priceRef.current);
@@ -212,7 +212,13 @@ export default function App() {
         const conf = 99;
         const stratName = detectedPattern ? (lang === 'ru' ? detectedPattern.nameRu : detectedPattern.nameEn) : 'Strategy Hub Matrix';
         
-        setAiSignal({ direction: dir, confidence: conf });
+        // ВЫЧИСЛЕНИЕ ВРЕМЕНИ ОТКРЫТИЯ СЛЕДУЮЩЕЙ СВЕЧИ (N+1)
+        const nextCandleStartTime = new Date(Date.now() + remaining * 1000);
+        const hours = nextCandleStartTime.getHours().toString().padStart(2, '0');
+        const minutes = nextCandleStartTime.getMinutes().toString().padStart(2, '0');
+        const nextCandleTimeStr = `${hours}:${minutes}`;
+
+        setAiSignal({ direction: dir, confidence: conf, nextCandleTime: nextCandleTimeStr });
         const currentTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         
         setHistoryList(prev => [
@@ -222,9 +228,6 @@ export default function App() {
 
         if (isAutoTestActiveRef.current) {
           const newTestId = Date.now();
-          // СДВИГ: Чтобы дождаться полного закрытия СЛЕДУЮЩЕЙ свечи N+1, 
-          // целевой индекс должен быть текущий + 2 (текущая N заканчивается через 10 сек, 
-          // следующая N+1 полностью длится весь следующий период и закрывается на индексе candleIndex + 2).
           const targetCandle = candleIndex + 2;
 
           const newLogEntry = {
@@ -240,13 +243,13 @@ export default function App() {
           setAutoTestLogs(prev => [newLogEntry, ...prev]);
           setPendingTestItems(prev => [...prev, { id: newTestId, direction: dir, entryPrice: currentPriceVal, targetCandleIndex: targetCandle }]);
           
-          addLog(`🧪 Сигнал (10 сек до конца свечи): Прогноз ${dir} по цене $${currentPriceVal}. Ожидание закрытия свечи N+1 (#${targetCandle}).`, 'sniper');
+          addLog(`🧪 Сигнал (10 сек до конца свечи): Прогноз ${dir} по цене $${currentPriceVal} на свечу ${nextCandleTimeStr}. Ожидание закрытия N+1 (#${targetCandle}).`, 'sniper');
         }
 
         addLog(
           lang === 'ru' 
-            ? `👁 СНАЙПЕР (10 сек): Прогноз -> ${dir === 'CALL' ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'} (${conf}%)` 
-            : `👁 SNIPER (10s): Forecast -> ${dir} (${conf}%)`, 
+            ? `👁 СНАЙПЕР (10 сек): Прогноз -> ${dir === 'CALL' ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'} на ${nextCandleTimeStr} (${conf}%)` 
+            : `👁 SNIPER (10s): Forecast -> ${dir} for ${nextCandleTimeStr} (${conf}%)`, 
           'sniper'
         );
       }
@@ -318,9 +321,17 @@ export default function App() {
           confidence: data.confidence
         });
 
+        // Время открытия следующей свечи
+        const now = new Date();
+        const tfSecs = parseInt(timeframe, 10) * 60;
+        const rem = tfSecs - (Math.floor(now.getTime() / 1000) % tfSecs);
+        const nextTime = new Date(Date.now() + rem * 1000);
+        const nextTimeStr = `${nextTime.getHours().toString().padStart(2, '0')}:${nextTime.getMinutes().toString().padStart(2, '0')}`;
+
         setAiSignal({
           direction: data.direction,
-          confidence: data.confidence
+          confidence: data.confidence,
+          nextCandleTime: nextTimeStr
         });
 
         addLog(`🧠 Бэкенд ИИ: ${data.reasoning} Сигнал: ${data.direction} (${data.confidence}%)`, 'vision');
@@ -581,19 +592,29 @@ export default function App() {
             </button>
           </div>
 
-          <div className="bg-gradient-to-b from-amber-950/60 to-slate-950 border-2 border-amber-500/80 rounded-xl p-4 text-center relative overflow-hidden">
+          {/* ЗОЛОТАЯ РАМКА ДЛЯ СИГНАЛА С ВРЕМЕНЕМ СЛЕДУЮЩЕЙ СВЕЧИ */}
+          <div className="bg-gradient-to-b from-amber-950/60 to-slate-950 border-2 border-amber-500/80 rounded-xl p-4 text-center relative overflow-hidden shadow-lg shadow-amber-500/10">
             {!aiSignal ? (
               <div className="py-3 text-xs text-slate-400 font-mono animate-pulse">
                 {isAnalyzing ? `⏳ Ожидание шлюза (${formatTimer(candleTimer)})...` : 'Нажмите ЗАПУСК ИИ'}
               </div>
             ) : (
-              <div className="space-y-1">
+              <div className="space-y-2">
                 <div className="text-2xl font-black flex items-center justify-center gap-2">
                   <span className="text-amber-400">ВХОД:</span>
                   <span className={aiSignal.direction === 'CALL' ? 'text-emerald-400 bg-emerald-950 px-3 py-0.5 rounded border border-emerald-500' : 'text-rose-400 bg-rose-950 px-3 py-0.5 rounded border border-rose-500'}>
                     {aiSignal.direction}
                   </span>
                 </div>
+
+                {/* НОВЫЙ БЛОК: ВРЕМЯ СВЕЧИ */}
+                {aiSignal.nextCandleTime && (
+                  <div className="bg-slate-900/90 border border-amber-500/30 rounded-lg py-1.5 px-2">
+                    <div className="text-[10px] text-amber-300 font-semibold uppercase tracking-wider">Свеча открывается в:</div>
+                    <div className="text-xl font-mono font-black text-white tracking-widest">{aiSignal.nextCandleTime}</div>
+                  </div>
+                )}
+
                 <div className="text-xs text-amber-300 font-mono">Точность шлюза: <span className="font-bold text-white">{aiSignal.confidence}%</span></div>
               </div>
             )}
