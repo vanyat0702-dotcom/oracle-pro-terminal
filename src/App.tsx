@@ -50,7 +50,7 @@ export default function App() {
     entryPrice: number;
     exitPrice?: number;
     status: 'PENDING' | 'WIN' | 'LOSS';
-  }>>;
+  }>>([]);
   const [pendingTestItem, setPendingTestItem] = useState<{ id: number; direction: 'CALL' | 'PUT'; entryPrice: number } | null>(null);
   // ====================================================================
 
