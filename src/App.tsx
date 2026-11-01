@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Zap, LineChart, Database, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, BarChart3, LayoutGrid, Square, MessageSquare, Clock, Globe, Target, Activity, PenTool, Sparkles, Triangle, Flame, StopCircle, History, Trash2, BookOpen } from 'lucide-react';
+import { ShieldCheck, Zap, LineChart, Database, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, BarChart3, LayoutGrid, Square, MessageSquare, Clock, Globe, Target, Activity, PenTool, Sparkles, Triangle, Flame, StopCircle, History, Trash2, BookOpen, Volume2, VolumeX, Calculator, Sliders } from 'lucide-react';
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
 
 export default function App() {
@@ -12,12 +12,20 @@ export default function App() {
   // Режим экрана
   const [viewMode, setViewMode] = useState<'single' | 'quad'>('single');
   
-  // Настройки времени и языка
+  // Настройки времени, языка и звука
   const [timezone, setTimezone] = useState<'Europe/Moscow' | 'Etc/UTC'>('Europe/Moscow');
   const [lang, setLang] = useState<'ru' | 'en'>('ru');
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
-  // Вкладка правой панели
-  const [rightTab, setRightTab] = useState<'logs' | 'history'>('logs');
+  // Вкладка правой панели: Логи / История / Мартенгейл
+  const [rightTab, setRightTab] = useState<'logs' | 'history' | 'martingale'>('logs');
+
+  // Индикаторы TradingView
+  const [activeIndicator, setActiveIndicator] = useState<string>('RSI');
+
+  // Калькулятор Мартенгейла
+  const [startAmount, setStartAmount] = useState<string>("100");
+  const [payoutPercent, setPayoutPercent] = useState<string>("85");
 
   // 4 пары для сетки
   const [quadPair1, setQuadPair1] = useState<TradingPair>(TRADING_PAIRS[11]);
@@ -41,7 +49,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'ИИ-мозг загрузил глобальную библиотеку мировых паттернов (120+ формаций).' : 'AI Brain loaded global world pattern library (120+ formations).', 
+      text: lang === 'ru' ? 'Терминал инициализирован. Звуковые алерты и калькулятор Мартингейла активны.' : 'Terminal initialized. Audio alerts & Martingale calculator active.', 
       type: 'info' 
     }
   ]);
@@ -51,6 +59,30 @@ export default function App() {
     { id: 1, time: '01:30', pair: 'EUR/USD', direction: 'CALL', winrate: 96, strategy: 'Паттерн: Слом структуры (BOS)' },
     { id: 2, time: '02:15', pair: 'BTC/USDT', direction: 'PUT', winrate: 94, strategy: 'Фигура: Клин (Falling Wedge)' }
   ]);
+
+  // Функция воспроизведения звука (Web Audio API без внешних файлов)
+  const playBeep = (type: 'alert' | 'sniper') => {
+    if (!soundEnabled) return;
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = type === 'sniper' ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(type === 'sniper' ? 880 : 587.33, audioCtx.currentTime); // A5 или D5
+      
+      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.5);
+    } catch (e) {
+      console.log('Audio error:', e);
+    }
+  };
 
   // WebSocket котировок
   useEffect(() => {
@@ -104,6 +136,7 @@ export default function App() {
       setCandleTimer(timeLeft);
 
       if (isAnalyzing && timeLeft === 10) {
+        playBeep('sniper');
         const isCall = Math.random() > 0.4;
         const conf = Math.floor(Math.random() * 5) + 95;
         const dir = isCall ? 'CALL' : 'PUT';
@@ -127,9 +160,9 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [timeframe, isAnalyzing, lang, selectedPair, detectedPattern]);
+  }, [timeframe, isAnalyzing, lang, selectedPair, detectedPattern, soundEnabled]);
 
-  // ГЛОБАЛЬНАЯ БАЗА МИРОВЫХ ПАТТЕРНОВ И СТРАТЕГИЙ
+  // Глобальные мировые паттерны
   const globalWorldPatterns = [
     {
       category: 'Классический Тех. Анализ',
@@ -166,24 +199,6 @@ export default function App() {
       descEn: 'Testing key support/resistance level twice with rejection bounce confirmation.',
       logRu: '📊 Геометрия рынка: Обнаружена фигура "Двойное дно". Уровень удержан покупателями, ожидается импульс вверх.',
       logEn: '📊 Market Geometry: "Double Bottom" pattern detected. Level defended by buyers, expecting upward impulse.'
-    },
-    {
-      category: 'Импульсный пробой',
-      nameRu: 'Пробой зоны консолидации со всплеском объема',
-      nameEn: 'Consolidation Zone Breakout with Volume Spike',
-      descRu: 'Выход цены из узкого флэта на повышенном тиковом объеме.',
-      descEn: 'Price exit from narrow flat range on heightened tick volume.',
-      logRu: '⚡ Объемный анализ: Зафиксирован пробой зоны накопления с резким расширением диапазона свечи.',
-      logEn: '⚡ Volume Analysis: Accumulation zone breakout detected with sharp candle range expansion.'
-    },
-    {
-      category: 'Паттерны Продолжения',
-      nameRu: 'Флаг / Вымпел по тренду (Bull / Bear Flag)',
-      nameEn: 'Trend Flag / Pennant Continuation Pattern',
-      descRu: 'Краткосрочная коррекция в виде полотна против тренда после сильного импульсного движения.',
-      descEn: 'Short-term counter-trend consolidation flag following a strong impulsive move.',
-      logRu: '🚩 Трендовый сетап: Образовался паттерн "Флаг" после импульса. Коррекция завершена, продолжение тренда.',
-      logEn: '🚩 Trend Setup: "Flag" pattern formed after impulse. Correction completed, trend continuation imminent.'
     }
   ];
 
@@ -192,13 +207,13 @@ export default function App() {
     setAiSignal(null);
     setDetectedPattern(null);
     setKeyCandles([]);
+    playBeep('alert');
     
     addLog(
-      lang === 'ru' ? `> Глубокое сканирование ${selectedPair.displaySymbol} (${timeframe}M) по всей мировой базе паттернов...` : `> Deep scanning ${selectedPair.displaySymbol} (${timeframe}M) across global pattern database...`, 
+      lang === 'ru' ? `> Глубокое сканирование ${selectedPair.displaySymbol} (${timeframe}M) по мировой базе паттернов...` : `> Deep scanning ${selectedPair.displaySymbol} (${timeframe}M) across global pattern database...`, 
       'info'
     );
 
-    // ИИ интеллектуально сопоставляет состояние рынка с базой знаний
     setTimeout(() => {
       const selectedWorldPattern = globalWorldPatterns[Math.floor(Math.random() * globalWorldPatterns.length)];
       const base = parseFloat(price);
@@ -232,6 +247,26 @@ export default function App() {
     );
   };
 
+  // Расчет Мартингейла (1-4 ступени с учетом процента выплаты брокера)
+  const calculateMartingale = () => {
+    const base = parseFloat(startAmount) || 100;
+    const payout = parseFloat(payoutPercent) || 85;
+    const multiplier = 1 + (100 / payout); // Коэффициент перекрытия убытка с прибылью
+
+    let steps = [];
+    let current = base;
+
+    for (let i = 1; i <= 4; i++) {
+      const amount = Math.round(current);
+      const totalInvested = steps.reduce((sum, s) => sum + s.amount, 0) + amount;
+      const potentialProfit = Math.round((amount * (payout / 100)) - (totalInvested - amount));
+      
+      steps.push({ step: i, amount, total: totalInvested, profit: potentialProfit });
+      current = current * multiplier;
+    }
+    return steps;
+  };
+
   const addLog = (text: string, type: 'info' | 'level' | 'pattern' | 'sniper') => {
     const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     setAiLogs(prev => [{ id: Date.now(), time: currentTime, text, type }, ...prev.slice(0, 15)]);
@@ -253,11 +288,20 @@ export default function App() {
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
               ORACLE PRO TERMINAL
             </h1>
-            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Global Pattern Intelligence Engine</p>
+            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Audio Alerts & Martingale Engine</p>
           </div>
         </div>
         
         <div className="flex items-center gap-3 text-xs">
+          {/* Кнопка звука */}
+          <button
+            onClick={() => setSoundEnabled(!soundEnabled)}
+            className={`p-2 rounded-lg border transition-all flex items-center gap-1 ${soundEnabled ? 'bg-cyan-950/60 border-cyan-800 text-cyan-400' : 'bg-slate-900 border-slate-800 text-slate-500'}`}
+            title={soundEnabled ? 'Звук включен' : 'Звук выключен'}
+          >
+            {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </button>
+
           <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
             <button
               onClick={() => setTimezone('Europe/Moscow')}
@@ -317,9 +361,26 @@ export default function App() {
         <section className="lg:col-span-3 flex flex-col gap-4">
           
           <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-3.5 backdrop-blur flex flex-col gap-2">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 pb-1 border-b border-slate-800/80">
-              <Layers className="w-4 h-4 text-cyan-400" />
-              {lang === 'ru' ? 'ВЫБОР АКТИВА (INTRADE BAR):' : 'SELECT ASSET (INTRADE BAR):'}
+            <div className="flex items-center justify-between text-xs font-bold text-slate-400 pb-1 border-b border-slate-800/80">
+              <span className="flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-cyan-400" />
+                {lang === 'ru' ? 'ВЫБОР АКТИВА (INTRADE BAR):' : 'SELECT ASSET (INTRADE BAR):'}
+              </span>
+
+              {/* Быстрое переключение индикаторов */}
+              <div className="flex items-center gap-1 text-[11px]">
+                <Sliders className="w-3.5 h-3.5 text-purple-400" />
+                <span className="text-slate-400">Индикатор:</span>
+                {['RSI', 'MACD', 'Bollinger'].map(ind => (
+                  <button
+                    key={ind}
+                    onClick={() => setActiveIndicator(ind)}
+                    className={`px-2 py-0.5 rounded font-mono ${activeIndicator === ind ? 'bg-purple-600 text-white font-bold' : 'bg-slate-950 text-slate-400 hover:text-white'}`}
+                  >
+                    {ind}
+                  </button>
+                ))}
+              </div>
             </div>
             
             <div className="grid grid-cols-4 sm:grid-cols-7 md:grid-cols-11 gap-1.5">
@@ -377,19 +438,19 @@ export default function App() {
                 </div>
               </div>
 
-              {/* ПАНЕЛЬ РАСПОЗНАННОГО МИРОВОГО ПАТТЕРНА И СВЕЧЕЙ */}
+              {/* ПАНЕЛЬ ПАТТЕРНА И КЛЮЧЕВЫХ СВЕЧЕЙ */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                 <div className="bg-slate-950/90 border border-purple-500/50 rounded-xl p-3 flex flex-col gap-1">
                   <div className="flex items-center justify-between text-xs font-bold text-purple-300">
                     <span className="flex items-center gap-1">
                       <BookOpen className="w-3.5 h-3.5 text-purple-400" />
-                      {lang === 'ru' ? 'РАСПОЗНАННЫЙ МИРОВОЙ ПАТТЕРН:' : 'DETECTED WORLD PATTERN:'}
+                      {lang === 'ru' ? `ПАТТЕРН (${activeIndicator}):` : `PATTERN (${activeIndicator}):`}
                     </span>
                     {detectedPattern && <span className="font-mono text-[10px] text-emerald-400">{detectedPattern.confidence}% Winrate</span>}
                   </div>
                   {!detectedPattern ? (
                     <span className="text-[11px] text-slate-500 italic py-1">
-                      {isAnalyzing ? (lang === 'ru' ? '🔍 Сканирование 120+ мировых формаций...' : '🔍 Scanning 120+ world formations...') : (lang === 'ru' ? 'Нажмите ЗАПУСК для анализа графика' : 'Click START to analyze chart')}
+                      {isAnalyzing ? (lang === 'ru' ? '🔍 Сканирование формата...' : '🔍 Scanning format...') : (lang === 'ru' ? 'Нажмите ЗАПУСК для анализа' : 'Click START to analyze')}
                     </span>
                   ) : (
                     <div>
@@ -404,7 +465,7 @@ export default function App() {
                   <div className="flex items-center justify-between text-xs font-bold text-cyan-400">
                     <span className="flex items-center gap-1">
                       <Flame className="w-3.5 h-3.5 text-amber-400" />
-                      {lang === 'ru' ? 'КЛЮЧЕВЫЕ СВЕЧИ И УРОВНИ:' : 'KEY CANDLES & LEVELS:'}
+                      {lang === 'ru' ? 'КЛЮЧЕВЫЕ СВЕЧИ:' : 'KEY CANDLES:'}
                     </span>
                   </div>
                   {keyCandles.length === 0 ? (
@@ -424,11 +485,11 @@ export default function App() {
                 </div>
               </div>
 
-              {/* ЧИСТЫЙ ИНТЕРАКТИВНЫЙ ГРАФИК */}
+              {/* ГРАФИК */}
               <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden min-h-[360px] relative">
                 <iframe
-                  key={`${selectedPair.symbol}-${timeframe}-${timezone}-${lang}`}
-                  src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${selectedPair.symbol}&interval=${timeframe}&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies=[]&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
+                  key={`${selectedPair.symbol}-${timeframe}-${timezone}-${lang}-${activeIndicator}`}
+                  src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${selectedPair.symbol}&interval=${timeframe}&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=${activeIndicator === 'RSI' ? 'RSI@tv-basicstudies' : activeIndicator === 'MACD' ? 'MACD@tv-basicstudies' : 'BB@tv-basicstudies'}&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
                   className="w-full h-full border-0 absolute inset-0 pointer-events-auto"
                   title="TradingView Chart"
                 ></iframe>
@@ -516,7 +577,7 @@ export default function App() {
             </div>
 
             <span className="text-xs text-amber-200/80 block mb-1">
-              {lang === 'ru' ? 'Прогноз по мировому паттерну:' : 'World pattern forecast:'}
+              {lang === 'ru' ? 'Прогноз по стратегии:' : 'Strategy forecast:'}
             </span>
 
             {!aiSignal ? (
@@ -544,19 +605,25 @@ export default function App() {
             )}
           </div>
 
-          {/* Вкладки: Логи / История */}
-          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+          {/* Вкладки: Логи / История / Мартингейл */}
+          <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px]">
             <button
               onClick={() => setRightTab('logs')}
-              className={`flex-1 py-1.5 rounded-lg font-bold transition-all flex items-center justify-center gap-1.5 ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 rounded-lg font-bold transition-all flex items-center justify-center gap-1 ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}
             >
-              <MessageSquare className="w-3.5 h-3.5" /> {lang === 'ru' ? 'Логи и ИИ' : 'AI Logs'}
+              <MessageSquare className="w-3.5 h-3.5" /> Логи
             </button>
             <button
               onClick={() => setRightTab('history')}
-              className={`flex-1 py-1.5 rounded-lg font-bold transition-all flex items-center justify-center gap-1.5 ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-1.5 rounded-lg font-bold transition-all flex items-center justify-center gap-1 ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}
             >
-              <History className="w-3.5 h-3.5" /> {lang === 'ru' ? 'История' : 'History'} ({historyList.length})
+              <History className="w-3.5 h-3.5" /> История
+            </button>
+            <button
+              onClick={() => setRightTab('martingale')}
+              className={`flex-1 py-1.5 rounded-lg font-bold transition-all flex items-center justify-center gap-1 ${rightTab === 'martingale' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}
+            >
+              <Calculator className="w-3.5 h-3.5" /> Мартен
             </button>
           </div>
 
@@ -581,7 +648,7 @@ export default function App() {
                 ))}
               </div>
             </div>
-          ) : (
+          ) : rightTab === 'history' ? (
             <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-2 overflow-hidden min-h-[220px]">
               <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                 <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
@@ -619,13 +686,57 @@ export default function App() {
                 )}
               </div>
             </div>
+          ) : (
+            /* КАЛЬКУЛЯТОР МАРТИНГЕЙЛА */
+            <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-3 overflow-hidden min-h-[220px] font-mono">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                <span className="text-xs font-bold text-cyan-400 flex items-center gap-1">
+                  <Calculator className="w-3.5 h-3.5" /> {lang === 'ru' ? 'Калькулятор Мартингейла' : 'Martingale Calculator'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <label className="text-[10px] text-slate-400 block mb-1">Старт ($):</label>
+                  <input 
+                    type="number" 
+                    value={startAmount} 
+                    onChange={(e) => setStartAmount(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs outline-none focus:border-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-400 block mb-1">Выплата (%):</label>
+                  <input 
+                    type="number" 
+                    value={payoutPercent} 
+                    onChange={(e) => setPayoutPercent(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs outline-none focus:border-cyan-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 text-[11px]">
+                {calculateMartingale().map(step => (
+                  <div key={step.step} className="p-2 rounded bg-slate-900/90 border border-slate-800 flex justify-between items-center">
+                    <div>
+                      <span className="text-cyan-400 font-bold">Шаг {step.step}:</span> <span className="text-white font-bold">${step.amount}</span>
+                    </div>
+                    <div className="text-right text-[10px]">
+                      <span className="text-slate-400">Общ: ${step.total}</span> <br/>
+                      <span className="text-emerald-400 font-bold">Прибыль: +${step.profit}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </aside>
       </main>
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v4.7 (Global Pattern Intelligence Engine)</span>
+        <span>ORACLE PRO v4.8 (Audio Alerts, Indicators & Martingale Suite)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
