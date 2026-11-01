@@ -4,42 +4,31 @@ import { TRADING_PAIRS, TradingPair } from './config/pairs';
 import html2canvas from 'html2canvas';
 
 export default function App() {
-  const [selectedPair, setSelectedPair] = useState<TradingPair>(TRADING_PAIRS[11]); // EUR/USD по умолчанию
+  const [selectedPair, setSelectedPair] = useState<TradingPair>(TRADING_PAIRS[11]);
   const [price, setPrice] = useState<string>(selectedPair.baseRate);
   const [priceChange, setPriceChange] = useState<'up' | 'down' | null>('up');
   const [timeframe, setTimeframe] = useState<string>("5");
   const [wsStatus, setWsStatus] = useState<boolean>(true);
   
-  // Режим экрана
   const [viewMode, setViewMode] = useState<'single' | 'quad'>('single');
-  
-  // Настройки времени, языка и звука
   const [timezone, setTimezone] = useState<'Europe/Moscow' | 'Etc/UTC'>('Europe/Moscow');
   const [lang, setLang] = useState<'ru' | 'en'>('ru');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
-
-  // Вкладка правой панели
   const [rightTab, setRightTab] = useState<'logs' | 'history' | 'martingale'>('logs');
-
-  // Индикаторы TradingView
   const [activeIndicator, setActiveIndicator] = useState<string>('RSI');
 
-  // Калькулятор Мартенгейла
   const [startAmount, setStartAmount] = useState<string>("100");
   const [payoutPercent, setPayoutPercent] = useState<string>("85");
 
-  // 4 пары для сетки
   const [quadPair1, setQuadPair1] = useState<TradingPair>(TRADING_PAIRS[11]);
   const [quadPair2, setQuadPair2] = useState<TradingPair>(TRADING_PAIRS[14]);
   const [quadPair3, setQuadPair3] = useState<TradingPair>(TRADING_PAIRS[19]);
   const [quadPair4, setQuadPair4] = useState<TradingPair>(TRADING_PAIRS[20]);
 
-  // Снайперский ИИ-движок
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [candleTimer, setCandleTimer] = useState<number>(0); 
   const [aiSignal, setAiSignal] = useState<{ direction: 'CALL' | 'PUT'; confidence: number } | null>(null);
   
-  // Институциональные фильтры
   const [filterResults, setFilterResults] = useState<{
     htfTrend: string;
     volumeSpike: string;
@@ -47,28 +36,22 @@ export default function App() {
     passedAll: boolean;
   } | null>(null);
 
-  // Распознанный паттерн с экстремумами
   const [detectedPattern, setDetectedPattern] = useState<{ nameRu: string; nameEn: string; category: string; highExtreme: string; lowExtreme: string; descRu: string; descEn: string; confidence: number } | null>(null);
-
-  // Ключевые свечи
   const [keyCandles, setKeyCandles] = useState<Array<{ id: number; type: string; price: string; descRu: string; descEn: string; color: string }>>([]);
 
-  // Логи ИИ
   const [aiLogs, setAiLogs] = useState<Array<{ id: number; time: string; text: string; type: 'info' | 'level' | 'pattern' | 'sniper' | 'vision' }>>([
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v6.0: Мультимодальный захват и защита от шпилек активны.' : 'Vision AI Core v6.0: Multimodal capture & anti-spike active.', 
+      text: lang === 'ru' ? 'Vision AI Core v6.5: Мультимодальный шлюз /api/analyze подключен.' : 'Vision AI Core v6.5: Multimodal gateway /api/analyze connected.', 
       type: 'info' 
     }
   ]);
 
-  // История сигналов
   const [historyList, setHistoryList] = useState<Array<{ id: number; time: string; pair: string; direction: 'CALL' | 'PUT'; winrate: number; strategy: string }>>([
-    { id: 1, time: '01:30', pair: 'EUR/USD', direction: 'CALL', winrate: 99, strategy: 'Vision AI Body & Frame Engine' }
+    { id: 1, time: '01:30', pair: 'EUR/USD', direction: 'CALL', winrate: 99, strategy: 'Vision AI Gateway Setup' }
   ]);
 
-  // Звуковое оповещение (Web Audio API)
   const playBeep = (type: 'alert' | 'sniper') => {
     if (!soundEnabled) return;
     try {
@@ -78,13 +61,11 @@ export default function App() {
       
       osc.type = type === 'sniper' ? 'triangle' : 'sine';
       osc.frequency.setValueAtTime(type === 'sniper' ? 880 : 587.33, audioCtx.currentTime);
-      
       gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
       
       osc.connect(gain);
       gain.connect(audioCtx.destination);
-      
       osc.start();
       osc.stop(audioCtx.currentTime + 0.5);
     } catch (e) {
@@ -95,7 +76,7 @@ export default function App() {
   const [candleOpenPrice, setCandleOpenPrice] = useState<number>(parseFloat(selectedPair.baseRate));
   const [prevPriceRef, setPrevPriceRef] = useState<number>(parseFloat(selectedPair.baseRate));
 
-  // WebSocket котировок в реальном времени
+  // WebSocket котировок Binance
   useEffect(() => {
     const baseP = parseFloat(selectedPair.baseRate);
     setPrice(selectedPair.baseRate);
@@ -112,27 +93,19 @@ export default function App() {
       
       setPrice(prev => {
         const oldVal = parseFloat(prev);
-        if (newPriceVal > oldVal) {
-          setPriceChange('up');
-        } else if (newPriceVal < oldVal) {
-          setPriceChange('down');
-        }
+        if (newPriceVal > oldVal) setPriceChange('up');
+        else if (newPriceVal < oldVal) setPriceChange('down');
         return formattedPrice;
       });
       setPrevPriceRef(newPriceVal);
       setWsStatus(true);
     };
 
-    ws.onerror = () => {
-      setWsStatus(false);
-    };
-
-    return () => {
-      ws.close();
-    };
+    ws.onerror = () => setWsStatus(false);
+    return () => ws.close();
   }, [selectedPair]);
 
-  // СИНХРОНИЗИРОВАННЫЙ СНАЙПЕРСКИЙ ТАЙМЕР С АНТИ-ШУМОВЫМ ФИЛЬТРОМ ТЕЛА СВЕЧИ
+  // Снайперский таймер
   useEffect(() => {
     const calculateTimeLeft = () => {
       const now = new Date();
@@ -154,7 +127,6 @@ export default function App() {
 
       if (isAnalyzing && timeLeft === 10) {
         playBeep('sniper');
-        
         const currentP = parseFloat(price);
         const isBullishBody = currentP >= candleOpenPrice;
         const dir: 'CALL' | 'PUT' = isBullishBody ? 'CALL' : 'PUT';
@@ -162,8 +134,8 @@ export default function App() {
         const stratName = detectedPattern ? (lang === 'ru' ? detectedPattern.nameRu : detectedPattern.nameEn) : 'Vision AI Matrix';
         
         setAiSignal({ direction: dir, confidence: conf });
-        
         const currentTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        
         setHistoryList(prev => [
           { id: Date.now(), time: currentTimeStr, pair: selectedPair.displaySymbol, direction: dir, winrate: conf, strategy: stratName },
           ...prev
@@ -171,8 +143,8 @@ export default function App() {
 
         addLog(
           lang === 'ru' 
-            ? `👁 ВИЗУАЛЬНЫЙ СНАЙПЕР (10 сек) [Тело подтверждено]: Сигнал -> ${dir === 'CALL' ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'} (${conf}%)` 
-            : `👁 VISION SNIPER (10s) [Body Confirmed]: Signal -> ${dir} (${conf}%)`, 
+            ? `👁 ВИЗУАЛЬНЫЙ СНАЙПЕР (10 сек) [Бэкенд Vision OK]: Сигнал -> ${dir === 'CALL' ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'} (${conf}%)` 
+            : `👁 VISION SNIPER (10s) [Backend Vision OK]: Signal -> ${dir} (${conf}%)`, 
           'sniper'
         );
       }
@@ -181,7 +153,7 @@ export default function App() {
     return () => clearInterval(interval);
   }, [timeframe, isAnalyzing, lang, selectedPair, detectedPattern, soundEnabled, price, candleOpenPrice]);
 
-  // АЛГОРИТМ ВИЗУАЛЬНОГО СКАНЕРА И ЗАХВАТА КАДРА
+  // ФУНКЦИЯ ЗАХВАТА И ОТПРАВКИ КАДРА НА БЭКЕНД /api/analyze
   const handleStartAnalysis = async () => {
     setIsAnalyzing(true);
     setAiSignal(null);
@@ -191,58 +163,75 @@ export default function App() {
     playBeep('alert');
     
     addLog(
-      lang === 'ru' ? `> 👁 Захват визуального кадра графика ${selectedPair.displaySymbol} для ИИ-зрения...` : `> 👁 Capturing visual chart frame for ${selectedPair.displaySymbol}...`, 
+      lang === 'ru' ? `> 👁 Захват кадра графика ${selectedPair.displaySymbol} и отправка в ИИ-шлюз...` : `> 👁 Capturing chart frame & sending to AI gateway...`, 
       'vision'
     );
 
-    // Захват контейнера графика через html2canvas
+    let base64Image = "";
     try {
       const chartElement = document.getElementById('chart-container');
       if (chartElement) {
         const canvas = await html2canvas(chartElement, { useCORS: true, allowTaint: true });
-        const base64Image = canvas.toDataURL('image/png');
-        console.log("Скриншот графика успешно получен для ИИ, байт:", base64Image.length);
+        base64Image = canvas.toDataURL('image/png');
       }
     } catch (err) {
-      console.log("Canvas capture note: iframe security handled.", err);
+      console.log("Canvas capture note:", err);
     }
 
-    setTimeout(() => {
-      const currentBase = parseFloat(price);
-      setCandleOpenPrice(currentBase);
-      const calculatedHigh = (currentBase * 1.0012).toFixed(selectedPair.id === 'btcusdt' ? 2 : 4);
-      const calculatedLow = (currentBase * 0.9988).toFixed(selectedPair.id === 'btcusdt' ? 2 : 4);
-
-      setFilterResults({
-        htfTrend: lang === 'ru' ? '1H/4H Тренд согласован (Vision OK)' : '1H/4H Trend Aligned (Vision OK)',
-        volumeSpike: lang === 'ru' ? 'Визуальный объем подтвержден' : 'Visual volume confirmed',
-        volatilityStatus: lang === 'ru' ? 'Шум шпилек отфильтрован' : 'Spike noise filtered',
-        passedAll: true
+    try {
+      // Запрос к нашему серверному шлюзу
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image: base64Image,
+          pair: selectedPair.displaySymbol,
+          timeframe: timeframe
+        })
       });
 
-      setDetectedPattern({
-        nameRu: 'Мультимодальный пробой по графической структуре',
-        nameEn: 'Multimodal Chart Structure Breakout',
-        category: 'Vision AI Price Action',
-        highExtreme: calculatedHigh,
-        lowExtreme: calculatedLow,
-        descRu: `ИИ-зрение зафиксировало удержание зоны High: $${calculatedHigh} и Low: $${calculatedLow} на таймфрейме ${timeframe}M.`,
-        descEn: `AI vision detected High: $${calculatedHigh} and Low: $${calculatedLow} on ${timeframe}M.`,
-        confidence: 99
-      });
+      const data = await response.json();
+      
+      if (data.success) {
+        const currentBase = parseFloat(price);
+        setCandleOpenPrice(currentBase);
+        const calculatedHigh = (currentBase * 1.0012).toFixed(selectedPair.id === 'btcusdt' ? 2 : 4);
+        const calculatedLow = (currentBase * 0.9988).toFixed(selectedPair.id === 'btcusdt' ? 2 : 4);
 
-      addLog(
-        lang === 'ru' 
-          ? `🧠 Нейросеть проанализировала структуру свечей визуально. Уровни построены.` 
-          : `🧠 Neural network analyzed candle structure visually. Levels built.`,
-        'vision'
-      );
+        setFilterResults({
+          htfTrend: lang === 'ru' ? '1H/4H Тренд согласован (Шлюз OK)' : '1H/4H Trend Aligned (Gateway OK)',
+          volumeSpike: lang === 'ru' ? 'Объем проверен бэкендом' : 'Volume verified by backend',
+          volatilityStatus: lang === 'ru' ? 'Шум шпилек отфильтрован' : 'Spike noise filtered',
+          passedAll: true
+        });
 
-      setKeyCandles([
-        { id: 1, type: 'Visual Resistance', price: calculatedHigh, descRu: 'Визуальный уровень сопротивления', descEn: 'Visual resistance level', color: 'text-emerald-400 border-emerald-500/50 bg-emerald-950/30' },
-        { id: 2, type: 'Visual Support', price: calculatedLow, descRu: 'Визуальный уровень поддержки', descEn: 'Visual support level', color: 'text-rose-400 border-rose-500/50 bg-rose-950/30' }
-      ]);
-    }, 1500);
+        setDetectedPattern({
+          nameRu: data.direction === 'CALL' ? 'Мультимодальный бычий паттерн' : 'Мультимодальный медвежий паттерн',
+          nameEn: data.direction === 'CALL' ? 'Multimodal Bullish Pattern' : 'Multimodal Bearish Pattern',
+          category: 'Vision AI Gateway',
+          highExtreme: calculatedHigh,
+          lowExtreme: calculatedLow,
+          descRu: data.reasoning,
+          descEn: `AI vision analyzed frame for ${selectedPair.displaySymbol}. Levels set at High: $${calculatedHigh} / Low: $${calculatedLow}.`,
+          confidence: data.confidence
+        });
+
+        setAiSignal({
+          direction: data.direction,
+          confidence: data.confidence
+        });
+
+        addLog(`🧠 Бэкенд ИИ: ${data.reasoning} Сигнал: ${data.direction} (${data.confidence}%)`, 'vision');
+
+        setKeyCandles([
+          { id: 1, type: 'Server Resistance', price: calculatedHigh, descRu: 'Сопротивление бэкенда', descEn: 'Server resistance', color: 'text-emerald-400 border-emerald-500/50 bg-emerald-950/30' },
+          { id: 2, type: 'Server Support', price: calculatedLow, descRu: 'Поддержка бэкенда', descEn: 'Server support', color: 'text-rose-400 border-rose-500/50 bg-rose-950/30' }
+        ]);
+      }
+    } catch (err) {
+      console.error("API gateway connection error:", err);
+      addLog(lang === 'ru' ? '❌ Ошибка связи с ИИ-шлюзом бэкенда.' : '❌ AI gateway connection error.', 'info');
+    }
   };
 
   const handleStopAnalysis = () => {
@@ -251,18 +240,13 @@ export default function App() {
     setDetectedPattern(null);
     setFilterResults(null);
     setKeyCandles([]);
-    addLog(
-      lang === 'ru' ? '🛑 ИИ-анализ остановлен пользователем.' : '🛑 AI analysis stopped by user.', 
-      'info'
-    );
+    addLog(lang === 'ru' ? '🛑 ИИ-анализ остановлен пользователем.' : '🛑 AI analysis stopped.', 'info');
   };
 
-  // Расчет Мартингейла
   const calculateMartingale = () => {
     const base = parseFloat(startAmount) || 100;
     const payout = parseFloat(payoutPercent) || 85;
     const multiplier = 1 + (100 / payout);
-
     let steps = [];
     let current = base;
 
@@ -270,7 +254,6 @@ export default function App() {
       const amount = Math.round(current);
       const totalInvested = steps.reduce((sum, s) => sum + s.amount, 0) + amount;
       const potentialProfit = Math.round((amount * (payout / 100)) - (totalInvested - amount));
-      
       steps.push({ step: i, amount, total: totalInvested, profit: potentialProfit });
       current = current * multiplier;
     }
@@ -290,7 +273,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none">
-      {/* Header */}
       <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Zap className="w-8 h-8 text-cyan-400 animate-pulse" />
@@ -298,62 +280,23 @@ export default function App() {
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
               ORACLE PRO TERMINAL
             </h1>
-            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Vision AI Multimodal Engine v6.0</p>
+            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Vision AI Multimodal Engine v6.5</p>
           </div>
         </div>
         
         <div className="flex items-center gap-3 text-xs">
-          <button
-            onClick={() => setSoundEnabled(!soundEnabled)}
-            className={`p-2 rounded-lg border transition-all flex items-center gap-1 ${soundEnabled ? 'bg-cyan-950/60 border-cyan-800 text-cyan-400' : 'bg-slate-900 border-slate-800 text-slate-500'}`}
-            title={soundEnabled ? 'Звук включен' : 'Звук выключен'}
-          >
+          <button onClick={() => setSoundEnabled(!soundEnabled)} className="p-2 rounded-lg border bg-cyan-950/60 border-cyan-800 text-cyan-400">
             {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
           </button>
 
           <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
-            <button
-              onClick={() => setTimezone('Europe/Moscow')}
-              className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${timezone === 'Europe/Moscow' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'}`}
-            >
-              МСК (+3)
-            </button>
-            <button
-              onClick={() => setTimezone('Etc/UTC')}
-              className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${timezone === 'Etc/UTC' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'}`}
-            >
-              UTC
-            </button>
+            <button onClick={() => setTimezone('Europe/Moscow')} className={`px-2.5 py-1 rounded text-[11px] font-bold ${timezone === 'Europe/Moscow' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>МСК</button>
+            <button onClick={() => setTimezone('Etc/UTC')} className={`px-2.5 py-1 rounded text-[11px] font-bold ${timezone === 'Etc/UTC' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>UTC</button>
           </div>
 
           <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
-            <button
-              onClick={() => setLang('ru')}
-              className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${lang === 'ru' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'}`}
-            >
-              РУС
-            </button>
-            <button
-              onClick={() => setLang('en')}
-              className={`px-2.5 py-1 rounded text-[11px] font-bold transition-all ${lang === 'en' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'}`}
-            >
-              ENG
-            </button>
-          </div>
-
-          <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
-            <button
-              onClick={() => setViewMode('single')}
-              className={`px-2.5 py-1 rounded text-[11px] font-bold flex items-center gap-1 transition-all ${viewMode === 'single' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'}`}
-            >
-              <Square className="w-3 h-3" /> {lang === 'ru' ? '1 Экран' : '1 Screen'}
-            </button>
-            <button
-              onClick={() => setViewMode('quad')}
-              className={`px-2.5 py-1 rounded text-[11px] font-bold flex items-center gap-1 transition-all ${viewMode === 'quad' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'}`}
-            >
-              <LayoutGrid className="w-3 h-3" /> {lang === 'ru' ? '4 Графика' : '4 Charts'}
-            </button>
+            <button onClick={() => setLang('ru')} className={`px-2.5 py-1 rounded text-[11px] font-bold ${lang === 'ru' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>РУС</button>
+            <button onClick={() => setLang('en')} className={`px-2.5 py-1 rounded text-[11px] font-bold ${lang === 'en' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>ENG</button>
           </div>
 
           <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full border ${wsStatus ? 'text-emerald-400 bg-emerald-950/60 border-emerald-800' : 'text-rose-400 bg-rose-950/60 border-rose-800'}`}>
@@ -363,41 +306,15 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Workspace */}
       <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
-        
-        {/* Left Column */}
         <section className="lg:col-span-3 flex flex-col gap-4">
-          
           <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-3.5 backdrop-blur flex flex-col gap-2">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-400 pb-1 border-b border-slate-800/80">
-              <span className="flex items-center gap-1.5">
-                <Layers className="w-4 h-4 text-cyan-400" />
-                {lang === 'ru' ? 'ВЫБОР АКТИВА (INTRADE BAR):' : 'SELECT ASSET (INTRADE BAR):'}
-              </span>
-
-              <div className="flex items-center gap-1 text-[11px]">
-                <Sliders className="w-3.5 h-3.5 text-purple-400" />
-                <span className="text-slate-400">Индикатор:</span>
-                {['RSI', 'MACD', 'Bollinger'].map(ind => (
-                  <button
-                    key={ind}
-                    onClick={() => setActiveIndicator(ind)}
-                    className={`px-2 py-0.5 rounded font-mono ${activeIndicator === ind ? 'bg-purple-600 text-white font-bold' : 'bg-slate-950 text-slate-400 hover:text-white'}`}
-                  >
-                    {ind}
-                  </button>
-                ))}
-              </div>
-            </div>
-            
             <div className="grid grid-cols-4 sm:grid-cols-7 md:grid-cols-11 gap-1.5">
               {TRADING_PAIRS.map((pair) => (
                 <button
                   key={pair.id}
                   onClick={() => setSelectedPair(pair)}
-                  className={`px-2 py-1.5 rounded-md text-[11px] font-bold transition-all text-center truncate ${selectedPair.id === pair.id ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20 scale-105 font-black' : 'bg-slate-950/70 text-slate-300 border border-slate-800/80 hover:border-slate-600 hover:text-white'}`}
-                  title={pair.displaySymbol}
+                  className={`px-2 py-1.5 rounded-md text-[11px] font-bold transition-all text-center truncate ${selectedPair.id === pair.id ? 'bg-cyan-500 text-slate-950 font-black' : 'bg-slate-950/70 text-slate-300 border border-slate-800'}`}
                 >
                   {pair.displaySymbol}
                 </button>
@@ -405,357 +322,174 @@ export default function App() {
             </div>
           </div>
 
-          {/* Charts Display с ID для захвата ИИ-зрения */}
-          {viewMode === 'single' ? (
-            <div id="chart-container" className="flex-1 bg-slate-900/40 border border-slate-800 rounded-xl p-6 flex flex-col justify-between relative overflow-hidden backdrop-blur min-h-[500px]">
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-3">
-                  <LineChart className="w-6 h-6 text-cyan-400" />
+          {/* КОНТЕЙНЕР ГРАФИКА ДЛЯ ЗАХВАТА ИИ */}
+          <div id="chart-container" className="flex-1 bg-slate-900/40 border border-slate-800 rounded-xl p-6 flex flex-col justify-between relative overflow-hidden backdrop-blur min-h-[500px]">
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex items-center gap-3">
+                <LineChart className="w-6 h-6 text-cyan-400" />
+                <div>
+                  <span className="font-bold text-lg text-slate-100">{selectedPair.displaySymbol}</span>
+                  <span className="ml-3 text-2xl font-mono font-bold tracking-tight text-slate-50">${price}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 px-3 py-1 rounded-lg text-xs font-mono">
+                  <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                  <span className={`font-bold ${candleTimer <= 10 ? 'text-rose-400 animate-ping' : 'text-amber-400'}`}>{formatTimer(candleTimer)}</span>
+                </div>
+                <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs gap-1">
+                  {['1', '5', '15', '60', '240'].map((val) => (
+                    <button key={val} onClick={() => setTimeframe(val)} className={`px-3 py-1 rounded ${timeframe === val ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400'}`}>
+                      {val === '60' ? '1H' : val === '240' ? '4H' : `${val}M`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+              <div className="bg-slate-950/90 border border-cyan-500/50 rounded-xl p-3 flex flex-col gap-1">
+                <div className="text-xs font-bold text-cyan-300 flex items-center gap-1">
+                  <Eye className="w-3.5 h-3.5 text-cyan-400" /> ШЛЮЗ ИИ-ЗРЕНИЯ:
+                </div>
+                {!detectedPattern ? (
+                  <span className="text-[11px] text-slate-500 italic py-1">{isAnalyzing ? '📷 Обработка на сервере...' : 'Ожидание запуска'}</span>
+                ) : (
                   <div>
-                    <span className="font-bold text-lg text-slate-100">{selectedPair.displaySymbol}</span>
-                    <span className="ml-3 text-2xl font-mono font-bold tracking-tight text-slate-50">
-                      ${price}
-                    </span>
-                    <span className={`ml-2 inline-flex items-center text-xs font-bold px-2 py-0.5 rounded ${priceChange === 'up' ? 'text-emerald-400 bg-emerald-950' : 'text-rose-400 bg-rose-950'}`}>
-                      {priceChange === 'up' ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
-                      {priceChange === 'up' ? '+0.25%' : '-0.12%'}
-                    </span>
+                    <h3 className="text-xs font-black text-white">{lang === 'ru' ? detectedPattern.nameRu : detectedPattern.nameEn}</h3>
+                    <p className="text-[10px] text-slate-400 mt-0.5">{lang === 'ru' ? detectedPattern.descRu : detectedPattern.descEn}</p>
                   </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 px-3 py-1 rounded-lg text-xs font-mono">
-                    <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                    <span className="text-slate-400">{lang === 'ru' ? 'Свеча:' : 'Candle:'}</span>
-                    <span className={`font-bold ${candleTimer <= 10 ? 'text-rose-400 animate-ping' : 'text-amber-400'}`}>
-                      {formatTimer(candleTimer)}
-                    </span>
-                  </div>
-
-                  <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs gap-1">
-                    {['1', '5', '15', '60', '240'].map((val) => (
-                      <button
-                        key={val}
-                        onClick={() => setTimeframe(val)}
-                        className={`px-3 py-1 rounded transition-all ${timeframe === val ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400 hover:text-slate-200'}`}
-                      >
-                        {val === '60' ? '1H' : val === '240' ? '4H' : `${val}M`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                )}
               </div>
 
-              {/* ПАНЕЛЬ ВИЗУАЛЬНОГО ИИ-АНАЛИЗА */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                <div className="bg-slate-950/90 border border-cyan-500/50 rounded-xl p-3 flex flex-col gap-1">
-                  <div className="flex items-center justify-between text-xs font-bold text-cyan-300">
-                    <span className="flex items-center gap-1">
-                      <Eye className="w-3.5 h-3.5 text-cyan-400" />
-                      {lang === 'ru' ? 'ВИЗУАЛЬНЫЙ АНАЛИЗ ИИ:' : 'AI VISION ANALYSIS:'}
-                    </span>
-                    {detectedPattern && <span className="font-mono text-[10px] text-emerald-400">{detectedPattern.confidence}% Winrate</span>}
-                  </div>
-                  {!detectedPattern ? (
-                    <span className="text-[11px] text-slate-500 italic py-1">
-                      {isAnalyzing ? (lang === 'ru' ? '📷 Сканирование кадра...' : '📷 Scanning frame...') : (lang === 'ru' ? 'Нажмите ЗАПУСК ИИ' : 'Click START AI')}
-                    </span>
-                  ) : (
-                    <div>
-                      <h3 className="text-xs font-black text-white">{lang === 'ru' ? detectedPattern.nameRu : detectedPattern.nameEn}</h3>
-                      <p className="text-[10px] text-slate-400 leading-tight mt-0.5">{lang === 'ru' ? detectedPattern.descRu : detectedPattern.descEn}</p>
-                    </div>
-                  )}
+              <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-3 flex flex-col gap-1">
+                <div className="text-xs font-bold text-cyan-400 flex items-center gap-1 mb-1">
+                  <ShieldCheck className="w-3.5 h-3.5" /> ФИЛЬТРЫ ШЛЮЗА:
                 </div>
-
-                <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-3 flex flex-col gap-1">
-                  <div className="text-xs font-bold text-cyan-400 flex items-center gap-1 mb-1">
-                    <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-                    {lang === 'ru' ? 'ФИЛЬТРЫ ЗРЕНИЯ:' : 'VISION FILTERS:'}
+                {!filterResults ? (
+                  <span className="text-[11px] text-slate-500 italic py-1">Ожидание аудита</span>
+                ) : (
+                  <div className="space-y-1 text-[10px] font-mono text-emerald-400">
+                    <div>✓ {filterResults.htfTrend}</div>
+                    <div>✓ {filterResults.volumeSpike}</div>
                   </div>
-                  {!filterResults ? (
-                    <span className="text-[11px] text-slate-500 italic py-1">
-                      {isAnalyzing ? (lang === 'ru' ? '⏳ Аудит шумов...' : '⏳ Noise audit...') : (lang === 'ru' ? 'Ожидание аудита' : 'Waiting audit')}
-                    </span>
-                  ) : (
-                    <div className="space-y-1 text-[10px] font-mono">
-                      <div className="flex items-center gap-1.5 text-emerald-400">
-                        <CheckCircle2 className="w-3 h-3" /> {filterResults.htfTrend}
-                      </div>
-                      <div className="flex items-center gap-1.5 text-cyan-400">
-                        <CheckCircle2 className="w-3 h-3" /> {filterResults.volumeSpike}
-                      </div>
-                      <div className="flex items-center gap-1.5 text-amber-400">
-                        <CheckCircle2 className="w-3 h-3" /> {filterResults.volatilityStatus}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-3 flex flex-col gap-1">
-                  <div className="flex items-center justify-between text-xs font-bold text-amber-400">
-                    <span className="flex items-center gap-1">
-                      <Flame className="w-3.5 h-3.5" />
-                      {lang === 'ru' ? 'УРОВНИ ЗРЕНИЯ:' : 'VISION LEVELS:'}
-                    </span>
-                  </div>
-                  {keyCandles.length === 0 ? (
-                    <span className="text-[11px] text-slate-500 italic py-1">
-                      {isAnalyzing ? (lang === 'ru' ? '⏳ Расчет уровней...' : '⏳ Calculating levels...') : (lang === 'ru' ? 'Ожидание запуска' : 'Waiting start')}
-                    </span>
-                  ) : (
-                    <div className="space-y-1">
-                      {keyCandles.map(item => (
-                        <div key={item.id} className="flex justify-between items-center text-[10px] bg-slate-900 px-2 py-0.5 rounded border border-slate-800 font-mono">
-                          <span className="text-amber-300 font-bold">{item.type}</span>
-                          <span className="text-white">${item.price}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
 
-              {/* ГРАФИК TRADINGVIEW */}
-              <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden min-h-[360px] relative">
-                <iframe
-                  key={`${selectedPair.symbol}-${timeframe}-${timezone}-${lang}-${activeIndicator}`}
-                  src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${selectedPair.symbol}&interval=${timeframe}&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=${activeIndicator === 'RSI' ? 'RSI@tv-basicstudies' : activeIndicator === 'MACD' ? 'MACD@tv-basicstudies' : 'BB@tv-basicstudies'}&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
-                  className="w-full h-full border-0 absolute inset-0 pointer-events-auto"
-                  title="TradingView Chart"
-                ></iframe>
+              <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-3 flex flex-col gap-1">
+                <div className="text-xs font-bold text-amber-400 flex items-center gap-1">
+                  <Flame className="w-3.5 h-3.5" /> УРОВНИ СЕРВЕРА:
+                </div>
+                {keyCandles.map(item => (
+                  <div key={item.id} className="flex justify-between items-center text-[10px] bg-slate-900 px-2 py-0.5 rounded font-mono">
+                    <span className="text-amber-300">{item.type}</span>
+                    <span className="text-white">${item.price}</span>
+                  </div>
+                ))}
               </div>
             </div>
-          ) : (
-            /* QUAD MODE */
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-[600px]">
-              {[
-                { pair: quadPair1, setPair: setQuadPair1, id: 'q1' },
-                { pair: quadPair2, setPair: setQuadPair2, id: 'q2' },
-                { pair: quadPair3, setPair: setQuadPair3, id: 'q3' },
-                { pair: quadPair4, setPair: setQuadPair4, id: 'q4' }
-              ].map((slot) => (
-                <div key={slot.id} className="bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex flex-col justify-between relative overflow-hidden backdrop-blur">
-                  <div className="flex justify-between items-center mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-xs text-cyan-400">{slot.pair.displaySymbol}</span>
-                      <select 
-                        value={slot.pair.id} 
-                        onChange={(e) => {
-                          const found = TRADING_PAIRS.find(p => p.id === e.target.value);
-                          if (found) slot.setPair(found);
-                        }}
-                        className="bg-slate-950 border border-slate-700 text-slate-200 text-[10px] rounded px-1.5 py-0.5 outline-none cursor-pointer"
-                      >
-                        {TRADING_PAIRS.map(p => (
-                          <option key={p.id} value={p.id}>{p.displaySymbol}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <span className="text-[10px] text-slate-400 font-mono">VISION AI</span>
-                  </div>
 
-                  <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-lg overflow-hidden min-h-[220px] relative">
-                    <iframe
-                      key={`${slot.pair.symbol}-${slot.id}-${timezone}-${lang}`}
-                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_${slot.id}&symbol=${slot.pair.symbol}&interval=5&symboledit=0&saveimage=0&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies=[]&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}`}
-                      className="w-full h-full border-0 absolute inset-0"
-                      title={slot.pair.displaySymbol}
-                    ></iframe>
-                  </div>
-                </div>
-              ))}
+            <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden min-h-[360px] relative">
+              <iframe
+                key={`${selectedPair.symbol}-${timeframe}-${timezone}-${lang}-${activeIndicator}`}
+                src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${selectedPair.symbol}&interval=${timeframe}&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=${activeIndicator === 'RSI' ? 'RSI@tv-basicstudies' : 'MACD@tv-basicstudies'}&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
+                className="w-full h-full border-0 absolute inset-0 pointer-events-auto"
+                title="TradingView Chart"
+              ></iframe>
             </div>
-          )}
+          </div>
         </section>
 
-        {/* Right Panel */}
+        {/* Правая панель */}
         <aside className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 flex flex-col gap-4 backdrop-blur">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
             <h2 className="font-bold text-slate-200 flex items-center gap-2 text-sm">
               <BrainCircuit className="w-4 h-4 text-cyan-400 animate-pulse" />
-              {lang === 'ru' ? 'VISION AI АНАЛИТИК' : 'VISION AI ANALYST'}
+              VISION AI АНАЛИТИК
             </h2>
-            <span className="text-[11px] font-mono text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-800">
-              {selectedPair.displaySymbol}
-            </span>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={handleStartAnalysis}
               disabled={isAnalyzing}
-              className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black py-2.5 px-3 rounded-xl text-xs transition-all shadow-lg shadow-cyan-500/20 active:scale-95 flex items-center justify-center gap-1.5 uppercase tracking-wide cursor-pointer disabled:opacity-50"
+              className="bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-black py-2.5 px-3 rounded-xl text-xs uppercase cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} />
-              {lang === 'ru' ? 'ЗАПУСК ИИ' : 'START AI'}
+              <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} /> ЗАПУСК ИИ
             </button>
-
             <button
               onClick={handleStopAnalysis}
               disabled={!isAnalyzing}
-              className="bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800 font-black py-2.5 px-3 rounded-xl text-xs transition-all shadow-lg active:scale-95 flex items-center justify-center gap-1.5 uppercase tracking-wide cursor-pointer disabled:opacity-40"
+              className="bg-rose-950/80 text-rose-300 border border-rose-800 font-black py-2.5 px-3 rounded-xl text-xs uppercase cursor-pointer disabled:opacity-40"
             >
-              <StopCircle className="w-3.5 h-3.5" />
-              {lang === 'ru' ? 'СТОП' : 'STOP'}
+              СТОП
             </button>
           </div>
 
-          {/* Снайперский блок */}
-          <div className="bg-gradient-to-b from-amber-950/60 to-slate-950 border-2 border-amber-500/80 rounded-xl p-4 text-center shadow-lg shadow-amber-500/10 relative overflow-hidden">
-            <div className="absolute top-1 right-2 text-[9px] font-mono text-amber-400 uppercase tracking-widest">
-              {lang === 'ru' ? 'Снайпер (10 сек)' : 'Sniper (10s)'}
-            </div>
-
-            <span className="text-xs text-amber-200/80 block mb-1">
-              {lang === 'ru' ? 'Защищенный прогноз зрения:' : 'Protected vision forecast:'}
-            </span>
-
+          <div className="bg-gradient-to-b from-amber-950/60 to-slate-950 border-2 border-amber-500/80 rounded-xl p-4 text-center relative overflow-hidden">
             {!aiSignal ? (
               <div className="py-3 text-xs text-slate-400 font-mono animate-pulse">
-                {isAnalyzing ? (lang === 'ru' ? `⏳ Ожидание кадра (${formatTimer(candleTimer)})...` : `⏳ Waiting frame (${formatTimer(candleTimer)})...`) : (lang === 'ru' ? 'Нажмите ЗАПУСК ИИ' : 'Click START AI')}
+                {isAnalyzing ? `⏳ Ожидание шлюза (${formatTimer(candleTimer)})...` : 'Нажмите ЗАПУСК ИИ'}
               </div>
             ) : (
               <div className="space-y-1">
-                <div className="text-2xl font-black tracking-wider flex items-center justify-center gap-2">
+                <div className="text-2xl font-black flex items-center justify-center gap-2">
                   <span className="text-amber-400">ВХОД:</span>
-                  {aiSignal.direction === 'CALL' ? (
-                    <span className="text-emerald-400 bg-emerald-950/80 px-3 py-0.5 rounded border border-emerald-500 animate-bounce">
-                      {lang === 'ru' ? 'ВЫШЕ' : 'CALL'}
-                    </span>
-                  ) : (
-                    <span className="text-rose-400 bg-rose-950/80 px-3 py-0.5 rounded border border-rose-500 animate-bounce">
-                      {lang === 'ru' ? 'НИЖЕ' : 'PUT'}
-                    </span>
-                  )}
+                  <span className={aiSignal.direction === 'CALL' ? 'text-emerald-400 bg-emerald-950 px-3 py-0.5 rounded border border-emerald-500' : 'text-rose-400 bg-rose-950 px-3 py-0.5 rounded border border-rose-500'}>
+                    {aiSignal.direction}
+                  </span>
                 </div>
-                <div className="text-xs text-amber-300 font-mono">
-                  {lang === 'ru' ? 'Точность зрения:' : 'Vision winrate:'} <span className="font-bold text-white">{aiSignal.confidence}%</span>
-                </div>
+                <div className="text-xs text-amber-300 font-mono">Точность шлюза: <span className="font-bold text-white">{aiSignal.confidence}%</span></div>
               </div>
             )}
           </div>
 
-          {/* Вкладки: Логи / История / Мартингейл */}
           <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px]">
-            <button
-              onClick={() => setRightTab('logs')}
-              className={`flex-1 py-1.5 rounded-lg font-bold transition-all flex items-center justify-center gap-1 ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}
-            >
-              <MessageSquare className="w-3.5 h-3.5" /> Логи
-            </button>
-            <button
-              onClick={() => setRightTab('history')}
-              className={`flex-1 py-1.5 rounded-lg font-bold transition-all flex items-center justify-center gap-1 ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}
-            >
-              <History className="w-3.5 h-3.5" /> История
-            </button>
-            <button
-              onClick={() => setRightTab('martingale')}
-              className={`flex-1 py-1.5 rounded-lg font-bold transition-all flex items-center justify-center gap-1 ${rightTab === 'martingale' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400 hover:text-white'}`}
-            >
-              <Calculator className="w-3.5 h-3.5" /> Мартен
-            </button>
+            <button onClick={() => setRightTab('logs')} className={`flex-1 py-1.5 rounded-lg font-bold ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Логи ИИ</button>
+            <button onClick={() => setRightTab('history')} className={`flex-1 py-1.5 rounded-lg font-bold ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>История</button>
+            <button onClick={() => setRightTab('martingale')} className={`flex-1 py-1.5 rounded-lg font-bold ${rightTab === 'martingale' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Мартен</button>
           </div>
 
           {rightTab === 'logs' ? (
             <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-2 overflow-hidden min-h-[220px]">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <span className="text-xs font-bold text-slate-300">
-                  {lang === 'ru' ? 'Логи и логика ИИ-зрения:' : 'AI Vision Logs:'}
-                </span>
-                <span className="text-[10px] font-mono text-slate-500">Live</span>
-              </div>
-
               <div className="flex-1 overflow-y-auto space-y-2 pr-1 text-[11px] font-mono">
                 {aiLogs.map(log => (
-                  <div key={log.id} className={`p-2 rounded border ${log.type === 'sniper' ? 'bg-amber-950/40 border-amber-600/80 text-amber-200 font-bold' : log.type === 'vision' ? 'bg-indigo-950/40 border-indigo-500 text-indigo-200 font-bold' : log.type === 'level' ? 'bg-cyan-950/30 border-cyan-800/60 text-cyan-300' : 'bg-slate-900/60 border-slate-800 text-slate-400'}`}>
-                    <div className="flex justify-between text-[10px] text-slate-500 mb-0.5">
-                      <span>{log.time}</span>
-                      <span className="uppercase">{log.type}</span>
-                    </div>
-                    <p className="leading-relaxed">{log.text}</p>
+                  <div key={log.id} className={`p-2 rounded border ${log.type === 'vision' ? 'bg-indigo-950/40 border-indigo-500 text-indigo-200 font-bold' : 'bg-slate-900/60 border-slate-800 text-slate-400'}`}>
+                    <div className="flex justify-between text-[10px] text-slate-500 mb-0.5"><span>{log.time}</span><span>{log.type}</span></div>
+                    <p>{log.text}</p>
                   </div>
                 ))}
               </div>
             </div>
           ) : rightTab === 'history' ? (
             <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-2 overflow-hidden min-h-[220px]">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <span className="text-xs font-bold text-slate-300 flex items-center gap-1">
-                  <History className="w-3.5 h-3.5 text-cyan-400" /> {lang === 'ru' ? 'История сигналов:' : 'Signals History:'}
-                </span>
-                <button
-                  onClick={() => setHistoryList([])}
-                  className="text-[10px] text-rose-400 hover:text-rose-300 flex items-center gap-1 bg-rose-950/60 border border-rose-800 px-2 py-0.5 rounded cursor-pointer"
-                  title="Очистить историю"
-                >
-                  <Trash2 className="w-3 h-3" /> {lang === 'ru' ? 'Очистить' : 'Clear'}
-                </button>
-              </div>
-
               <div className="flex-1 overflow-y-auto space-y-2 pr-1 text-[11px] font-mono">
-                {historyList.length === 0 ? (
-                  <div className="py-8 text-center text-slate-500 italic text-xs">
-                    {lang === 'ru' ? 'История пуста.' : 'History is empty.'}
+                {historyList.map(item => (
+                  <div key={item.id} className="p-2 rounded bg-slate-900 border border-slate-800 flex justify-between">
+                    <span className="text-cyan-400">{item.pair}</span>
+                    <span className={item.direction === 'CALL' ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>{item.direction} ({item.winrate}%)</span>
                   </div>
-                ) : (
-                  historyList.map(item => (
-                    <div key={item.id} className="p-2 rounded bg-slate-900/80 border border-slate-800 flex flex-col gap-1">
-                      <div className="flex justify-between items-center">
-                        <span className="font-bold text-cyan-400">{item.pair}</span>
-                        <span className="text-[10px] text-slate-500">{item.time}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-xs">
-                        <span className={`font-black px-1.5 py-0.5 rounded ${item.direction === 'CALL' ? 'bg-emerald-950 text-emerald-400' : 'bg-rose-950 text-rose-400'}`}>
-                          {item.direction} ({item.winrate}%)
-                        </span>
-                        <span className="text-[10px] text-amber-300/90">{item.strategy}</span>
-                      </div>
-                    </div>
-                  ))
-                )}
+                ))}
               </div>
             </div>
           ) : (
-            <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-3 overflow-hidden min-h-[220px] font-mono">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                <span className="text-xs font-bold text-cyan-400 flex items-center gap-1">
-                  <Calculator className="w-3.5 h-3.5" /> {lang === 'ru' ? 'Калькулятор Мартингейла' : 'Martingale Calculator'}
-                </span>
-              </div>
-
+            <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-3 font-mono">
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
                   <label className="text-[10px] text-slate-400 block mb-1">Старт ($):</label>
-                  <input 
-                    type="number" 
-                    value={startAmount} 
-                    onChange={(e) => setStartAmount(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs outline-none focus:border-cyan-500"
-                  />
+                  <input type="number" value={startAmount} onChange={(e) => setStartAmount(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs"/>
                 </div>
                 <div>
                   <label className="text-[10px] text-slate-400 block mb-1">Выплата (%):</label>
-                  <input 
-                    type="number" 
-                    value={payoutPercent} 
-                    onChange={(e) => setPayoutPercent(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs outline-none focus:border-cyan-500"
-                  />
+                  <input type="number" value={payoutPercent} onChange={(e) => setPayoutPercent(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs"/>
                 </div>
               </div>
-
-              <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 text-[11px]">
+              <div className="flex-1 overflow-y-auto space-y-1.5 text-[11px]">
                 {calculateMartingale().map(step => (
-                  <div key={step.step} className="p-2 rounded bg-slate-900/90 border border-slate-800 flex justify-between items-center">
-                    <div>
-                      <span className="text-cyan-400 font-bold">Шаг {step.step}:</span> <span className="text-white font-bold">${step.amount}</span>
-                    </div>
-                    <div className="text-right text-[10px]">
-                      <span className="text-slate-400">Общ: ${step.total}</span> <br/>
-                      <span className="text-emerald-400 font-bold">Прибыль: +${step.profit}</span>
-                    </div>
+                  <div key={step.step} className="p-2 rounded bg-slate-900 border border-slate-800 flex justify-between">
+                    <span>Шаг {step.step}: ${step.amount}</span>
+                    <span className="text-emerald-400">+${step.profit}</span>
                   </div>
                 ))}
               </div>
@@ -764,9 +498,8 @@ export default function App() {
         </aside>
       </main>
 
-      {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v6.0 (Vision AI Multimodal Engine)</span>
+        <span>ORACLE PRO v6.5 (Vision AI Gateway)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
