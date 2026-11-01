@@ -24,9 +24,6 @@ export default function App() {
     { id: 'volume_spread', name: 'VSA Analysis', enabled: false, desc: 'Анализ крупных объемов и реакция' }
   ]);
 
-  const [isGlobalScanning, setIsGlobalScanning] = useState<boolean>(false);
-  const [scanProgress, setScanProgress] = useState<string>('');
-
   const [startAmount, setStartAmount] = useState<string>("100");
   const [payoutPercent, setPayoutPercent] = useState<string>("85");
 
@@ -47,10 +44,16 @@ export default function App() {
     direction: 'CALL' | 'PUT';
     entryPrice: number;
     exitPrice?: number;
+    targetCandleIndex: number;
     status: 'PENDING' | 'WIN' | 'LOSS';
   }>>([]);
-  const [pendingTestItems, setPendingTestItems] = useState<Array<{ id: number; direction: 'CALL' | 'PUT'; entryPrice: number }>>([]);
-  const [hasTriggeredThisCandle, setHasTriggeredThisCandle] = useState<boolean>(false);
+  
+  const [pendingTestItems, setPendingTestItems] = useState<Array<{ 
+    id: number; 
+    direction: 'CALL' | 'PUT'; 
+    entryPrice: number;
+    targetCandleIndex: number;
+  }>>([]);
 
   const priceRef = useRef(price);
   priceRef.current = price;
@@ -64,11 +67,11 @@ export default function App() {
   const isAnalyzingRef = useRef(isAnalyzing);
   isAnalyzingRef.current = isAnalyzing;
 
-  const hasTriggeredRef = useRef(hasTriggeredThisCandle);
-  hasTriggeredRef.current = hasTriggeredThisCandle;
-
   const pendingItemsRef = useRef(pendingTestItems);
   pendingItemsRef.current = pendingTestItems;
+
+  const currentCandleIndexRef = useRef<number>(0);
+  const hasTriggeredCurrentCandleRef = useRef<boolean>(false);
 
   const [filterResults, setFilterResults] = useState<{
     htfTrend: string;
@@ -142,36 +145,47 @@ export default function App() {
     return () => ws.close();
   }, [selectedPair]);
 
-  // НАДЕЖНЫЙ И ТОЧНЫЙ ТАЙМЕР И СИНХРОНИЗАЦИЯ СВЕЧИ N+1
+  // СТРОГАЯ ЛОГИКА ТАЙМЕРА И УЧЕТА СВЕЧИ N+1
   useEffect(() => {
-    const calculateTimeLeft = () => {
+    const calculateCandleInfo = () => {
       const now = new Date();
-      const totalSecs = now.getMinutes() * 60 + now.getSeconds();
-      const tfSecs = parseInt(timeframe, 10) * 60;
-      const remaining = tfSecs - (totalSecs % tfSecs);
-      return remaining > 0 ? remaining : tfSecs;
+      const tfMinutes = parseInt(timeframe, 10);
+      const tfSecs = tfMinutes * 60;
+      
+      const epochSecs = Math.floor(now.getTime() / 1000);
+      const candleIndex = Math.floor(epochSecs / tfSecs);
+      
+      const secondsIntoCandle = epochSecs % tfSecs;
+      const remaining = tfSecs - secondsIntoCandle;
+      
+      return { candleIndex, remaining, tfSecs };
     };
 
-    const tfSecsTotal = parseInt(timeframe, 10) * 60;
-    setCandleTimer(calculateTimeLeft());
+    const initialInfo = calculateCandleInfo();
+    setCandleTimer(initialInfo.remaining);
+    currentCandleIndexRef.current = initialInfo.candleIndex;
 
     const interval = setInterval(() => {
-      const timeLeft = calculateTimeLeft();
-      setCandleTimer(timeLeft);
+      const { candleIndex, remaining } = calculateCandleInfo();
+      setCandleTimer(remaining);
 
       const currentPriceVal = parseFloat(priceRef.current);
 
-      // 1. СТРОГО В МОМЕНТ ЗАКРЫТИЯ СВЕЧИ (timeLeft === tfSecsTotal): проверяем сделки, отстоявшие свечу N+1
-      if (timeLeft === tfSecsTotal) {
+      // СМЕНА СВЕЧИ: Закрылась свеча (candleIndex изменился)
+      if (candleIndex !== currentCandleIndexRef.current) {
+        currentCandleIndexRef.current = candleIndex;
         candleOpenPriceRef.current = currentPriceVal;
         setCandleOpenPrice(currentPriceVal);
-        setHasTriggeredThisCandle(false);
+        hasTriggeredCurrentCandleRef.current = false;
 
-        if (pendingItemsRef.current.length > 0) {
-          const itemsToCheck = [...pendingItemsRef.current];
-          setPendingTestItems([]); // Очищаем пул ожидания
+        // ПРОВЕРКА СДЕЛКИТ: проверяем сделки, у которых targetCandleIndex совпадает с закрывшейся свечой
+        const completedItems = pendingItemsRef.current.filter(item => item.targetCandleIndex === candleIndex);
+        
+        if (completedItems.length > 0) {
+          // Удаляем проверенные сделки из очереди
+          setPendingTestItems(prev => prev.filter(item => item.targetCandleIndex !== candleIndex));
 
-          itemsToCheck.forEach(pending => {
+          completedItems.forEach(pending => {
             const isWin = pending.direction === 'CALL' 
               ? currentPriceVal >= pending.entryPrice 
               : currentPriceVal <= pending.entryPrice;
@@ -182,17 +196,16 @@ export default function App() {
                 : item
             ));
 
-            addLog(`🧪 Результат авто-теста #${pending.id} (Свеча N+1 закрыта): Вход $${pending.entryPrice} -> Итог $${currentPriceVal} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
+            addLog(`🧪 Итог сделки на N+1 (Закрытие свечи #${candleIndex}): Вход $${pending.entryPrice} -> Закрытие $${currentPriceVal} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
           });
         }
       }
 
-      // 2. РОВНО ЗА 10 СЕКУНД ДО КОНЦА ТЕКУЩЕЙ СВЕЧИ (N): делаем прогноз на СЛЕДУЮЩУЮ свечу (N+1)
+      // СИГНАЛ РОВНО ЗА 10 СЕКУНД ДО КОНЦА ТЕКУЩЕЙ СВЕЧИ N
       const canTrigger = isAnalyzingRef.current || isAutoTestActiveRef.current;
-      const isTargetSecond = timeLeft === 10;
 
-      if (canTrigger && isTargetSecond && !hasTriggeredRef.current) {
-        setHasTriggeredThisCandle(true);
+      if (canTrigger && remaining === 10 && !hasTriggeredCurrentCandleRef.current) {
+        hasTriggeredCurrentCandleRef.current = true;
         playBeep('sniper');
         
         const isBullishBody = currentPriceVal >= candleOpenPriceRef.current;
@@ -210,26 +223,28 @@ export default function App() {
 
         if (isAutoTestActiveRef.current) {
           const newTestId = Date.now();
+          const targetCandle = candleIndex + 1; // Назначаем строго следующую свечу N+1
+
           const newLogEntry = {
             id: newTestId,
             time: currentTimeStr,
             pair: selectedPair.displaySymbol,
             direction: dir,
             entryPrice: currentPriceVal,
+            targetCandleIndex: targetCandle,
             status: 'PENDING' as const
           };
+
           setAutoTestLogs(prev => [newLogEntry, ...prev]);
+          setPendingTestItems(prev => [...prev, { id: newTestId, direction: dir, entryPrice: currentPriceVal, targetCandleIndex: targetCandle }]);
           
-          // Ставим в очередь ожидания до самого конца свечи N+1
-          setPendingTestItems(prev => [...prev, { id: newTestId, direction: dir, entryPrice: currentPriceVal }]);
-          
-          addLog(`🧪 Сигнал (10 сек до конца свечи N): Прогноз на свечу N+1 -> ${dir} по цене $${currentPriceVal}. Ожидание завершения свечи N+1.`, 'sniper');
+          addLog(`🧪 Сигнал (10 сек до конца свечи N): Прогноз ${dir} на свечу #${targetCandle} по цене $${currentPriceVal}. Ждем полного закрытия N+1.`, 'sniper');
         }
 
         addLog(
           lang === 'ru' 
-            ? `👁 СНАЙПЕР (10 сек) [Строго 1 сигнал]: Прогноз на свечу N+1 -> ${dir === 'CALL' ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'} (${conf}%)` 
-            : `👁 SNIPER (10s) [Single Signal]: Forecast N+1 -> ${dir} (${conf}%)`, 
+            ? `👁 СНАЙПЕР (10 сек): Прогноз на свечу N+1 -> ${dir === 'CALL' ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'} (${conf}%)` 
+            : `👁 SNIPER (10s): Forecast N+1 -> ${dir} (${conf}%)`, 
           'sniper'
         );
       }
@@ -247,7 +262,7 @@ export default function App() {
     playBeep('alert');
     
     addLog(
-      lang === 'ru' ? `> 👁 Захват кадра графика ${selectedPair.displaySymbol} и отправка в ИИ-шлюз...` : `> 👁 Capturing chart frame & sending to AI gateway...`, 
+      lang === 'ru' ? `> 👁 Захват кадра графика ${selectedPair.displaySymbol}...` : `> 👁 Capturing chart frame...`, 
       'vision'
     );
 
@@ -649,7 +664,7 @@ export default function App() {
                       <div className="text-right">
                         <span className={item.direction === 'CALL' ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>{item.direction}</span>
                         <div>
-                          {item.status === 'PENDING' && <span className="text-amber-400 animate-pulse">Ожидание N+1...</span>}
+                          {item.status === 'PENDING' && <span className="text-amber-400 animate-pulse">Ждём свечу #{item.targetCandleIndex}...</span>}
                           {item.status === 'WIN' && <span className="text-emerald-400 font-black">WIN 🟢</span>}
                           {item.status === 'LOSS' && <span className="text-rose-400 font-black">LOSS 🔴</span>}
                         </div>
