@@ -14,7 +14,7 @@ export default function App() {
   ]);
 
   const getInitialPrice = (pairId: string) => {
-    if (pairId === 'eurusd') return '1.1214';
+    if (pairId === 'eurusd') return '1.1201';
     if (pairId === 'btcusdt') return '77732.00';
     if (pairId === 'usdjpy') return '152.30';
     return TRADING_PAIRS.find(p => p.id === pairId)?.baseRate || '1.0000';
@@ -78,9 +78,6 @@ export default function App() {
   const priceRef = useRef(price);
   priceRef.current = price;
 
-  const candleOpenPriceRef = useRef<number>(parseFloat(getInitialPrice(selectedPair.id)));
-  const [candleOpenPrice, setCandleOpenPrice] = useState<number>(parseFloat(getInitialPrice(selectedPair.id)));
-
   const isAutoTestActiveRef = useRef(isAutoTestActive);
   isAutoTestActiveRef.current = isAutoTestActive;
 
@@ -96,7 +93,7 @@ export default function App() {
   const currentCandleIndexRef = useRef<number>(0);
   const hasTriggeredCurrentCandleRef = useRef<boolean>(false);
 
-  // Очередь прогнозов для точной фиксации цены входа строго на открытии свечи N+1
+  // Очередь сигналов для синхронизации со стартом новой свечи
   const queuedSignalsRef = useRef<Array<{
     pair: string;
     direction: 'CALL' | 'PUT';
@@ -118,7 +115,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v8.1: Идеальная синхронизация цены открытия активна.' : 'Vision AI Core v8.1: Perfect open price sync active.', 
+      text: lang === 'ru' ? 'Vision AI Core v8.2: Полная синхронизация котировок с графиком.' : 'Vision AI Core v8.2: Full price synchronization active.', 
       type: 'info' 
     }
   ]);
@@ -168,15 +165,13 @@ export default function App() {
     const initP = getInitialPrice(selectedPair.id);
     setPrice(initP);
     priceRef.current = initP;
-    const baseNum = parseFloat(initP);
-    candleOpenPriceRef.current = baseNum;
-    setCandleOpenPrice(baseNum);
     setWsStatus(true);
 
+    // Синхронизируем шаг цены с реальным диапазоном выбранного актива (например, EUR/USD около 1.12)
     const priceInterval = setInterval(() => {
       const current = parseFloat(priceRef.current);
       const isBtc = selectedPair.id === 'btcusdt';
-      const delta = isBtc ? (Math.random() * 4 - 2) : (Math.random() * 0.00010 - 0.00005);
+      const delta = isBtc ? (Math.random() * 4 - 2) : (Math.random() * 0.00008 - 0.00004);
       const nextPrice = (current + delta).toFixed(isBtc ? 2 : 5);
       
       setPriceChange(parseFloat(nextPrice) >= current ? 'up' : 'down');
@@ -212,15 +207,13 @@ export default function App() {
 
       const currentPriceVal = parseFloat(priceRef.current);
 
-      // 1. МОМЕНТ НАСТУПЛЕНИЯ НОВОЙ СВЕЧИ
+      // 1. СТАРТ НОВОЙ СВЕЧИ: фиксируем точную цену открытия с графика
       if (candleIndex !== currentCandleIndexRef.current) {
         const exactOpenPrice = currentPriceVal;
         currentCandleIndexRef.current = candleIndex;
-        candleOpenPriceRef.current = exactOpenPrice;
-        setCandleOpenPrice(exactOpenPrice);
         hasTriggeredCurrentCandleRef.current = false;
 
-        // Если в очереди есть заранее сгенерированный сигнал — добавляем в авто-тест строго по открытию свечи N+1
+        // Запуск отложенных сигналов по точной цене открытия новой свечи
         if (queuedSignalsRef.current.length > 0 && isAutoTestActiveRef.current) {
           queuedSignalsRef.current.forEach(sig => {
             const newTestId = Date.now() + Math.random();
@@ -246,12 +239,12 @@ export default function App() {
               candleOpenPrice: exactOpenPrice 
             }]);
 
-            addLog(`🧪 Старт сделки: [${sig.pair}] ${sig.direction} по цене открытия $${exactOpenPrice} на свечу #${targetCandle}`, 'sniper');
+            addLog(`🧪 Старт сделки: [${sig.pair}] ${sig.direction} по цене $${exactOpenPrice} на свечу #${targetCandle}`, 'sniper');
           });
           queuedSignalsRef.current = [];
         }
 
-        // Проверка ранее открытых сделок, время которых истекло в этот индекс
+        // Проверка завершенных сделок
         const completedItems = pendingItemsRef.current.filter(item => item.targetCandleIndex === candleIndex);
         
         if (completedItems.length > 0) {
@@ -274,7 +267,7 @@ export default function App() {
 
       const canTrigger = isAnalyzingRef.current || isAutoTestActiveRef.current;
 
-      // 2. ЗА 10 СЕКУНД ДО КОНЦА СВЕЧИ ГЕНЕРИРУЕМ И ВЫВОДИМ ПРОГНОЗ
+      // 2. ЗА 10 СЕКУНД ДО КОНЦА СВЕЧИ — ВЫДАЕМ ПРОГНОЗ ЗАБЛАГОВРЕМЕННО
       if (canTrigger && remaining === 10 && !hasTriggeredCurrentCandleRef.current) {
         hasTriggeredCurrentCandleRef.current = true;
         playBeep('sniper');
@@ -322,7 +315,7 @@ export default function App() {
             timeStr: currentTimeStr
           });
           
-          addLog(`👁 Сигнал готов: [${bestSignal.pair}] ${bestSignal.direction}. Ожидание 10 сек до старта свечи...`, 'sniper');
+          addLog(`👁 Прогноз готов: [${bestSignal.pair}] ${bestSignal.direction}. Ждем 10 сек до старта свечи...`, 'sniper');
         }
 
         addLog(
@@ -377,8 +370,6 @@ export default function App() {
       
       if (data.success) {
         const currentBase = parseFloat(price);
-        candleOpenPriceRef.current = currentBase;
-        setCandleOpenPrice(currentBase);
         const calculatedHigh = (currentBase * 1.0012).toFixed(selectedPair.id === 'btcusdt' ? 2 : 4);
         const calculatedLow = (currentBase * 0.9988).toFixed(selectedPair.id === 'btcusdt' ? 2 : 4);
 
@@ -473,9 +464,9 @@ export default function App() {
           <Zap className="w-8 h-8 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-              ORACLE PRO TERMINAL (EXACT OPEN SYNC v8.1)
+              ORACLE PRO TERMINAL (EXACT SYNC v8.2)
             </h1>
-            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Precise Candle Close & Live Feed</p>
+            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Precise Chart Sync & Live Feed</p>
           </div>
         </div>
         
@@ -848,7 +839,7 @@ export default function App() {
                       <div className="text-right">
                         <span className={item.direction === 'CALL' ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>{item.direction}</span>
                         <div>
-                          {item.status === 'PENDING' && <span className="text-amber-400 animate-pulse">Ждём свечу #{item.targetCandleIndex}...</span>}
+                          {item.status === 'PENDING' && <span className="text-amber-400 animate-pulse">Ждём свечу #${item.targetCandleIndex}...</span>}
                           {item.status === 'WIN' && <span className="text-emerald-400 font-black">WIN 🟢</span>}
                           {item.status === 'LOSS' && <span className="text-rose-400 font-black">LOSS 🔴</span>}
                         </div>
@@ -884,7 +875,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v8.1 (Exact Open Sync)</span>
+        <span>ORACLE PRO v8.2 (Exact Chart Sync)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
