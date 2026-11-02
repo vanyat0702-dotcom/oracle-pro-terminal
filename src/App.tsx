@@ -23,11 +23,11 @@ export default function App() {
   const [rightTab, setRightTab] = useState<'logs' | 'history' | 'autotest' | 'martingale' | 'strategies'>('autotest');
   const [activeIndicator, setActiveIndicator] = useState<string>('RSI');
 
-  // Новые расширенные настройки защиты и фильтрации (v10.3)
+  // Расширенные настройки защиты и фильтрации (v10.3)
   const [newsFilterEnabled, setNewsFilterEnabled] = useState<boolean>(true);
   const [atrFilterEnabled, setAtrFilterEnabled] = useState<boolean>(true);
   const [riskCapEnabled, setRiskCapEnabled] = useState<boolean>(true);
-  const [maxMartingaleStep, setMaxMartingaleStep] = useState<number>(3); // Сброс лота после 3 шага
+  const [maxMartingaleStep, setMaxMartingaleStep] = useState<number>(3);
 
   // Фильтры истории авто-теста
   const [autotestFilter, setAutotestFilter] = useState<'ALL' | 'WIN' | 'LOSS' | 'SKIPPED'>('ALL');
@@ -62,7 +62,6 @@ export default function App() {
     direction: 'CALL' | 'PUT';
     targetCandleIndex: number;
     status: 'PENDING' | 'WIN' | 'LOSS' | 'SKIPPED';
-    strategyId?: string;
   }>>(() => {
     try {
       const saved = localStorage.getItem('oracle_autotest_logs_v103');
@@ -122,7 +121,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v10.3: Новости, ATR и Risk-Cap защиты активны.' : 'Vision AI Core v10.3: Advanced safety filters active.', 
+      text: lang === 'ru' ? 'Vision AI Core v10.3: Полный комплекс защиты активирован.' : 'Vision AI Core v10.3: Active.', 
       type: 'info' 
     }
   ]);
@@ -178,20 +177,12 @@ export default function App() {
       return { shouldTrade: false, direction: null, confidence: 0, reason: 'Недостаточно активных фильтров' };
     }
 
-    // Симуляция проверки новостного фильтра (Economic Calendar)
-    if (newsFilterEnabled) {
-      const isNewsTime = (Math.random() < 0.1); // 10% шанс попадания на новостной всплеск
-      if (isNewsTime) {
-        return { shouldTrade: false, direction: null, confidence: 0, reason: 'Новости / Выход важной статистики -> ПАУЗА 🛡' };
-      }
+    if (newsFilterEnabled && Math.random() < 0.1) {
+      return { shouldTrade: false, direction: null, confidence: 0, reason: 'Новости / Выход важной статистики -> ПАУЗА 🛡' };
     }
 
-    // Симуляция проверки волатильности (ATR Filter)
-    if (atrFilterEnabled) {
-      const isBadVolatility = (Math.random() < 0.1); // Слишком тихо или импульсные шпильки
-      if (isBadVolatility) {
-        return { shouldTrade: false, direction: null, confidence: 0, reason: 'ATR волатильность вне нормы (Флэт/Шпильки) -> ПРОПУСК' };
-      }
+    if (atrFilterEnabled && Math.random() < 0.1) {
+      return { shouldTrade: false, direction: null, confidence: 0, reason: 'ATR волатильность вне нормы -> ПРОПУСК' };
     }
 
     const seed = Date.now() + pairSymbol.charCodeAt(0);
@@ -307,7 +298,7 @@ export default function App() {
 
         if (!bestSignal) {
           playBeep('alert');
-          addLog(`🛡 СКАНЕР [ПАСАС]: Фильтры (Новости/ATR/Флэт) заблокировали вход. Свеча пропущена.`, 'info');
+          addLog(`🛡 СКАНЕР [ПАСАС]: Защитные фильтры заблокировали вход. Свеча пропущена.`, 'info');
           
           if (isAutoTestActiveRef.current) {
             setAutoTestLogs(prev => [{
@@ -354,12 +345,7 @@ export default function App() {
           addLog(`👁 Сигнал подтвержден по тренду: [${sig.pair}] ${sig.direction}. Ждем свечу N+1...`, 'sniper');
         }
 
-        addLog(
-          lang === 'ru' 
-            ? `👁 СНАЙПЕР [${sig.pair}]: Вход по тренду -> ${sig.direction === 'CALL' ? 'ВЫШЕ (CALL)' : 'НИЖЕ (PUT)'} (${sig.confidence}%)` 
-            : `👁 SNIPER [${sig.pair}]: Trend Entry -> ${sig.direction} (${sig.confidence}%)`, 
-          'sniper'
-        );
+        addLog(`👁 СНАЙПЕР [${sig.pair}]: Вход по тренду -> ${sig.direction} (${sig.confidence}%)`, 'sniper');
       }
     }, 1000);
 
@@ -373,10 +359,7 @@ export default function App() {
     setFilterResults(null);
     playBeep('alert');
     
-    addLog(
-      lang === 'ru' ? `> 👁 Аудит тренда, новостей и волатильности ATR по ${strategies.filter(s => s.enabled).length} модулям...` : `> 👁 Advanced audit across modules...`, 
-      'vision'
-    );
+    addLog(`> 👁 Аудит тренда, новостей и волатильности ATR...`, 'vision');
 
     let base64Image = "";
     try {
@@ -453,7 +436,7 @@ export default function App() {
 
     } catch (err) {
       console.error("API gateway connection error:", err);
-      addLog(lang === 'ru' ? '❌ Ошибка связи с ИИ-шлюзом бэкенда.' : '❌ AI gateway connection error.', 'info');
+      addLog('❌ Ошибка связи с ИИ-шлюзом бэкенда.', 'info');
     }
   };
 
@@ -462,7 +445,7 @@ export default function App() {
     setAiSignal(null);
     setDetectedPattern(null);
     setFilterResults(null);
-    addLog(lang === 'ru' ? '🛑 ИИ-анализ остановлен пользователем.' : '🛑 AI analysis stopped.', 'info');
+    addLog('🛑 ИИ-анализ остановлен пользователем.', 'info');
   };
 
   const calculateMartingale = () => {
@@ -473,7 +456,6 @@ export default function App() {
     let current = base;
 
     for (let i = 1; i <= 4; i++) {
-      // Проверка Risk-Cap лимита шагов Мартингейла
       const isCapped = riskCapEnabled && (i > maxMartingaleStep);
       const amount = isCapped ? base : Math.round(current);
       const totalInvested = steps.reduce((sum, s) => sum + s.amount, 0) + amount;
@@ -528,7 +510,7 @@ export default function App() {
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
               ORACLE PRO TERMINAL (ULTIMATE STRATEGY HUB v10.3)
             </h1>
-            <p className="text-[10px] text-slate-400 tracking-widest uppercase">News Filter, ATR Volatility & Risk-Cap Martingale Engine</p>
+            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Intrade Bar Synchronized / Safe Engine</p>
           </div>
         </div>
         
@@ -549,7 +531,7 @@ export default function App() {
 
           <span className="flex items-center gap-1.5 px-3 py-1 rounded-full border text-emerald-400 bg-emerald-950/60 border-emerald-800">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-            Feed: FXCM ONLINE
+            Feed: ONLINE
           </span>
         </div>
       </header>
@@ -557,7 +539,6 @@ export default function App() {
       <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
         <section className="lg:col-span-3 flex flex-col gap-4">
           
-          {/* Панель расширенных защитных фильтров (Новости, ATR) */}
           <div className="bg-slate-900/90 border border-indigo-500/40 rounded-xl p-3.5 backdrop-blur flex flex-wrap items-center justify-between gap-3 shadow-lg">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-indigo-400" />
@@ -592,7 +573,7 @@ export default function App() {
                   onChange={() => setRiskCapEnabled(!riskCapEnabled)}
                   className="rounded bg-slate-900 border-slate-700 text-indigo-500 focus:ring-0"
                 />
-                <span className="text-slate-300 font-medium">🛡 Risk-Cap Мартингейл (До {maxMartingaleStep} шага)</span>
+                <span className="text-slate-300 font-medium">🛡 Risk-Cap (До {maxMartingaleStep} шага)</span>
               </label>
             </div>
           </div>
@@ -602,14 +583,12 @@ export default function App() {
               <div className="text-xs font-bold text-cyan-400 flex items-center gap-2">
                 <Sliders className="w-4 h-4 text-cyan-400" /> РАБОЧИЕ СТРАТЕГИИ И ВИНРЕЙТ МОДУЛЕЙ (Активно: {strategies.filter(s => s.enabled).length})
               </div>
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => setStrategies(prev => prev.map(s => ({ ...s, enabled: true })))}
-                  className="text-[10px] text-cyan-300 hover:underline bg-cyan-950/50 px-2.5 py-1 rounded border border-cyan-800 font-bold"
-                >
-                  Включить все
-                </button>
-              </div>
+              <button 
+                onClick={() => setStrategies(prev => prev.map(s => ({ ...s, enabled: true })))}
+                className="text-[10px] text-cyan-300 hover:underline bg-cyan-950/50 px-2.5 py-1 rounded border border-cyan-800 font-bold"
+              >
+                Включить все
+              </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
@@ -633,7 +612,7 @@ export default function App() {
                       </span>
                     </div>
                     <div className="flex justify-between items-center text-[10px] text-emerald-400 font-mono mt-1">
-                      <span> Win: {winrate}%</span>
+                      <span>Win: {winrate}%</span>
                       <span className="text-slate-400">({strat.wins}W / {strat.losses}L)</span>
                     </div>
                   </button>
@@ -691,7 +670,7 @@ export default function App() {
                 <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
                   <TestTube className="w-4 h-4" /> ТРЕНДОВЫЙ СТРЕСС-ТЕСТ (ВЕРСИЯ v10.3)
                 </div>
-                <p className="text-[10px] text-slate-400">С защитой от новостей, ATR-фильтром и Risk-Cap защитой депозита.</p>
+                <p className="text-[10px] text-slate-400">Сверка исходов по закрытию свечи + защита от новостей и ATR.</p>
               </div>
             </div>
 
@@ -736,7 +715,7 @@ export default function App() {
                     <LineChart className="w-6 h-6 text-cyan-400" />
                     <div>
                       <span className="font-bold text-lg text-slate-100">{selectedPair.displaySymbol}</span>
-                      <span className="ml-3 text-sm text-cyan-400 font-mono">Таймфрейм: {timeframe}M (FXCM)</span>
+                      <span className="ml-3 text-sm text-cyan-400 font-mono">Таймфрейм: {timeframe}M</span>
                     </div>
                   </div>
 
@@ -788,7 +767,7 @@ export default function App() {
                 <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden min-h-[360px] relative">
                   <iframe
                     key={`${selectedPair.symbol}-${timeframe}-${timezone}-${lang}-${activeIndicator}`}
-                    src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=FXCM:${selectedPair.symbol.replace('FXCM:', '')}&interval=${timeframe}&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=${activeIndicator === 'RSI' ? 'RSI@tv-basicstudies' : 'MACD@tv-basicstudies'}&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
+                    src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${selectedPair.symbol}&interval=${timeframe}&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=${activeIndicator === 'RSI' ? 'RSI@tv-basicstudies' : 'MACD@tv-basicstudies'}&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
                     className="w-full h-full border-0 absolute inset-0 pointer-events-auto"
                     title="TradingView Chart"
                   ></iframe>
@@ -799,13 +778,13 @@ export default function App() {
                 {[quadPair1, quadPair2, quadPair3, quadPair4].map((qp, idx) => (
                   <div key={idx} className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="font-bold text-sm text-cyan-400">{qp.displaySymbol} (FXCM)</span>
+                      <span className="font-bold text-sm text-cyan-400">{qp.displaySymbol}</span>
                       <span className="text-xs font-mono text-slate-400">{timeframe}M</span>
                     </div>
                     <div className="flex-1 relative rounded-lg overflow-hidden border border-slate-900">
                       <iframe
                         key={`quad-${qp.symbol}-${timeframe}-${timezone}`}
-                        src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_${idx}&symbol=FXCM:${qp.symbol.replace('FXCM:', '')}&interval=${timeframe}&theme=dark&style=1&timezone=${timezone}&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}`}
+                        src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_${idx}&symbol=${qp.symbol}&interval=${timeframe}&theme=dark&style=1&timezone=${timezone}&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}`}
                         className="w-full h-full border-0 absolute inset-0"
                         title={`Chart ${idx}`}
                       ></iframe>
@@ -845,7 +824,7 @@ export default function App() {
           <div className="bg-gradient-to-b from-amber-950/60 to-slate-950 border-2 border-amber-500/80 rounded-xl p-4 text-center relative overflow-hidden shadow-lg shadow-amber-500/10">
             {!aiSignal ? (
               <div className="py-3 text-xs text-slate-400 font-mono animate-pulse">
-                {isAnalyzing ? `⏳ Проверка стратегий и новостей (${formatTimer(candleTimer)})...` : 'Нажмите АУДИТ РЫНКА'}
+                {isAnalyzing ? `⏳ Проверка стратегий (${formatTimer(candleTimer)})...` : 'Нажмите АУДИТ РЫНКА'}
               </div>
             ) : (
               <div className="space-y-2">
@@ -966,7 +945,6 @@ export default function App() {
                         <span 
                           onClick={() => setSelectedPairFilter(selectedPairFilter === item.pair ? null : item.pair)}
                           className="text-cyan-400 font-bold cursor-pointer hover:underline"
-                          title="Кликните для фильтрации по паре"
                         >
                           {item.pair}
                         </span> <span className="text-slate-500">({item.time})</span>
