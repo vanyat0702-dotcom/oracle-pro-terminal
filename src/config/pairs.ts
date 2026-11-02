@@ -1,7 +1,7 @@
 export interface TradingPair {
   id: string;
-  symbol: string; // Тикер для графика TradingView
-  wsSymbol: string; // Тикер для WebSocket потока
+  symbol: string;
+  wsSymbol: string;
   displaySymbol: string;
   baseRate: string;
 }
