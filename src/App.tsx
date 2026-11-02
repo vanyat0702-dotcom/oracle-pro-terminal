@@ -103,7 +103,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v7.1: Фикс цен входа авто-теста активен.' : 'Vision AI Core v7.1: Auto-test price fix active.', 
+      text: lang === 'ru' ? 'Vision AI Core v7.2: Фикс реальной цены авто-теста активен.' : 'Vision AI Core v7.2: Real price auto-test fix active.', 
       type: 'info' 
     }
   ]);
@@ -255,7 +255,7 @@ export default function App() {
         if (isAutoTestActiveRef.current) {
           const newTestId = Date.now();
           const targetCandle = candleIndex + 2;
-          const currentRealPrice = parseFloat(priceRef.current); // ЧЕСТНАЯ ТЕКУЩАЯ ЦЕНА ИЗ ПОТОКА
+          const currentRealPrice = parseFloat(priceRef.current);
           const currentOpenRefVal = candleOpenPriceRef.current;
 
           const newLogEntry = {
@@ -429,7 +429,7 @@ export default function App() {
           <Zap className="w-8 h-8 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-              ORACLE PRO TERMINAL (FIXED AUTO-TEST PRICE)
+              ORACLE PRO TERMINAL (FIXED REAL PRICE)
             </h1>
             <p className="text-[10px] text-slate-400 tracking-widest uppercase">Price Action, S/R Breakdown & Stochastic Filters</p>
           </div>
@@ -840,7 +840,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v7.1 (Fixed Real Price Auto-Test)</span>
+        <span>ORACLE PRO v7.2 (Real Price Feed Fix)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
