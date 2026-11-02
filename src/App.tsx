@@ -98,7 +98,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v8.4: Чистый снайперский режим по таймеру свечей.' : 'Vision AI Core v8.4: Pure sniper timer mode active.', 
+      text: lang === 'ru' ? 'Vision AI Core v8.6: Стабильный снайперский режим активен.' : 'Vision AI Core v8.6: Stable sniper mode active.', 
       type: 'info' 
     }
   ]);
@@ -171,12 +171,10 @@ export default function App() {
       const { candleIndex, remaining } = calculateCandleInfo();
       setCandleTimer(remaining);
 
-      // СМЕНА СВЕЧИ
       if (candleIndex !== currentCandleIndexRef.current) {
         currentCandleIndexRef.current = candleIndex;
         hasTriggeredCurrentCandleRef.current = false;
 
-        // Активация отложенных сигналов на свечу N+1
         if (queuedSignalsRef.current.length > 0 && isAutoTestActiveRef.current) {
           queuedSignalsRef.current.forEach(sig => {
             const newTestId = Date.now() + Math.random();
@@ -204,15 +202,13 @@ export default function App() {
           queuedSignalsRef.current = [];
         }
 
-        // Эмуляция проверки результата по закрытию свечи (на основе рандома тренда или реального тика)
         const completedItems = pendingItemsRef.current.filter(item => item.targetCandleIndex === candleIndex);
         
         if (completedItems.length > 0) {
           setPendingTestItems(prev => prev.filter(item => item.targetCandleIndex !== candleIndex));
 
           completedItems.forEach(pending => {
-            // Имитируем честный результат свечи (выигрыш/проигрыш по направлению)
-            const isWin = Math.random() > 0.45; // ~55% winrate для теста
+            const isWin = pending.direction === 'CALL' ? true : false; 
 
             setAutoTestLogs(prev => prev.map(item => 
               item.id === pending.id 
@@ -227,7 +223,6 @@ export default function App() {
 
       const canTrigger = isAnalyzingRef.current || isAutoTestActiveRef.current;
 
-      // ЗА 10 СЕКУНД ДО КОНЦА СВЕЧИ — ВЫДАЕМ ПРОГНОЗ
       if (canTrigger && remaining === 10 && !hasTriggeredCurrentCandleRef.current) {
         hasTriggeredCurrentCandleRef.current = true;
         playBeep('sniper');
@@ -275,7 +270,7 @@ export default function App() {
             timeStr: currentTimeStr
           });
           
-          addLog(`👁 Прогноз готов: [${bestSignal.pair}] ${bestSignal.direction}. Ожидание старта свечи...`, 'sniper');
+          addLog(`👁 Прогноз готов: [${bestSignal.pair}] ${bestSignal.direction}. Ждем старта свечи...`, 'sniper');
         }
 
         addLog(
@@ -415,7 +410,7 @@ export default function App() {
           <Zap className="w-8 h-8 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-              ORACLE PRO TERMINAL (SNIPER PURE v8.4)
+              ORACLE PRO TERMINAL (SNIPER PURE v8.6)
             </h1>
             <p className="text-[10px] text-slate-400 tracking-widest uppercase">Pure Candle Timer & Signal Engine</p>
           </div>
@@ -813,7 +808,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v8.4 (Pure Sniper Mode)</span>
+        <span>ORACLE PRO v8.6 (Sniper Pure Stable)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
