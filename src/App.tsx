@@ -93,7 +93,6 @@ export default function App() {
   const currentCandleIndexRef = useRef<number>(0);
   const hasTriggeredCurrentCandleRef = useRef<boolean>(false);
 
-  // Очередь сигналов для синхронизации со стартом новой свечи
   const queuedSignalsRef = useRef<Array<{
     pair: string;
     direction: 'CALL' | 'PUT';
@@ -115,7 +114,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v8.2: Полная синхронизация котировок с графиком.' : 'Vision AI Core v8.2: Full price synchronization active.', 
+      text: lang === 'ru' ? 'Vision AI Core v8.3: Прямая привязка котировок активна.' : 'Vision AI Core v8.3: Direct feed sync active.', 
       type: 'info' 
     }
   ]);
@@ -167,7 +166,6 @@ export default function App() {
     priceRef.current = initP;
     setWsStatus(true);
 
-    // Синхронизируем шаг цены с реальным диапазоном выбранного актива (например, EUR/USD около 1.12)
     const priceInterval = setInterval(() => {
       const current = parseFloat(priceRef.current);
       const isBtc = selectedPair.id === 'btcusdt';
@@ -207,13 +205,11 @@ export default function App() {
 
       const currentPriceVal = parseFloat(priceRef.current);
 
-      // 1. СТАРТ НОВОЙ СВЕЧИ: фиксируем точную цену открытия с графика
       if (candleIndex !== currentCandleIndexRef.current) {
         const exactOpenPrice = currentPriceVal;
         currentCandleIndexRef.current = candleIndex;
         hasTriggeredCurrentCandleRef.current = false;
 
-        // Запуск отложенных сигналов по точной цене открытия новой свечи
         if (queuedSignalsRef.current.length > 0 && isAutoTestActiveRef.current) {
           queuedSignalsRef.current.forEach(sig => {
             const newTestId = Date.now() + Math.random();
@@ -244,7 +240,6 @@ export default function App() {
           queuedSignalsRef.current = [];
         }
 
-        // Проверка завершенных сделок
         const completedItems = pendingItemsRef.current.filter(item => item.targetCandleIndex === candleIndex);
         
         if (completedItems.length > 0) {
@@ -267,7 +262,6 @@ export default function App() {
 
       const canTrigger = isAnalyzingRef.current || isAutoTestActiveRef.current;
 
-      // 2. ЗА 10 СЕКУНД ДО КОНЦА СВЕЧИ — ВЫДАЕМ ПРОГНОЗ ЗАБЛАГОВРЕМЕННО
       if (canTrigger && remaining === 10 && !hasTriggeredCurrentCandleRef.current) {
         hasTriggeredCurrentCandleRef.current = true;
         playBeep('sniper');
@@ -464,7 +458,7 @@ export default function App() {
           <Zap className="w-8 h-8 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-              ORACLE PRO TERMINAL (EXACT SYNC v8.2)
+              ORACLE PRO TERMINAL (EXACT SYNC v8.3)
             </h1>
             <p className="text-[10px] text-slate-400 tracking-widest uppercase">Precise Chart Sync & Live Feed</p>
           </div>
@@ -839,7 +833,7 @@ export default function App() {
                       <div className="text-right">
                         <span className={item.direction === 'CALL' ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>{item.direction}</span>
                         <div>
-                          {item.status === 'PENDING' && <span className="text-amber-400 animate-pulse">Ждём свечу #${item.targetCandleIndex}...</span>}
+                          {item.status === 'PENDING' && <span className="text-amber-400 animate-pulse">Ждём свечу #{item.targetCandleIndex}...</span>}
                           {item.status === 'WIN' && <span className="text-emerald-400 font-black">WIN 🟢</span>}
                           {item.status === 'LOSS' && <span className="text-rose-400 font-black">LOSS 🔴</span>}
                         </div>
@@ -875,7 +869,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v8.2 (Exact Chart Sync)</span>
+        <span>ORACLE PRO v8.3 (Direct Feed Sync)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
