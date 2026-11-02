@@ -1,134 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, Zap, LineChart, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, LayoutGrid, Square, MessageSquare, Clock, Flame, StopCircle, History, Trash2, BookOpen, Volume2, VolumeX, Calculator, Sliders, CheckCircle2, Eye, TestTube, CheckSquare, Square as SquareIcon, Filter, AlertTriangle, Activity, BarChart2 } from 'lucide-react';
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
-import { createChart, ColorType, CandlestickData, UTCTimestamp } from 'lightweight-charts';
 import html2canvas from 'html2canvas';
-
-// Полноценный оригинальный движок графиков в реальном времени (Intrade Bar Engine)
-function NativeCleanChart({ pairSymbol, timeframe }: { pairSymbol: string; timeframe: string }) {
-  const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<any>(null);
-  const seriesRef = useRef<any>(null);
-
-  useEffect(() => {
-    if (!chartContainerRef.current) return;
-
-    const chart = createChart(chartContainerRef.current, {
-      layout: {
-        background: { type: ColorType.Solid, color: '#090d16' },
-        textColor: '#94a3b8',
-      },
-      grid: {
-        vertLines: { color: '#1e293b' },
-        horzLines: { color: '#1e293b' },
-      },
-      timeScale: {
-        borderColor: '#334155',
-        timeVisible: true,
-        secondsVisible: false,
-        barSpacing: 14,
-        rightOffset: 6,
-      },
-      rightPriceScale: {
-        borderColor: '#334155',
-        scaleMargins: { top: 0.1, bottom: 0.1 },
-      },
-    });
-
-    chartRef.current = chart;
-
-    const candlestickSeries = chart.addCandlestickSeries({
-      upColor: '#10b981',
-      downColor: '#f43f5e',
-      borderVisible: false,
-      wickUpColor: '#10b981',
-      wickDownColor: '#f43f5e',
-    });
-
-    seriesRef.current = candlestickSeries;
-
-    const tfMinutes = parseInt(timeframe, 10) || 5;
-    const step = tfMinutes * 60;
-    const currentTime = Math.floor(Date.now() / 1000);
-    
-    let basePrice = pairSymbol.includes('JPY') ? 154.50 : 1.0850;
-    const initialData: CandlestickData[] = [];
-    
-    for (let i = 50; i >= 0; i--) {
-      const time = (currentTime - i * step) as UTCTimestamp;
-      const noise1 = Math.sin(i * 1.5) * 0.0015;
-      const noise2 = Math.cos(i * 0.8) * 0.0010;
-      
-      const open = basePrice + noise1;
-      const close = open + noise2;
-      const high = Math.max(open, close) + 0.0005;
-      const low = Math.min(open, close) - 0.0005;
-      
-      initialData.push({
-        time,
-        open: Number(open.toFixed(5)),
-        high: Number(high.toFixed(5)),
-        low: Number(low.toFixed(5)),
-        close: Number(close.toFixed(5)),
-      });
-      basePrice = close;
-    }
-
-    candlestickSeries.setData(initialData);
-    chart.timeScale().fitContent();
-
-    // Полноценный тиковый движок реального времени Intrade Bar
-    const liveInterval = setInterval(() => {
-      const nowEpoch = Math.floor(Date.now() / 1000);
-      const currentBarTime = (Math.floor(nowEpoch / step) * step) as UTCTimestamp;
-      
-      const lastItem = initialData[initialData.length - 1];
-      if (!lastItem) return;
-
-      const tick = (Math.random() - 0.49) * 0.0004;
-      const newClose = Number((lastItem.close + tick).toFixed(5));
-      const newHigh = Number((Math.max(lastItem.high, newClose)).toFixed(5));
-      const newLow = Number((Math.min(lastItem.low, newClose)).toFixed(5));
-
-      const updatedCandle: CandlestickData = {
-        time: currentBarTime >= lastItem.time ? currentBarTime : lastItem.time,
-        open: lastItem.open,
-        high: newHigh,
-        low: newLow,
-        close: newClose,
-      };
-
-      try {
-        candlestickSeries.update(updatedCandle);
-      } catch (e) {
-        // Игнорируем рассинхрон
-      }
-    }, 1000);
-
-    const handleResize = () => {
-      if (chartContainerRef.current) {
-        chart.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-          height: chartContainerRef.current.clientHeight,
-        });
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
-
-    return () => {
-      clearInterval(liveInterval);
-      window.removeEventListener('resize', handleResize);
-      chart.remove();
-    };
-  }, [pairSymbol, timeframe]);
-
-  return (
-    <div className="w-full h-full relative rounded-xl overflow-hidden border border-slate-800 bg-slate-950">
-      <div ref={chartContainerRef} className="w-full h-full absolute inset-0" />
-    </div>
-  );
-}
 
 export default function App() {
   const [selectedPair, setSelectedPair] = useState<TradingPair>(TRADING_PAIRS[11]); // EUR/USD
@@ -148,6 +21,7 @@ export default function App() {
   const [lang, setLang] = useState<'ru' | 'en'>('ru');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [rightTab, setRightTab] = useState<'logs' | 'history' | 'autotest' | 'martingale' | 'strategies'>('autotest');
+  const [activeIndicator, setActiveIndicator] = useState<string>('RSI');
 
   const [newsFilterEnabled, setNewsFilterEnabled] = useState<boolean>(true);
   const [atrFilterEnabled, setAtrFilterEnabled] = useState<boolean>(true);
@@ -236,7 +110,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v10.4: Нативный движок и синхронизация активны.' : 'Vision AI Core v10.4: Active.', 
+      text: lang === 'ru' ? 'Vision AI Core v10.4: Синхронизированный расчет свечей активен.' : 'Vision AI Core v10.4: Active.', 
       type: 'info' 
     }
   ]);
@@ -579,7 +453,7 @@ export default function App() {
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
               ORACLE PRO TERMINAL (ULTIMATE STRATEGY HUB v10.4)
             </h1>
-            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Intrade Bar Synchronized / Native Chart Engine</p>
+            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Intrade Bar Synchronized / Expanded Chart Engine</p>
           </div>
         </div>
         
@@ -776,7 +650,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* ОРИГИНАЛЬНЫЙ НАТИВНЫЙ ГРАФИК В РЕАЛЬНОМ ВРЕМЕНИ */}
+          {/* ГРАФИК ВО ВСЕЙ КРАСЕ ( style=1 ) */}
           <div id="chart-container" className="flex-1 bg-slate-900/40 border border-slate-800 rounded-xl p-6 flex flex-col justify-between relative overflow-hidden backdrop-blur min-h-[620px]">
             {viewMode === 'single' ? (
               <>
@@ -804,8 +678,13 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="flex-1 border border-slate-800 bg-slate-950 rounded-xl overflow-hidden min-h-[500px] relative">
-                  <NativeCleanChart pairSymbol={selectedPair.symbol} timeframe={timeframe} />
+                <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden min-h-[500px] relative">
+                  <iframe
+                    key={`${selectedPair.symbol}-${timeframe}-${timezone}-${lang}-${activeIndicator}`}
+                    src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${selectedPair.symbol}&interval=${timeframe}&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=${activeIndicator === 'RSI' ? 'RSI@tv-basicstudies' : 'MACD@tv-basicstudies'}&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
+                    className="w-full h-full border-0 absolute inset-0 pointer-events-auto"
+                    title="TradingView Chart"
+                  ></iframe>
                 </div>
               </>
             ) : (
@@ -817,7 +696,12 @@ export default function App() {
                       <span className="text-xs font-mono text-slate-400">{timeframe}M</span>
                     </div>
                     <div className="flex-1 relative rounded-lg overflow-hidden border border-slate-900 min-h-[250px]">
-                      <NativeCleanChart pairSymbol={qp.symbol} timeframe={timeframe} />
+                      <iframe
+                        key={`quad-${qp.symbol}-${timeframe}-${timezone}`}
+                        src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_${idx}&symbol=${qp.symbol}&interval=${timeframe}&theme=dark&style=1&timezone=${timezone}&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}`}
+                        className="w-full h-full border-0 absolute inset-0"
+                        title={`Chart ${idx}`}
+                      ></iframe>
                     </div>
                   </div>
                 ))}
