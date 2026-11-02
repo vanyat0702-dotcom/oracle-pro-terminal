@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, Zap, LineChart, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, LayoutGrid, Square, MessageSquare, Clock, Flame, StopCircle, History, Trash2, BookOpen, Volume2, VolumeX, Calculator, Sliders, CheckCircle2, Eye, TestTube, CheckSquare, Square as SquareIcon, Filter, AlertTriangle, Activity, BarChart2 } from 'lucide-react';
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
-import { createChart, ColorType, CandlestickData } from 'lightweight-charts';
+import { createChart, ColorType, CandlestickData, UTCTimestamp } from 'lightweight-charts';
 import html2canvas from 'html2canvas';
 
-// Нативный компонент чистого графика (встроенный прямо в файл)
+// Нативный компонент чистого графика с корректной типизацией времени
 function NativeCleanChart({ pairSymbol, timeframe }: { pairSymbol: string; timeframe: string }) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
 
@@ -42,11 +42,11 @@ function NativeCleanChart({ pairSymbol, timeframe }: { pairSymbol: string; timef
     const step = parseInt(timeframe, 10) * 60;
     
     const initialData: CandlestickData[] = [
-      { time: currentTime - step * 5, open: 1.0820, high: 1.0850, low: 1.0810, close: 1.0840 },
-      { time: currentTime - step * 4, open: 1.0840, high: 1.0860, low: 1.0835, close: 1.0830 },
-      { time: currentTime - step * 3, open: 1.0830, high: 1.0845, low: 1.0815, close: 1.0825 },
-      { time: currentTime - step * 2, open: 1.0825, high: 1.0835, low: 1.0805, close: 1.0815 },
-      { time: currentTime - step * 1, open: 1.0815, high: 1.0840, low: 1.0810, close: 1.0838 },
+      { time: (currentTime - step * 5) as UTCTimestamp, open: 1.0820, high: 1.0850, low: 1.0810, close: 1.0840 },
+      { time: (currentTime - step * 4) as UTCTimestamp, open: 1.0840, high: 1.0860, low: 1.0835, close: 1.0830 },
+      { time: (currentTime - step * 3) as UTCTimestamp, open: 1.0830, high: 1.0845, low: 1.0815, close: 1.0825 },
+      { time: (currentTime - step * 2) as UTCTimestamp, open: 1.0825, high: 1.0835, low: 1.0805, close: 1.0815 },
+      { time: (currentTime - step * 1) as UTCTimestamp, open: 1.0815, high: 1.0840, low: 1.0810, close: 1.0838 },
     ];
 
     candlestickSeries.setData(initialData);
