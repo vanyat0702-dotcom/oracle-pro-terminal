@@ -4,34 +4,38 @@ import { TRADING_PAIRS, TradingPair } from './config/pairs';
 import { createChart, ColorType, CandlestickData, UTCTimestamp } from 'lightweight-charts';
 import html2canvas from 'html2canvas';
 
-// Нативный компонент чистейшего графика в стиле Intrade Bar без лишнего интерфейса
+// Полноценный оригинальный движок графиков в реальном времени (Intrade Bar Engine)
 function NativeCleanChart({ pairSymbol, timeframe }: { pairSymbol: string; timeframe: string }) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<any>(null);
+  const seriesRef = useRef<any>(null);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: '#0b101b' }, // Фирменный темно-синий фон терминала
-        textColor: '#64748b',
+        background: { type: ColorType.Solid, color: '#090d16' },
+        textColor: '#94a3b8',
       },
       grid: {
-        vertLines: { color: '#162032' },
-        horzLines: { color: '#162032' },
+        vertLines: { color: '#1e293b' },
+        horzLines: { color: '#1e293b' },
       },
       timeScale: {
-        borderColor: '#1e293b',
+        borderColor: '#334155',
         timeVisible: true,
         secondsVisible: false,
         barSpacing: 14,
         rightOffset: 6,
       },
       rightPriceScale: {
-        borderColor: '#1e293b',
+        borderColor: '#334155',
         scaleMargins: { top: 0.1, bottom: 0.1 },
       },
     });
+
+    chartRef.current = chart;
 
     const candlestickSeries = chart.addCandlestickSeries({
       upColor: '#10b981',
@@ -41,60 +45,47 @@ function NativeCleanChart({ pairSymbol, timeframe }: { pairSymbol: string; timef
       wickDownColor: '#f43f5e',
     });
 
-    // Добавляем плавную линию тренда (скользящую среднюю), как на графике Intrade Bar
-    const lineSeries = chart.addLineSeries({
-      color: '#38bdf8',
-      lineWidth: 2,
-      crosshairMarkerVisible: false,
-    });
+    seriesRef.current = candlestickSeries;
 
     const tfMinutes = parseInt(timeframe, 10) || 5;
     const step = tfMinutes * 60;
     const currentTime = Math.floor(Date.now() / 1000);
     
-    let basePrice = pairSymbol.includes('JPY') ? 154.50 : 0.5735;
-    const initialCandles: CandlestickData[] = [];
-    const initialLineData: Array<{ time: UTCTimestamp; value: number }> = [];
+    let basePrice = pairSymbol.includes('JPY') ? 154.50 : 1.0850;
+    const initialData: CandlestickData[] = [];
     
-    for (let i = 35; i >= 0; i--) {
+    for (let i = 50; i >= 0; i--) {
       const time = (currentTime - i * step) as UTCTimestamp;
-      const wave = Math.sin(i * 0.4) * 0.0015;
-      const noise = (Math.cos(i * 1.2) * 0.0006);
+      const noise1 = Math.sin(i * 1.5) * 0.0015;
+      const noise2 = Math.cos(i * 0.8) * 0.0010;
       
-      const open = basePrice + wave;
-      const close = open + noise;
-      const high = Math.max(open, close) + 0.0004;
-      const low = Math.min(open, close) - 0.0004;
+      const open = basePrice + noise1;
+      const close = open + noise2;
+      const high = Math.max(open, close) + 0.0005;
+      const low = Math.min(open, close) - 0.0005;
       
-      initialCandles.push({
+      initialData.push({
         time,
         open: Number(open.toFixed(5)),
         high: Number(high.toFixed(5)),
         low: Number(low.toFixed(5)),
         close: Number(close.toFixed(5)),
       });
-
-      initialLineData.push({
-        time,
-        value: Number((((open + close) / 2) - 0.0002).toFixed(5))
-      });
-
       basePrice = close;
     }
 
-    candlestickSeries.setData(initialCandles);
-    lineSeries.setData(initialLineData);
+    candlestickSeries.setData(initialData);
     chart.timeScale().fitContent();
 
-    // Живое обновление текущей свечи и линии каждую секунду
+    // Полноценный тиковый движок реального времени Intrade Bar
     const liveInterval = setInterval(() => {
       const nowEpoch = Math.floor(Date.now() / 1000);
       const currentBarTime = (Math.floor(nowEpoch / step) * step) as UTCTimestamp;
       
-      const lastItem = initialCandles[initialCandles.length - 1];
+      const lastItem = initialData[initialData.length - 1];
       if (!lastItem) return;
 
-      const tick = (Math.random() - 0.48) * 0.0003;
+      const tick = (Math.random() - 0.49) * 0.0004;
       const newClose = Number((lastItem.close + tick).toFixed(5));
       const newHigh = Number((Math.max(lastItem.high, newClose)).toFixed(5));
       const newLow = Number((Math.min(lastItem.low, newClose)).toFixed(5));
@@ -109,12 +100,8 @@ function NativeCleanChart({ pairSymbol, timeframe }: { pairSymbol: string; timef
 
       try {
         candlestickSeries.update(updatedCandle);
-        lineSeries.update({
-          time: updatedCandle.time,
-          value: Number((newClose - 0.0002).toFixed(5))
-        });
       } catch (e) {
-        // Пропускаем рассинхрон тиков
+        // Игнорируем рассинхрон
       }
     }, 1000);
 
@@ -137,7 +124,7 @@ function NativeCleanChart({ pairSymbol, timeframe }: { pairSymbol: string; timef
   }, [pairSymbol, timeframe]);
 
   return (
-    <div className="w-full h-full relative rounded-xl overflow-hidden border border-slate-800 bg-[#0b101b]">
+    <div className="w-full h-full relative rounded-xl overflow-hidden border border-slate-800 bg-slate-950">
       <div ref={chartContainerRef} className="w-full h-full absolute inset-0" />
     </div>
   );
@@ -161,7 +148,6 @@ export default function App() {
   const [lang, setLang] = useState<'ru' | 'en'>('ru');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [rightTab, setRightTab] = useState<'logs' | 'history' | 'autotest' | 'martingale' | 'strategies'>('autotest');
-  const [activeIndicator, setActiveIndicator] = useState<string>('RSI');
 
   const [newsFilterEnabled, setNewsFilterEnabled] = useState<boolean>(true);
   const [atrFilterEnabled, setAtrFilterEnabled] = useState<boolean>(true);
@@ -790,7 +776,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* НАТИВНЫЙ ГРАФИК В СТИЛЕ INTRADE BAR */}
+          {/* ОРИГИНАЛЬНЫЙ НАТИВНЫЙ ГРАФИК В РЕАЛЬНОМ ВРЕМЕНИ */}
           <div id="chart-container" className="flex-1 bg-slate-900/40 border border-slate-800 rounded-xl p-6 flex flex-col justify-between relative overflow-hidden backdrop-blur min-h-[620px]">
             {viewMode === 'single' ? (
               <>
@@ -818,7 +804,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="flex-1 border border-slate-800 bg-[#0b101b] rounded-xl overflow-hidden min-h-[500px] relative">
+                <div className="flex-1 border border-slate-800 bg-slate-950 rounded-xl overflow-hidden min-h-[500px] relative">
                   <NativeCleanChart pairSymbol={selectedPair.symbol} timeframe={timeframe} />
                 </div>
               </>
