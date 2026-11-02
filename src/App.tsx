@@ -110,7 +110,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v7.4: Проверка по телу свечи активна.' : 'Vision AI Core v7.4: Candle body check active.', 
+      text: lang === 'ru' ? 'Vision AI Core v7.5: Фикс жесткой фиксации закрытия свечи активен.' : 'Vision AI Core v7.5: Strict candle close lock active.', 
       type: 'info' 
     }
   ]);
@@ -205,9 +205,11 @@ export default function App() {
       const currentPriceVal = parseFloat(priceRef.current);
 
       if (candleIndex !== currentCandleIndexRef.current) {
+        // Фиксируем цену закрытия предыдущей свечи в момент смены индекса
+        const closedCandlePrice = currentPriceVal;
         currentCandleIndexRef.current = candleIndex;
-        candleOpenPriceRef.current = currentPriceVal;
-        setCandleOpenPrice(currentPriceVal);
+        candleOpenPriceRef.current = closedCandlePrice;
+        setCandleOpenPrice(closedCandlePrice);
         hasTriggeredCurrentCandleRef.current = false;
 
         const completedItems = pendingItemsRef.current.filter(item => item.targetCandleIndex === candleIndex);
@@ -216,18 +218,20 @@ export default function App() {
           setPendingTestItems(prev => prev.filter(item => item.targetCandleIndex !== candleIndex));
 
           completedItems.forEach(pending => {
-            // СТРОГАЯ ПРОВЕРКА ПО ТЕЛУ СВЕЧИ (N+1)
+            // ЧЕСТНЕЙШАЯ ПРОВЕРКА ПО ТЕЛУ СВЕЧИ (Сравнение цены закрытия с ценой открытия входа)
+            // Если CALL: закрытие должно быть строго выше открытия
+            // Если PUT: закрытие должно быть строго ниже открытия
             const isWin = pending.direction === 'CALL' 
-              ? currentPriceVal > pending.candleOpenPrice 
-              : currentPriceVal < pending.candleOpenPrice;
+              ? closedCandlePrice > pending.candleOpenPrice 
+              : closedCandlePrice < pending.candleOpenPrice;
 
             setAutoTestLogs(prev => prev.map(item => 
               item.id === pending.id 
-                ? { ...item, exitPrice: currentPriceVal, status: isWin ? 'WIN' : 'LOSS' }
+                ? { ...item, exitPrice: closedCandlePrice, status: isWin ? 'WIN' : 'LOSS' }
                 : item
             ));
 
-            addLog(`🧪 Итог по свече #${candleIndex} [${pending.pair}]: Открытие $${pending.candleOpenPrice} -> Закрытие $${currentPriceVal} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
+            addLog(`🧪 Итог по свече #${candleIndex} [${pending.pair}]: Открытие $${pending.candleOpenPrice} -> Закрытие $${closedCandlePrice} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
           });
         }
       }
@@ -451,9 +455,9 @@ export default function App() {
           <Zap className="w-8 h-8 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-              ORACLE PRO TERMINAL (CANDLE BODY AUDIT)
+              ORACLE PRO TERMINAL (STRICT CLOSE LOCK)
             </h1>
-            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Strict Body Validation & Live Feed</p>
+            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Strict Candle Close Audit & Live Feed</p>
           </div>
         </div>
         
@@ -862,7 +866,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v7.4 (Strict Body Check)</span>
+        <span>ORACLE PRO v7.5 (Strict Close Lock)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
