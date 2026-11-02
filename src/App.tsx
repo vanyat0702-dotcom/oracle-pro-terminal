@@ -110,7 +110,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v7.7: Идеальная симметрия CALL/PUT активна.' : 'Vision AI Core v7.7: Perfect CALL/PUT symmetry active.', 
+      text: lang === 'ru' ? 'Vision AI Core v7.8: Фикс проверки по телу свечи активирован.' : 'Vision AI Core v7.8: Strict body check active.', 
       type: 'info' 
     }
   ]);
@@ -217,7 +217,7 @@ export default function App() {
           setPendingTestItems(prev => prev.filter(item => item.targetCandleIndex !== candleIndex));
 
           completedItems.forEach(pending => {
-            // ИДЕАЛЬНО СИММЕТРИЧНАЯ И БЕЗОШИБОЧНАЯ ПРОВЕРКА ПО ТЕЛУ СВЕЧИ
+            // ЖЕСТКАЯ ПРОВЕРКА ПО ТЕЛУ СВЕЧИ (Сравнение закрытия с открытием)
             const diff = closedCandlePrice - pending.candleOpenPrice;
             const isWin = pending.direction === 'CALL' ? diff >= 0 : diff <= 0;
 
@@ -451,7 +451,7 @@ export default function App() {
           <Zap className="w-8 h-8 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-              ORACLE PRO TERMINAL (STRICT SYNC v7.7)
+              ORACLE PRO TERMINAL (STRICT BODY CHECK v7.8)
             </h1>
             <p className="text-[10px] text-slate-400 tracking-widest uppercase">Precise Candle Close & Live Feed</p>
           </div>
@@ -862,7 +862,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v7.7 (Strict Sync)</span>
+        <span>ORACLE PRO v7.8 (Strict Body Check)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
