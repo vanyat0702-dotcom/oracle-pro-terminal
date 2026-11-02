@@ -13,9 +13,8 @@ export default function App() {
     TRADING_PAIRS[19]  // USD/JPY
   ]);
 
-  // Устанавливаем актуальную рыночную стартовую цену для EUR/USD (1.1215)
   const getInitialPrice = (pairId: string) => {
-    if (pairId === 'eurusd') return '1.1215';
+    if (pairId === 'eurusd') return '1.1214';
     if (pairId === 'btcusdt') return '77732.00';
     if (pairId === 'usdjpy') return '152.30';
     return TRADING_PAIRS.find(p => p.id === pairId)?.baseRate || '1.0000';
@@ -111,7 +110,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v7.3: Поток реальных тиков активен.' : 'Vision AI Core v7.3: Real tick stream active.', 
+      text: lang === 'ru' ? 'Vision AI Core v7.4: Проверка по телу свечи активна.' : 'Vision AI Core v7.4: Candle body check active.', 
       type: 'info' 
     }
   ]);
@@ -157,7 +156,6 @@ export default function App() {
     setStrategies(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
   };
 
-  // Динамический поток цены (симуляция котировок реального времени)
   useEffect(() => {
     const initP = getInitialPrice(selectedPair.id);
     setPrice(initP);
@@ -218,9 +216,10 @@ export default function App() {
           setPendingTestItems(prev => prev.filter(item => item.targetCandleIndex !== candleIndex));
 
           completedItems.forEach(pending => {
+            // СТРОГАЯ ПРОВЕРКА ПО ТЕЛУ СВЕЧИ (N+1)
             const isWin = pending.direction === 'CALL' 
-              ? currentPriceVal > pending.entryPrice 
-              : currentPriceVal < pending.entryPrice;
+              ? currentPriceVal > pending.candleOpenPrice 
+              : currentPriceVal < pending.candleOpenPrice;
 
             setAutoTestLogs(prev => prev.map(item => 
               item.id === pending.id 
@@ -228,7 +227,7 @@ export default function App() {
                 : item
             ));
 
-            addLog(`🧪 Итог по свече #${candleIndex} [${pending.pair}]: Вход $${pending.entryPrice} -> Закрытие $${currentPriceVal} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
+            addLog(`🧪 Итог по свече #${candleIndex} [${pending.pair}]: Открытие $${pending.candleOpenPrice} -> Закрытие $${currentPriceVal} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
           });
         }
       }
@@ -452,9 +451,9 @@ export default function App() {
           <Zap className="w-8 h-8 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-              ORACLE PRO TERMINAL (LIVE PRICE FIX)
+              ORACLE PRO TERMINAL (CANDLE BODY AUDIT)
             </h1>
-            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Dynamic Tick Generator & Honest Win-Loss Audit</p>
+            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Strict Body Validation & Live Feed</p>
           </div>
         </div>
         
@@ -863,7 +862,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v7.3 (Dynamic Live Feed Fix)</span>
+        <span>ORACLE PRO v7.4 (Strict Body Check)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
