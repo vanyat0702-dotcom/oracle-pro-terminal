@@ -96,6 +96,14 @@ export default function App() {
   const currentCandleIndexRef = useRef<number>(0);
   const hasTriggeredCurrentCandleRef = useRef<boolean>(false);
 
+  // Очередь прогнозов для точной фиксации цены входа строго на открытии свечи N+1
+  const queuedSignalsRef = useRef<Array<{
+    pair: string;
+    direction: 'CALL' | 'PUT';
+    confidence: number;
+    timeStr: string;
+  }>>([]);
+
   const [filterResults, setFilterResults] = useState<{
     htfTrend: string;
     volumeSpike: string;
@@ -110,7 +118,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v8.0: Точная привязка по цене открытия свечи активна.' : 'Vision AI Core v8.0: Strict open price binding active.', 
+      text: lang === 'ru' ? 'Vision AI Core v8.1: Идеальная синхронизация цены открытия активна.' : 'Vision AI Core v8.1: Perfect open price sync active.', 
       type: 'info' 
     }
   ]);
@@ -204,36 +212,69 @@ export default function App() {
 
       const currentPriceVal = parseFloat(priceRef.current);
 
+      // 1. МОМЕНТ НАСТУПЛЕНИЯ НОВОЙ СВЕЧИ
       if (candleIndex !== currentCandleIndexRef.current) {
-        const closedCandlePrice = currentPriceVal;
+        const exactOpenPrice = currentPriceVal;
         currentCandleIndexRef.current = candleIndex;
-        candleOpenPriceRef.current = closedCandlePrice;
-        setCandleOpenPrice(closedCandlePrice);
+        candleOpenPriceRef.current = exactOpenPrice;
+        setCandleOpenPrice(exactOpenPrice);
         hasTriggeredCurrentCandleRef.current = false;
 
+        // Если в очереди есть заранее сгенерированный сигнал — добавляем в авто-тест строго по открытию свечи N+1
+        if (queuedSignalsRef.current.length > 0 && isAutoTestActiveRef.current) {
+          queuedSignalsRef.current.forEach(sig => {
+            const newTestId = Date.now() + Math.random();
+            const targetCandle = candleIndex + 1; 
+
+            const newLogEntry = {
+              id: newTestId,
+              time: sig.timeStr,
+              pair: sig.pair,
+              direction: sig.direction,
+              entryPrice: exactOpenPrice,
+              targetCandleIndex: targetCandle,
+              status: 'PENDING' as const
+            };
+
+            setAutoTestLogs(prev => [newLogEntry, ...prev]);
+            setPendingTestItems(prev => [...prev, { 
+              id: newTestId, 
+              pair: sig.pair, 
+              direction: sig.direction, 
+              entryPrice: exactOpenPrice, 
+              targetCandleIndex: targetCandle,
+              candleOpenPrice: exactOpenPrice 
+            }]);
+
+            addLog(`🧪 Старт сделки: [${sig.pair}] ${sig.direction} по цене открытия $${exactOpenPrice} на свечу #${targetCandle}`, 'sniper');
+          });
+          queuedSignalsRef.current = [];
+        }
+
+        // Проверка ранее открытых сделок, время которых истекло в этот индекс
         const completedItems = pendingItemsRef.current.filter(item => item.targetCandleIndex === candleIndex);
         
         if (completedItems.length > 0) {
           setPendingTestItems(prev => prev.filter(item => item.targetCandleIndex !== candleIndex));
 
           completedItems.forEach(pending => {
-            // ЖЕСТКАЯ ПРОВЕРКА: Сравнение цены закрытия свечи со строго зафиксированной ценой открытия
-            const diff = closedCandlePrice - pending.candleOpenPrice;
+            const diff = exactOpenPrice - pending.candleOpenPrice;
             const isWin = pending.direction === 'CALL' ? diff >= 0 : diff <= 0;
 
             setAutoTestLogs(prev => prev.map(item => 
               item.id === pending.id 
-                ? { ...item, exitPrice: closedCandlePrice, status: isWin ? 'WIN' : 'LOSS' }
+                ? { ...item, exitPrice: exactOpenPrice, status: isWin ? 'WIN' : 'LOSS' }
                 : item
             ));
 
-            addLog(`🧪 Итог по свече #${candleIndex} [${pending.pair}]: Открытие $${pending.candleOpenPrice} -> Закрытие $${closedCandlePrice} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
+            addLog(`🧪 Итог по свече #${candleIndex} [${pending.pair}]: Открытие $${pending.candleOpenPrice} -> Закрытие $${exactOpenPrice} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
           });
         }
       }
 
       const canTrigger = isAnalyzingRef.current || isAutoTestActiveRef.current;
 
+      // 2. ЗА 10 СЕКУНД ДО КОНЦА СВЕЧИ ГЕНЕРИРУЕМ И ВЫВОДИМ ПРОГНОЗ
       if (canTrigger && remaining === 10 && !hasTriggeredCurrentCandleRef.current) {
         hasTriggeredCurrentCandleRef.current = true;
         playBeep('sniper');
@@ -247,8 +288,7 @@ export default function App() {
           return {
             pair: p.displaySymbol,
             direction: mockDir,
-            confidence: mockConfidence,
-            entryPrice: currentPriceVal
+            confidence: mockConfidence
           };
         });
 
@@ -275,36 +315,14 @@ export default function App() {
         ]);
 
         if (isAutoTestActiveRef.current) {
-          const newTestId = Date.now();
-          const targetCandle = candleIndex + 2;
-          const currentRealPrice = parseFloat(priceRef.current);
-          
-          // ГЛАВНОЕ ИСПРАВЛЕНИЕ: Фиксируем цену открытия свечи N+1 в момент срабатывания сигнала
-          const exactOpenPriceForCandle = currentRealPrice;
-          candleOpenPriceRef.current = exactOpenPriceForCandle;
-          setCandleOpenPrice(exactOpenPriceForCandle);
-
-          const newLogEntry = {
-            id: newTestId,
-            time: currentTimeStr,
+          queuedSignalsRef.current.push({
             pair: bestSignal.pair,
             direction: bestSignal.direction,
-            entryPrice: exactOpenPriceForCandle,
-            targetCandleIndex: targetCandle,
-            status: 'PENDING' as const
-          };
-
-          setAutoTestLogs(prev => [newLogEntry, ...prev]);
-          setPendingTestItems(prev => [...prev, { 
-            id: newTestId, 
-            pair: bestSignal.pair, 
-            direction: bestSignal.direction, 
-            entryPrice: exactOpenPriceForCandle, 
-            targetCandleIndex: targetCandle,
-            candleOpenPrice: exactOpenPriceForCandle 
-          }]);
+            confidence: bestSignal.confidence,
+            timeStr: currentTimeStr
+          });
           
-          addLog(`🧪 Сигнал: [${bestSignal.pair}] ${bestSignal.direction} по цене открытия $${exactOpenPriceForCandle} на свечу ${nextCandleTimeStr}.`, 'sniper');
+          addLog(`👁 Сигнал готов: [${bestSignal.pair}] ${bestSignal.direction}. Ожидание 10 сек до старта свечи...`, 'sniper');
         }
 
         addLog(
@@ -455,7 +473,7 @@ export default function App() {
           <Zap className="w-8 h-8 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-              ORACLE PRO TERMINAL (EXACT OPEN PRICE v8.0)
+              ORACLE PRO TERMINAL (EXACT OPEN SYNC v8.1)
             </h1>
             <p className="text-[10px] text-slate-400 tracking-widest uppercase">Precise Candle Close & Live Feed</p>
           </div>
@@ -866,7 +884,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v8.0 (Exact Open Price)</span>
+        <span>ORACLE PRO v8.1 (Exact Open Sync)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
