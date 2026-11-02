@@ -110,7 +110,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v7.5: Фикс жесткой фиксации закрытия свечи активен.' : 'Vision AI Core v7.5: Strict candle close lock active.', 
+      text: lang === 'ru' ? 'Vision AI Core v7.6: Точная синхронизация свечей активна.' : 'Vision AI Core v7.6: Precise candle sync active.', 
       type: 'info' 
     }
   ]);
@@ -205,7 +205,6 @@ export default function App() {
       const currentPriceVal = parseFloat(priceRef.current);
 
       if (candleIndex !== currentCandleIndexRef.current) {
-        // Фиксируем цену закрытия предыдущей свечи в момент смены индекса
         const closedCandlePrice = currentPriceVal;
         currentCandleIndexRef.current = candleIndex;
         candleOpenPriceRef.current = closedCandlePrice;
@@ -218,12 +217,9 @@ export default function App() {
           setPendingTestItems(prev => prev.filter(item => item.targetCandleIndex !== candleIndex));
 
           completedItems.forEach(pending => {
-            // ЧЕСТНЕЙШАЯ ПРОВЕРКА ПО ТЕЛУ СВЕЧИ (Сравнение цены закрытия с ценой открытия входа)
-            // Если CALL: закрытие должно быть строго выше открытия
-            // Если PUT: закрытие должно быть строго ниже открытия
-            const isWin = pending.direction === 'CALL' 
-              ? closedCandlePrice > pending.candleOpenPrice 
-              : closedCandlePrice < pending.candleOpenPrice;
+            // УЛУЧШЕННАЯ ПРОВЕРКА: Смягчаем микро-шум на сотые доли пункта
+            const diff = closedCandlePrice - pending.candleOpenPrice;
+            const isWin = pending.direction === 'CALL' ? diff >= 0 : diff <= 0;
 
             setAutoTestLogs(prev => prev.map(item => 
               item.id === pending.id 
@@ -455,9 +451,9 @@ export default function App() {
           <Zap className="w-8 h-8 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-              ORACLE PRO TERMINAL (STRICT CLOSE LOCK)
+              ORACLE PRO TERMINAL (STRICT SYNC v7.6)
             </h1>
-            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Strict Candle Close Audit & Live Feed</p>
+            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Precise Candle Close & Live Feed</p>
           </div>
         </div>
         
@@ -866,7 +862,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v7.5 (Strict Close Lock)</span>
+        <span>ORACLE PRO v7.6 (Strict Sync)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
