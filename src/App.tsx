@@ -110,7 +110,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v10.3: График во весь экран активен.' : 'Vision AI Core v10.3: Active.', 
+      text: lang === 'ru' ? 'Vision AI Core v10.3: Полноэкранный график активен.' : 'Vision AI Core v10.3: Active.', 
       type: 'info' 
     }
   ]);
