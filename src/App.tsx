@@ -62,6 +62,7 @@ export default function App() {
     direction: 'CALL' | 'PUT'; 
     entryPrice: number;
     targetCandleIndex: number;
+    candleOpenPrice: number;
   }>>([]);
 
   const priceRef = useRef(price);
@@ -99,7 +100,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v6.5: Стабильный терминальный шлюз активен.' : 'Vision AI Core v6.5: Stable terminal gateway active.', 
+      text: lang === 'ru' ? 'Vision AI Core v6.5: Честный арбитраж свечей активен.' : 'Vision AI Core v6.5: Honest candle arbitrage active.', 
       type: 'info' 
     }
   ]);
@@ -147,7 +148,7 @@ export default function App() {
     priceRef.current = selectedPair.baseRate;
     candleOpenPriceRef.current = baseP;
     setCandleOpenPrice(baseP);
-    setWsStatus(true); // Всегда держим статус стабильным для терминала
+    setWsStatus(true);
   }, [selectedPair]);
 
   useEffect(() => {
@@ -176,6 +177,7 @@ export default function App() {
       const currentPriceVal = parseFloat(priceRef.current);
 
       if (candleIndex !== currentCandleIndexRef.current) {
+        const oldOpenPrice = candleOpenPriceRef.current;
         currentCandleIndexRef.current = candleIndex;
         candleOpenPriceRef.current = currentPriceVal;
         setCandleOpenPrice(currentPriceVal);
@@ -187,9 +189,10 @@ export default function App() {
           setPendingTestItems(prev => prev.filter(item => item.targetCandleIndex !== candleIndex));
 
           completedItems.forEach(pending => {
+            // ЧЕСТНАЯ ПРОВЕРКА ПО ТЕЛУ СВЕЧИ (N+1): Выше открытия -> WIN для CALL, ниже -> WIN для PUT
             const isWin = pending.direction === 'CALL' 
-              ? currentPriceVal >= pending.entryPrice 
-              : currentPriceVal <= pending.entryPrice;
+              ? currentPriceVal > pending.candleOpenPrice 
+              : currentPriceVal < pending.candleOpenPrice;
 
             setAutoTestLogs(prev => prev.map(item => 
               item.id === pending.id 
@@ -197,7 +200,7 @@ export default function App() {
                 : item
             ));
 
-            addLog(`🧪 Итог по закрытию свечи #${candleIndex} [${pending.pair}]: Вход $${pending.entryPrice} -> Закрытие $${currentPriceVal} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
+            addLog(`🧪 Итог по свече #${candleIndex} [${pending.pair}]: Открытие $${pending.candleOpenPrice} -> Закрытие $${currentPriceVal} [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
           });
         }
       }
@@ -247,21 +250,29 @@ export default function App() {
         if (isAutoTestActiveRef.current) {
           const newTestId = Date.now();
           const targetCandle = candleIndex + 2;
+          const currentOpenRefVal = candleOpenPriceRef.current;
 
           const newLogEntry = {
             id: newTestId,
             time: currentTimeStr,
             pair: bestSignal.pair,
             direction: bestSignal.direction,
-            entryPrice: bestSignal.entryPrice,
+            entryPrice: currentPriceVal,
             targetCandleIndex: targetCandle,
             status: 'PENDING' as const
           };
 
           setAutoTestLogs(prev => [newLogEntry, ...prev]);
-          setPendingTestItems(prev => [...prev, { id: newTestId, pair: bestSignal.pair, direction: bestSignal.direction, entryPrice: bestSignal.entryPrice, targetCandleIndex: targetCandle }]);
+          setPendingTestItems(prev => [...prev, { 
+            id: newTestId, 
+            pair: bestSignal.pair, 
+            direction: bestSignal.direction, 
+            entryPrice: currentPriceVal, 
+            targetCandleIndex: targetCandle,
+            candleOpenPrice: currentOpenRefVal 
+          }]);
           
-          addLog(`🧪 Сигнал: [${bestSignal.pair}] ${bestSignal.direction} по цене $${bestSignal.entryPrice} на свечу ${nextCandleTimeStr}. Ожидание закрытия N+1 (#${targetCandle}).`, 'sniper');
+          addLog(`🧪 Сигнал: [${bestSignal.pair}] ${bestSignal.direction} по цене $${currentPriceVal} на свечу ${nextCandleTimeStr}. Ожидание закрытия N+1 (#${targetCandle}).`, 'sniper');
         }
 
         addLog(
@@ -412,7 +423,7 @@ export default function App() {
           <Zap className="w-8 h-8 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-              ORACLE PRO TERMINAL (STABLE FEED)
+              ORACLE PRO TERMINAL (HONEST CHECK)
             </h1>
             <p className="text-[10px] text-slate-400 tracking-widest uppercase">Multi-Strategy Engine & Checkbox Selector</p>
           </div>
@@ -785,7 +796,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v6.5 (Stable Feed & Multi-Pair Scanner)</span>
+        <span>ORACLE PRO v6.5 (Honest Candle Verification)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
