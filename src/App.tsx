@@ -4,9 +4,11 @@ import { TRADING_PAIRS, TradingPair } from './config/pairs';
 import { createChart, ColorType, CandlestickData, UTCTimestamp } from 'lightweight-charts';
 import html2canvas from 'html2canvas';
 
-// Нативный компонент чистого графика с корректной типизацией времени
+// Нативный компонент графика с поддержкой обновления в реальном времени (Live Ticks) как на Intrade Bar
 function NativeCleanChart({ pairSymbol, timeframe }: { pairSymbol: string; timeframe: string }) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<any>(null);
+  const seriesRef = useRef<any>(null);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -14,7 +16,7 @@ function NativeCleanChart({ pairSymbol, timeframe }: { pairSymbol: string; timef
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: '#090d16' },
-        textColor: '#64748b',
+        textColor: '#94a3b8',
       },
       grid: {
         vertLines: { color: '#1e293b' },
@@ -24,11 +26,16 @@ function NativeCleanChart({ pairSymbol, timeframe }: { pairSymbol: string; timef
         borderColor: '#334155',
         timeVisible: true,
         secondsVisible: false,
+        barSpacing: 12,
+        rightOffset: 5,
       },
       rightPriceScale: {
         borderColor: '#334155',
+        scaleMargins: { top: 0.1, bottom: 0.1 },
       },
     });
+
+    chartRef.current = chart;
 
     const candlestickSeries = chart.addCandlestickSeries({
       upColor: '#10b981',
@@ -38,18 +45,65 @@ function NativeCleanChart({ pairSymbol, timeframe }: { pairSymbol: string; timef
       wickDownColor: '#f43f5e',
     });
 
+    seriesRef.current = candlestickSeries;
+
+    const tfMinutes = parseInt(timeframe, 10) || 5;
+    const step = tfMinutes * 60;
     const currentTime = Math.floor(Date.now() / 1000);
-    const step = parseInt(timeframe, 10) * 60;
     
-    const initialData: CandlestickData[] = [
-      { time: (currentTime - step * 5) as UTCTimestamp, open: 1.0820, high: 1.0850, low: 1.0810, close: 1.0840 },
-      { time: (currentTime - step * 4) as UTCTimestamp, open: 1.0840, high: 1.0860, low: 1.0835, close: 1.0830 },
-      { time: (currentTime - step * 3) as UTCTimestamp, open: 1.0830, high: 1.0845, low: 1.0815, close: 1.0825 },
-      { time: (currentTime - step * 2) as UTCTimestamp, open: 1.0825, high: 1.0835, low: 1.0805, close: 1.0815 },
-      { time: (currentTime - step * 1) as UTCTimestamp, open: 1.0815, high: 1.0840, low: 1.0810, close: 1.0838 },
-    ];
+    let basePrice = pairSymbol.includes('JPY') ? 154.50 : 1.0850;
+    const initialData: CandlestickData[] = [];
+    
+    for (let i = 40; i >= 0; i--) {
+      const time = (currentTime - i * step) as UTCTimestamp;
+      const noise1 = Math.sin(i * 1.8) * 0.0012;
+      const noise2 = Math.cos(i * 0.9) * 0.0009;
+      
+      const open = basePrice + noise1;
+      const close = open + noise2;
+      const high = Math.max(open, close) + 0.0004;
+      const low = Math.min(open, close) - 0.0004;
+      
+      initialData.push({
+        time,
+        open: Number(open.toFixed(5)),
+        high: Number(high.toFixed(5)),
+        low: Number(low.toFixed(5)),
+        close: Number(close.toFixed(5)),
+      });
+      basePrice = close;
+    }
 
     candlestickSeries.setData(initialData);
+    chart.timeScale().fitContent();
+
+    // Таймер имитации живых тиков в реальном времени для текущей свечи
+    const liveInterval = setInterval(() => {
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      const currentBarTime = (Math.floor(nowEpoch / step) * step) as UTCTimestamp;
+      
+      const lastItem = initialData[initialData.length - 1];
+      if (!lastItem) return;
+
+      const randomTick = (Math.random() - 0.48) * 0.0003;
+      const newClose = Number((lastItem.close + randomTick).toFixed(5));
+      const newHigh = Number((Math.max(lastItem.high, newClose)).toFixed(5));
+      const newLow = Number((Math.min(lastItem.low, newClose)).toFixed(5));
+
+      const updatedCandle: CandlestickData = {
+        time: currentBarTime >= lastItem.time ? currentBarTime : lastItem.time,
+        open: lastItem.open,
+        high: newHigh,
+        low: newLow,
+        close: newClose,
+      };
+
+      try {
+        candlestickSeries.update(updatedCandle);
+      } catch (e) {
+        // Игнорируем рассинхрон таймстампов при смене бара
+      }
+    }, 1000);
 
     const handleResize = () => {
       if (chartContainerRef.current) {
@@ -63,6 +117,7 @@ function NativeCleanChart({ pairSymbol, timeframe }: { pairSymbol: string; timef
     window.addEventListener('resize', handleResize);
 
     return () => {
+      clearInterval(liveInterval);
       window.removeEventListener('resize', handleResize);
       chart.remove();
     };
@@ -722,7 +777,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* НАТИВНЫЙ ГРАФИК БЕЗ IFRAME */}
+          {/* НАТИВНЫЙ ГРАФИК В РЕАЛЬНОМ ВРЕМЕНИ */}
           <div id="chart-container" className="flex-1 bg-slate-900/40 border border-slate-800 rounded-xl p-6 flex flex-col justify-between relative overflow-hidden backdrop-blur min-h-[620px]">
             {viewMode === 'single' ? (
               <>
