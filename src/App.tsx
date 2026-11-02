@@ -103,7 +103,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v7.0: Расширенный арсенал стратегий активен.' : 'Vision AI Core v7.0: Expanded strategy arsenal active.', 
+      text: lang === 'ru' ? 'Vision AI Core v7.1: Фикс цен входа авто-теста активен.' : 'Vision AI Core v7.1: Auto-test price fix active.', 
       type: 'info' 
     }
   ]);
@@ -255,6 +255,7 @@ export default function App() {
         if (isAutoTestActiveRef.current) {
           const newTestId = Date.now();
           const targetCandle = candleIndex + 2;
+          const currentRealPrice = parseFloat(priceRef.current); // ЧЕСТНАЯ ТЕКУЩАЯ ЦЕНА ИЗ ПОТОКА
           const currentOpenRefVal = candleOpenPriceRef.current;
 
           const newLogEntry = {
@@ -262,7 +263,7 @@ export default function App() {
             time: currentTimeStr,
             pair: bestSignal.pair,
             direction: bestSignal.direction,
-            entryPrice: currentPriceVal,
+            entryPrice: currentRealPrice,
             targetCandleIndex: targetCandle,
             status: 'PENDING' as const
           };
@@ -272,12 +273,12 @@ export default function App() {
             id: newTestId, 
             pair: bestSignal.pair, 
             direction: bestSignal.direction, 
-            entryPrice: currentPriceVal, 
+            entryPrice: currentRealPrice, 
             targetCandleIndex: targetCandle,
             candleOpenPrice: currentOpenRefVal 
           }]);
           
-          addLog(`🧪 Сигнал: [${bestSignal.pair}] ${bestSignal.direction} на свечу ${nextCandleTimeStr}. Ожидание закрытия N+1 (#${targetCandle}).`, 'sniper');
+          addLog(`🧪 Сигнал: [${bestSignal.pair}] ${bestSignal.direction} по цене $${currentRealPrice} на свечу ${nextCandleTimeStr}. Ожидание закрытия N+1 (#${targetCandle}).`, 'sniper');
         }
 
         addLog(
@@ -428,7 +429,7 @@ export default function App() {
           <Zap className="w-8 h-8 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-              ORACLE PRO TERMINAL (ADVANCED STRATEGIES)
+              ORACLE PRO TERMINAL (FIXED AUTO-TEST PRICE)
             </h1>
             <p className="text-[10px] text-slate-400 tracking-widest uppercase">Price Action, S/R Breakdown & Stochastic Filters</p>
           </div>
@@ -839,7 +840,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v7.0 (Advanced Strategies & Honest Candle Check)</span>
+        <span>ORACLE PRO v7.1 (Fixed Real Price Auto-Test)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
