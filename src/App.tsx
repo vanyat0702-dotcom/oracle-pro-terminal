@@ -23,7 +23,6 @@ export default function App() {
   const [rightTab, setRightTab] = useState<'logs' | 'history' | 'autotest' | 'martingale' | 'strategies'>('autotest');
   const [activeIndicator, setActiveIndicator] = useState<string>('RSI');
 
-  // РЕЖИМ ЧУВСТВИТЕЛЬНОСТИ ИИ
   const [riskMode, setRiskMode] = useState<'SAFE' | 'BALANCED' | 'AGGRESSIVE'>('BALANCED');
 
   const [newsFilterEnabled, setNewsFilterEnabled] = useState<boolean>(true);
@@ -34,7 +33,6 @@ export default function App() {
   const [autotestFilter, setAutotestFilter] = useState<'ALL' | 'WIN' | 'LOSS' | 'SKIPPED'>('ALL');
   const [selectedPairFilter, setSelectedPairFilter] = useState<string | null>(null);
 
-  // СТРАТЕГИИ ВКЛЮЧАЯ СКАЛЬПИНГ
   const [strategies, setStrategies] = useState([
     { id: 'trend_following', name: 'Трендовый фильтр (Trend Master)', enabled: true, wins: 14, losses: 3, desc: 'Торговля строго по направлению глобального тренда' },
     { id: 'price_action', name: 'Price Action & Пин-бар', enabled: true, wins: 19, losses: 5, desc: 'Поиск разворотных паттернов у ключевых уровней' },
@@ -177,7 +175,6 @@ export default function App() {
     return pseudoPriceVariation >= 0 ? 'CALL' : 'PUT';
   };
 
-  // МУЛЬТИ-ЗАПРОС ВСЕГО ПУЛА РАЗОМ К БЭКЕНДУ
   const fetchAiAnalysisFromBackend = async (tf: string) => {
     try {
       const activePairsSymbols = selectedMultiPairsRef.current.map(p => p.displaySymbol);
@@ -295,11 +292,9 @@ export default function App() {
         
         const targetCandleForSignal = candleIndex + 1;
 
-        // Турбо-запрос всего пула разом
         const aiResult = await fetchAiAnalysisFromBackend(timeframe);
         const chosenPairSymbol = aiResult.bestPair || selectedPair.displaySymbol;
 
-        // АВТОМАТИЧЕСКИ ПЕРЕКЛЮЧАЕМ ГРАФИК НА ВЫБРАННУЮ ИИ ПАРУ
         const foundPairObj = TRADING_PAIRS.find(p => p.displaySymbol === chosenPairSymbol);
         if (foundPairObj) {
           setSelectedPair(foundPairObj);
@@ -378,7 +373,6 @@ export default function App() {
       const aiResult = await fetchAiAnalysisFromBackend(timeframe);
       const chosenPairSymbol = aiResult.bestPair || selectedPair.displaySymbol;
 
-      // АВТОМАТИЧЕСКИ ПЕРЕКЛЮЧАЕМ ГРАФИК НА ВЫБРАННУЮ ИИ ПАРУ
       const foundPairObj = TRADING_PAIRS.find(p => p.displaySymbol === chosenPairSymbol);
       if (foundPairObj) {
         setSelectedPair(foundPairObj);
