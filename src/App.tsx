@@ -23,6 +23,9 @@ export default function App() {
   const [rightTab, setRightTab] = useState<'logs' | 'history' | 'autotest' | 'martingale' | 'strategies'>('autotest');
   const [activeIndicator, setActiveIndicator] = useState<string>('RSI');
 
+  // РЕЖИМ ЧУВСТВИТЕЛЬНОСТИ ИИ
+  const [riskMode, setRiskMode] = useState<'SAFE' | 'BALANCED' | 'AGGRESSIVE'>('BALANCED');
+
   const [newsFilterEnabled, setNewsFilterEnabled] = useState<boolean>(true);
   const [atrFilterEnabled, setAtrFilterEnabled] = useState<boolean>(true);
   const [riskCapEnabled, setRiskCapEnabled] = useState<boolean>(true);
@@ -31,12 +34,14 @@ export default function App() {
   const [autotestFilter, setAutotestFilter] = useState<'ALL' | 'WIN' | 'LOSS' | 'SKIPPED'>('ALL');
   const [selectedPairFilter, setSelectedPairFilter] = useState<string | null>(null);
 
+  // ДОБАВЛЕНА 6-Я СТРАТЕГИЯ СКАЛЬПИНГА
   const [strategies, setStrategies] = useState([
     { id: 'trend_following', name: 'Трендовый фильтр (Trend Master)', enabled: true, wins: 14, losses: 3, desc: 'Торговля строго по направлению глобального тренда' },
     { id: 'price_action', name: 'Price Action & Пин-бар', enabled: true, wins: 19, losses: 5, desc: 'Поиск разворотных паттернов у ключевых уровней' },
     { id: 'body_breakout', name: 'Защита тела свечи (Body Breakout)', enabled: true, wins: 11, losses: 4, desc: 'Игнор ложных пробоев теней, вход по телу' },
     { id: 'rsi_bollinger', name: 'RSI + Bollinger Reversal', enabled: true, wins: 8, losses: 6, desc: 'Отскок от границ канала при перекупленности' },
-    { id: 'vsa_volume', name: 'VSA Analysis (Объемы)', enabled: true, wins: 15, losses: 4, desc: 'Анализ тикового объема и импульса' }
+    { id: 'vsa_volume', name: 'VSA Analysis (Объемы)', enabled: true, wins: 15, losses: 4, desc: 'Анализ тикового объема и импульса' },
+    { id: 'volume_scalping', name: 'Импульсный Скальпинг (1M)', enabled: true, wins: 12, losses: 2, desc: 'Быстрый вход на 1 минуту при всплеске объема' }
   ]);
 
   const [startAmount, setStartAmount] = useState<string>("100");
@@ -49,7 +54,7 @@ export default function App() {
 
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [candleTimer, setCandleTimer] = useState<number>(0); 
-  const [aiSignal, setAiSignal] = useState<{ pair?: string; direction: 'CALL' | 'PUT' | 'SKIP'; confidence: number; nextCandleTime?: string; reasoning?: string } | null>(null);
+  const [aiSignal, setAiSignal] = useState<{ pair?: string; direction: 'CALL' | 'PUT' | 'SKIP'; confidence: number; nextCandleTime?: string; reasoning?: string; recommendedExpiration?: string } | null>(null);
   
   const [isAutoTestActive, setIsAutoTestActive] = useState<boolean>(false);
   
@@ -96,6 +101,9 @@ export default function App() {
   const selectedMultiPairsRef = useRef(selectedMultiPairs);
   selectedMultiPairsRef.current = selectedMultiPairs;
 
+  const riskModeRef = useRef(riskMode);
+  riskModeRef.current = riskMode;
+
   const currentCandleIndexRef = useRef<number>(0);
   const hasTriggeredCurrentCandleRef = useRef<boolean>(false);
 
@@ -110,7 +118,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v10.4: Управление ИИ-мостом активировано.' : 'Vision AI Core v10.4: Active.', 
+      text: lang === 'ru' ? 'Vision AI Core v10.4: Скальпинг и мульти-сканер активны.' : 'Vision AI Core v10.4: Active.', 
       type: 'info' 
     }
   ]);
@@ -169,7 +177,6 @@ export default function App() {
     return pseudoPriceVariation >= 0 ? 'CALL' : 'PUT';
   };
 
-  // ОСНОВНАЯ ФУНКЦИЯ СВЯЗИ С ИИ-ШЛЮЗОМ БЭКЕНДА
   const fetchAiAnalysisFromBackend = async (pairSymbol: string, tf: string) => {
     try {
       const response = await fetch('/api/analyze', {
@@ -180,6 +187,7 @@ export default function App() {
         body: JSON.stringify({
           pair: pairSymbol,
           timeframe: tf,
+          mode: riskModeRef.current, // Передаем активный режим (SAFE / BALANCED / AGGRESSIVE)
           activeStrategies: strategies.filter(s => s.enabled),
           filters: {
             newsFilterEnabled,
@@ -192,14 +200,14 @@ export default function App() {
       const data = await response.json();
 
       if (data.success && data.result) {
-        return data.result; // { signal: 'CALL'|'PUT'|'SKIP', confidence: number, reasoning: string }
+        return data.result;
       } else {
         console.error('API Error:', data.error);
-        return { signal: 'SKIP', confidence: 0, reasoning: 'Ошибка ответа бэкенда' };
+        return { signal: 'SKIP', confidence: 0, reasoning: 'Ошибка ответа бэкенда', recommendedExpiration: '1M' };
       }
     } catch (err) {
       console.error('Network error connecting to /api/analyze:', err);
-      return { signal: 'SKIP', confidence: 0, reasoning: 'Сетевой сбой шлюза' };
+      return { signal: 'SKIP', confidence: 0, reasoning: 'Сетевой сбой шлюза', recommendedExpiration: '1M' };
     }
   };
 
@@ -285,7 +293,6 @@ export default function App() {
         const activePairsToScan = selectedMultiPairsRef.current;
         const targetCandleForSignal = candleIndex + 1;
 
-        // Запрашиваем аудит для активной пары или первой из списка через ИИ-мост
         const pairToAnalyze = activePairsToScan[0] || selectedPair;
         const aiResult = await fetchAiAnalysisFromBackend(pairToAnalyze.displaySymbol, timeframe);
 
@@ -293,7 +300,7 @@ export default function App() {
 
         if (aiResult.signal === 'SKIP') {
           playBeep('alert');
-          addLog(`🛡 ИИ-АНАЛИТИК: Защита рисков сработала. Свеча пропущена. (${aiResult.reasoning})`, 'info');
+          addLog(`🛡 ИИ-АНАЛИТИК [${riskModeRef.current}]: Пропуск свечи. (${aiResult.reasoning})`, 'info');
           
           if (isAutoTestActiveRef.current) {
             setAutoTestLogs(prev => [{
@@ -309,7 +316,7 @@ export default function App() {
         }
 
         playBeep('sniper');
-        const stratName = 'Vision AI Master Hub';
+        const stratName = `Vision AI Hub (${riskModeRef.current})`;
         
         const nextCandleStartTime = new Date(Date.now() + remaining * 1000);
         const hours = nextCandleStartTime.getHours().toString().padStart(2, '0');
@@ -321,7 +328,8 @@ export default function App() {
           direction: aiResult.signal, 
           confidence: aiResult.confidence, 
           nextCandleTime: nextCandleTimeStr,
-          reasoning: aiResult.reasoning
+          reasoning: aiResult.reasoning,
+          recommendedExpiration: aiResult.recommendedExpiration || '1M'
         });
 
         setHistoryList(prev => [
@@ -337,28 +345,27 @@ export default function App() {
             timeStr: currentTimeStr
           });
           
-          addLog(`👁 ИИ подтвердил сигнал: [${pairToAnalyze.displaySymbol}] ${aiResult.signal}. Ждем закрытия свечи N+1...`, 'sniper');
+          addLog(`👁 ИИ подтвердил сигнал (${aiResult.recommendedExpiration}): [${pairToAnalyze.displaySymbol}] ${aiResult.signal}. Ждем закрытия...`, 'sniper');
         }
 
-        addLog(`👁 ИИ СНАЙПЕР [${pairToAnalyze.displaySymbol}]: Вердикт -> ${aiResult.signal} (${aiResult.confidence}%) | ${aiResult.reasoning}`, 'sniper');
+        addLog(`👁 ИИ СНАЙПЕР [${pairToAnalyze.displaySymbol}]: Вход -> ${aiResult.signal} (${aiResult.confidence}%) [Экспирация: ${aiResult.recommendedExpiration}]`, 'sniper');
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [timeframe, selectedPair, lang, strategies, newsFilterEnabled, atrFilterEnabled]);
+  }, [timeframe, selectedPair, lang, strategies, newsFilterEnabled, atrFilterEnabled, riskMode]);
 
   const handleStartAnalysis = async () => {
     setIsAnalyzing(true);
     setAiSignal(null);
     playBeep('alert');
     
-    addLog(`> 👁 Запрос глубокого ИИ-анализа рынка и стратегий у бэкенда...`, 'vision');
+    addLog(`> 👁 Аудит в режиме [${riskMode}] у ИИ-бэкенда...`, 'vision');
 
     try {
       const now = new Date();
       const tfSecs = parseInt(timeframe, 10) * 60;
       
-      // Вызываем наш реальный ИИ-шлюз
       const aiResult = await fetchAiAnalysisFromBackend(selectedPair.displaySymbol, timeframe);
 
       if (aiResult.signal === 'SKIP') {
@@ -368,7 +375,8 @@ export default function App() {
           pair: selectedPair.displaySymbol,
           direction: 'SKIP',
           confidence: 0,
-          reasoning: aiResult.reasoning
+          reasoning: aiResult.reasoning,
+          recommendedExpiration: '1M'
         });
         return;
       }
@@ -382,10 +390,11 @@ export default function App() {
         direction: aiResult.signal,
         confidence: aiResult.confidence,
         nextCandleTime: nextTimeStr,
-        reasoning: aiResult.reasoning
+        reasoning: aiResult.reasoning,
+        recommendedExpiration: aiResult.recommendedExpiration || '1M'
       });
 
-      addLog(`🧠 ИИ-Мозг: Сигнал строго подтвержден. Направление: ${aiResult.signal} (${aiResult.confidence}%) | ${aiResult.reasoning}`, 'vision');
+      addLog(`🧠 ИИ-Мозг: Сигнал ${aiResult.signal} (${aiResult.confidence}%) | Экспирация: ${aiResult.recommendedExpiration || '1M'} | ${aiResult.reasoning}`, 'vision');
 
     } catch (err) {
       console.error("API gateway connection error:", err);
@@ -461,9 +470,9 @@ export default function App() {
           <Zap className="w-8 h-8 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-              ORACLE PRO TERMINAL (AI-MANAGED CONTROL v10.4)
+              ORACLE PRO TERMINAL (SCALPER & AI CONTROL v10.4)
             </h1>
-            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Под полным управлением ИИ-мозга / Intrade Bar Sync</p>
+            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Мульти-сканер / Поддержка 1M Скальпинга / Vercel Edge</p>
           </div>
         </div>
         
@@ -492,6 +501,35 @@ export default function App() {
       <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
         <section className="lg:col-span-3 flex flex-col gap-4">
           
+          {/* ПАНЕЛЬ ВЫБОРА РЕЖИМА РИСКА ИИ */}
+          <div className="bg-slate-900/90 border border-amber-500/40 rounded-xl p-3.5 backdrop-blur flex flex-wrap items-center justify-between gap-3 shadow-lg">
+            <div className="flex items-center gap-2">
+              <Flame className="w-5 h-5 text-amber-400 animate-bounce" />
+              <span className="text-xs font-bold text-amber-300">РЕЖИМ ЧУВСТВИТЕЛЬНОСТИ ИИ:</span>
+            </div>
+
+            <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1 text-xs">
+              <button 
+                onClick={() => setRiskMode('SAFE')} 
+                className={`px-3 py-1.5 rounded-md font-bold transition-all ${riskMode === 'SAFE' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+              >
+                🛡 SAFE (Снайпер)
+              </button>
+              <button 
+                onClick={() => setRiskMode('BALANCED')} 
+                className={`px-3 py-1.5 rounded-md font-bold transition-all ${riskMode === 'BALANCED' ? 'bg-cyan-500 text-slate-950 shadow' : 'text-slate-400 hover:text-slate-200'}`}
+              >
+                ⚡ BALANCED (Баланс)
+              </button>
+              <button 
+                onClick={() => setRiskMode('AGGRESSIVE')} 
+                className={`px-3 py-1.5 rounded-md font-bold transition-all ${riskMode === 'AGGRESSIVE' ? 'bg-rose-500 text-white shadow animate-pulse' : 'text-slate-400 hover:text-slate-200'}`}
+              >
+                🔥 AGGRESSIVE (Скальпинг)
+              </button>
+            </div>
+          </div>
+
           <div className="bg-slate-900/90 border border-indigo-500/40 rounded-xl p-3.5 backdrop-blur flex flex-wrap items-center justify-between gap-3 shadow-lg">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-indigo-400" />
@@ -544,7 +582,7 @@ export default function App() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
               {strategies.map((strat) => {
                 const total = strat.wins + strat.losses;
                 const winrate = total > 0 ? Math.round((strat.wins / total) * 100) : 0;
@@ -623,7 +661,7 @@ export default function App() {
                 <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
                   <TestTube className="w-4 h-4" /> ИИ СТРЕСС-ТЕСТ СТРАТЕГИЙ
                 </div>
-                <p className="text-[10px] text-slate-400">Каждый сигнал проверяется лично ИИ-мозгом на сервере перед открытием свечи.</p>
+                <p className="text-[10px] text-slate-400">Каждый сигнал сканируется в режиме [{riskMode}] прямо перед закрытием свечи.</p>
               </div>
             </div>
 
@@ -747,7 +785,7 @@ export default function App() {
           <div className="bg-gradient-to-b from-amber-950/60 to-slate-950 border-2 border-amber-500/80 rounded-xl p-4 text-center relative overflow-hidden shadow-lg shadow-amber-500/10">
             {!aiSignal ? (
               <div className="py-3 text-xs text-slate-400 font-mono animate-pulse">
-                {isAnalyzing ? `⏳ ИИ анализирует рынок (${formatTimer(candleTimer)})...` : 'Нажмите АУДИТ РЫНКА'}
+                {isAnalyzing ? `⏳ ИИ сканирует рынок (${formatTimer(candleTimer)})...` : 'Нажмите АУДИТ РЫНКА'}
               </div>
             ) : (
               <div className="space-y-2">
@@ -761,7 +799,9 @@ export default function App() {
 
                 {aiSignal.nextCandleTime && aiSignal.direction !== 'SKIP' && (
                   <div className="bg-slate-900/90 border border-amber-500/30 rounded-lg py-1.5 px-2">
-                    <div className="text-[10px] text-amber-300 font-semibold uppercase tracking-wider">Свеча открывается в:</div>
+                    <div className="text-[10px] text-amber-300 font-semibold uppercase tracking-wider">
+                      Экспирация: <span className="text-emerald-400 font-bold">{aiSignal.recommendedExpiration || '1M'}</span> | Старт в:
+                    </div>
                     <div className="text-xl font-mono font-black text-white tracking-widest">{aiSignal.nextCandleTime}</div>
                   </div>
                 )}
@@ -963,7 +1003,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v10.4 (AI-Managed Control Hub)</span>
+        <span>ORACLE PRO v10.4 (Multi-Scanner & Scalper Control Hub)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
