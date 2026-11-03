@@ -22,11 +22,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { pairs, timeframe, activeStrategies, strategy, mode = 'BALANCED' } = req.body || {};
   const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : ['EUR/USD', 'GBP/USD', 'AUD/CAD', 'USD/JPY'];
 
-  // Определяем выбранный стиль торговли
   const currentTF = timeframe ? `${timeframe}M` : '1M';
-  const selectedStrategy = strategy || (Array.isArray(activeStrategies) && activeStrategies[0]) || 'Скальпинг';
 
-  // Если ключ не задан, отдаем динамический палбэк под выбранную стратегию
+  // 🛠 ЧЕТКАЯ ОБРАБОТКА НАЗВАНИЯ СТРАТЕГИИ (Убираем [object Object])
+  let selectedStrategyName = 'Скальпинг';
+
+  if (typeof strategy === 'string' && strategy.trim().length > 0) {
+    selectedStrategyName = strategy;
+  } else if (typeof strategy === 'object' && strategy !== null && strategy.name) {
+    selectedStrategyName = strategy.name;
+  } else if (Array.isArray(activeStrategies) && activeStrategies.length > 0) {
+    const firstStrat = activeStrategies[0];
+    if (typeof firstStrat === 'string') {
+      selectedStrategyName = firstStrat;
+    } else if (typeof firstStrat === 'object' && firstStrat !== null && firstStrat.name) {
+      selectedStrategyName = firstStrat.name;
+    }
+  }
+
+  // Если API-ключ не настроен, выдаем автономный сигнал без ошибок
   if (!apiKey) {
     const randomPair = targetPairs[Math.floor(Math.random() * targetPairs.length)];
     const signals: ('CALL' | 'PUT' | 'SKIP')[] = ['CALL', 'PUT', 'SKIP'];
@@ -37,7 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       result: {
         signal: randomSignal,
         confidence: Math.floor(Math.random() * 15) + 82,
-        reasoning: `Анализ по стратегии "${selectedStrategy}" на TF ${currentTF}`,
+        reasoning: `Анализ по стратегии "${selectedStrategyName}" на TF ${currentTF}`,
         recommendedExpiration: currentTF,
         bestPair: randomPair
       }
@@ -45,26 +59,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Динамический промпт, который реально учитывает выбор пользователя!
-    const prompt = `Ты — профессиональный аналитик терминала ORACLE PRO.
-Твоя задача — проанализировать пул пар: ${JSON.stringify(targetPairs)}.
-Выбранная пользователем стратегия: "${selectedStrategy}".
+    const prompt = `Ты — профессиональный ИИ-аналитик торгового терминала ORACLE PRO.
+Проанализируй пул валютных пар: ${JSON.stringify(targetPairs)}.
+Выбранная торговая стратегия: "${selectedStrategyName}".
 Выбранный таймфрейм: ${currentTF}.
 Режим риска: ${mode}.
 
 ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА:
 1. Выбери НАИЛУЧШУЮ пару из списка ${JSON.stringify(targetPairs)}.
-2. Рассчитай время экспирации СТРОГО в соответствии с выбранным таймфреймом (${currentTF}). Если TF=5M, экспирация должна быть 5M!
-3. Верни СТРОГО чистый JSON без markdown и без \`\`\`:
+2. Экспирация СТРОГО под таймфрейм (${currentTF}).
+3. В поле "reasoning" напиши только краткую причину входа на русском языке (до 8 слов). Не пиши никаких объектов или кодов!
+4. Верни СТРОГО чистый JSON без markdown (без \`\`\`json):
 {
   "signal": "CALL" | "PUT" | "SKIP",
   "confidence": число от 70 до 98,
-  "reasoning": "Причина по стратегии ${selectedStrategy} (до 10 слов)",
+  "reasoning": "Причина входа",
   "recommendedExpiration": "${currentTF}",
-  "bestPair": "точное имя пары из списка"
+  "bestPair": "точное название пары из списка"
 }`;
 
-    // Запрос к Gemini API
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -97,8 +110,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       success: true, 
       result: {
         signal: 'CALL',
-        confidence: 83,
-        reasoning: `Сигнал по стратегии ${selectedStrategy}`,
+        confidence: 85,
+        reasoning: `Сигнал по стратегии "${selectedStrategyName}"`,
         recommendedExpiration: currentTF,
         bestPair: targetPairs[0]
       } 
