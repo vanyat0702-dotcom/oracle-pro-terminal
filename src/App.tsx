@@ -118,7 +118,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v10.4: Мульти-сканер и скальпинг запущены.' : 'Vision AI Core v10.4: Active.', 
+      text: lang === 'ru' ? 'Vision AI Core v10.4: Турбо-сканер и скальпинг запущены.' : 'Vision AI Core v10.4: Active.', 
       type: 'info' 
     }
   ]);
@@ -177,15 +177,18 @@ export default function App() {
     return pseudoPriceVariation >= 0 ? 'CALL' : 'PUT';
   };
 
-  const fetchAiAnalysisFromBackend = async (pairSymbol: string, tf: string) => {
+  // МУЛЬТИ-ЗАПРОС ВСЕГО ПУЛА РАЗОМ К БЭКЕНДУ
+  const fetchAiAnalysisFromBackend = async (tf: string) => {
     try {
+      const activePairsSymbols = selectedMultiPairsRef.current.map(p => p.displaySymbol);
+
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          pair: pairSymbol,
+          pairs: activePairsSymbols,
           timeframe: tf,
           mode: riskModeRef.current,
           activeStrategies: strategies.filter(s => s.enabled),
@@ -203,11 +206,11 @@ export default function App() {
         return data.result;
       } else {
         console.error('API Error:', data.error);
-        return { signal: 'SKIP', confidence: 0, reasoning: 'Ошибка ответа бэкенда', recommendedExpiration: '1M' };
+        return { signal: 'SKIP', confidence: 0, reasoning: 'Ошибка ответа бэкенда', recommendedExpiration: '1M', bestPair: selectedPair.displaySymbol };
       }
     } catch (err) {
       console.error('Network error connecting to /api/analyze:', err);
-      return { signal: 'SKIP', confidence: 0, reasoning: 'Сетевой сбой шлюза', recommendedExpiration: '1M' };
+      return { signal: 'SKIP', confidence: 0, reasoning: 'Сетевой сбой шлюза', recommendedExpiration: '1M', bestPair: selectedPair.displaySymbol };
     }
   };
 
@@ -290,30 +293,17 @@ export default function App() {
       if (canTrigger && remaining === 10 && !hasTriggeredCurrentCandleRef.current) {
         hasTriggeredCurrentCandleRef.current = true;
         
-        const activePairsToScan = selectedMultiPairsRef.current;
         const targetCandleForSignal = candleIndex + 1;
 
-        let bestSignal: any = null;
-        let analyzedPairName = selectedPair.displaySymbol;
-
-        // МУЛЬТИ-СКАНЕР: ПЕРЕБИРАЕМ ВЕСЬ ПУЛ ВЫБРАННЫХ ПАР
-        for (const p of activePairsToScan) {
-          const aiResult = await fetchAiAnalysisFromBackend(p.displaySymbol, timeframe);
-          if (aiResult && aiResult.signal !== 'SKIP') {
-            bestSignal = aiResult;
-            analyzedPairName = p.displaySymbol;
-            break; 
-          }
-        }
-
-        const aiResult = bestSignal || { signal: 'SKIP', confidence: 0, reasoning: 'Все пары во флэте или заблокированы фильтрами', recommendedExpiration: '1M' };
-        const pairToAnalyze = analyzedPairName;
+        // Турбо-запрос всего пула разом
+        const aiResult = await fetchAiAnalysisFromBackend(timeframe);
+        const pairToAnalyze = aiResult.bestPair || selectedPair.displaySymbol;
 
         const currentTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
         if (aiResult.signal === 'SKIP') {
           playBeep('alert');
-          addLog(`🛡 МУЛЬТИ-СКАНЕР [${riskModeRef.current}]: Все пары проверены, вход отклонен. (${aiResult.reasoning})`, 'info');
+          addLog(`🛡 ТУРБО-СКАНЕР [${riskModeRef.current}]: Пул проверен, вход отклонен. (${aiResult.reasoning})`, 'info');
           
           if (isAutoTestActiveRef.current) {
             setAutoTestLogs(prev => [{
@@ -358,7 +348,7 @@ export default function App() {
             timeStr: currentTimeStr
           });
           
-          addLog(`👁 Мульти-сканер нашел сигнал (${aiResult.recommendedExpiration}): [${pairToAnalyze}] ${aiResult.signal}. Ждем закрытия...`, 'sniper');
+          addLog(`👁 ИИ выбрал пару (${aiResult.recommendedExpiration}): [${pairToAnalyze}] ${aiResult.signal}. Ждем закрытия...`, 'sniper');
         }
 
         addLog(`👁 ИИ СНАЙПЕР [${pairToAnalyze}]: Вход -> ${aiResult.signal} (${aiResult.confidence}%) [Экспирация: ${aiResult.recommendedExpiration}]`, 'sniper');
@@ -373,31 +363,18 @@ export default function App() {
     setAiSignal(null);
     playBeep('alert');
     
-    addLog(`> 👁 Запуск мульти-сканера по всему пулу в режиме [${riskMode}]...`, 'vision');
+    addLog(`> 👁 Мгновенный турбо-аудит пула пар в режиме [${riskMode}]...`, 'vision');
 
     try {
       const now = new Date();
       const tfSecs = parseInt(timeframe, 10) * 60;
       
-      const activePairsToScan = selectedMultiPairsRef.current;
-      let bestSignal: any = null;
-      let analyzedPairName = selectedPair.displaySymbol;
-
-      for (const p of activePairsToScan) {
-        const aiResult = await fetchAiAnalysisFromBackend(p.displaySymbol, timeframe);
-        if (aiResult && aiResult.signal !== 'SKIP') {
-          bestSignal = aiResult;
-          analyzedPairName = p.displaySymbol;
-          break;
-        }
-      }
-
-      const aiResult = bestSignal || { signal: 'SKIP', confidence: 0, reasoning: 'Все пары во флэте', recommendedExpiration: '1M' };
-      const pairToAnalyze = analyzedPairName;
+      const aiResult = await fetchAiAnalysisFromBackend(timeframe);
+      const pairToAnalyze = aiResult.bestPair || selectedPair.displaySymbol;
 
       if (aiResult.signal === 'SKIP') {
         setIsAnalyzing(false);
-        addLog(`🛡 ВЕРДИКТ МУЛЬТИ-СКАНЕРА: Сигнал не найден. Причина: ${aiResult.reasoning}`, 'info');
+        addLog(`🛡 ВЕРДИКТ ИИ: Сигнал не найден. Причина: ${aiResult.reasoning}`, 'info');
         setAiSignal({
           pair: pairToAnalyze,
           direction: 'SKIP',
@@ -421,7 +398,7 @@ export default function App() {
         recommendedExpiration: aiResult.recommendedExpiration || '1M'
       });
 
-      addLog(`🧠 ИИ-Мозг [${pairToAnalyze}]: Сигнал ${aiResult.signal} (${aiResult.confidence}%) | Экспирация: ${aiResult.recommendedExpiration || '1M'} | ${aiResult.reasoning}`, 'vision');
+      addLog(`🧠 ИИ-Мозг выбрал [${pairToAnalyze}]: Сигнал ${aiResult.signal} (${aiResult.confidence}%) | Экспирация: ${aiResult.recommendedExpiration || '1M'} | ${aiResult.reasoning}`, 'vision');
 
     } catch (err) {
       console.error("API gateway connection error:", err);
@@ -497,9 +474,9 @@ export default function App() {
           <Zap className="w-8 h-8 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-              ORACLE PRO TERMINAL (MULTI-SCANNER & 1M SCALPING v10.4)
+              ORACLE PRO TERMINAL (TURBO MULTI-SCANNER v10.4)
             </h1>
-            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Активный пул пар / ИИ Управление</p>
+            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Мгновенный выбор топ-пары / ИИ Управление</p>
           </div>
         </div>
         
@@ -685,9 +662,9 @@ export default function App() {
               <div className={`w-3.5 h-3.5 rounded-full ${isAutoTestActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'}`} />
               <div>
                 <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                  <TestTube className="w-4 h-4" /> ИИ МУЛЬТИ-СКАНЕР СТРЕСС-ТЕСТ
+                  <TestTube className="w-4 h-4" /> ТУРБО-СКАНЕР СТРЕСС-ТЕСТ
                 </div>
-                <p className="text-[10px] text-slate-400">Сканируется весь пул выбранных пар в режиме [{riskMode}].</p>
+                <p className="text-[10px] text-slate-400">ИИ мгновенно выбирает лучшую пару из пула в режиме [{riskMode}].</p>
               </div>
             </div>
 
@@ -811,7 +788,7 @@ export default function App() {
           <div className="bg-gradient-to-b from-amber-950/60 to-slate-950 border-2 border-amber-500/80 rounded-xl p-4 text-center relative overflow-hidden shadow-lg shadow-amber-500/10">
             {!aiSignal ? (
               <div className="py-3 text-xs text-slate-400 font-mono animate-pulse">
-                {isAnalyzing ? `⏳ Мульти-сканер проверяет пул (${formatTimer(candleTimer)})...` : 'Нажмите АУДИТ РЫНКА'}
+                {isAnalyzing ? `⏳ Турбо-сканер выбирает пару (${formatTimer(candleTimer)})...` : 'Нажмите АУДИТ РЫНКА'}
               </div>
             ) : (
               <div className="space-y-2">
@@ -1029,7 +1006,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v10.4 (Multi-Scanner & 1M Scalper Hub)</span>
+        <span>ORACLE PRO v10.4 (Turbo Multi-Scanner Hub)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
