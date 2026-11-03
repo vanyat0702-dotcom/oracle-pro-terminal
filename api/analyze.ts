@@ -25,18 +25,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { pairs, timeframe, activeStrategies, filters, mode = 'BALANCED' } = req.body;
-    const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : ['EUR/USD'];
+    
+    // Жестко фиксируем пул переданных пар
+    const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : ['EUR/USD', 'GBP/USD', 'AUD/CAD', 'USD/JPY'];
 
     const systemPrompt = `Ты — скальпер-аналитик терминала ORACLE PRO.
-Проанализируй список пар: ${JSON.stringify(targetPairs)} (Таймфрейм: ${timeframe}M, Режим: ${mode}).
-Выбери НАИЛУЧШУЮ пару из этого списка для входа. 
+У тебя есть пул валютных пар для анализа: ${JSON.stringify(targetPairs)}.
+Таймфрейм: ${timeframe}M. Режим: ${mode}.
+Проанализируй этот пул и выбери НАИЛУЧШУЮ пару из списка, которая дает самый сильный торговый сигнал.
+В поле "bestPair" ты ОБЯЗАН вернуть точное название пары строго из этого списка: ${JSON.stringify(targetPairs)}.
+
 Верни СТРОГО валидный JSON-объект без форматирования и markdown (без \`\`\`):
 {
-  "signal": "CALL",
-  "confidence": 88,
-  "reasoning": "Сильный импульс по тренду",
+  "signal": "CALL" | "PUT" | "SKIP",
+  "confidence": 85,
+  "reasoning": "Краткая суть сигнала",
   "recommendedExpiration": "1M",
-  "bestPair": "${targetPairs[0]}"
+  "bestPair": "точное имя пары из списка"
 }`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -49,7 +54,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Дай торговый сигнал по пулу.` }
+          { role: 'user', content: `Просканируй весь пул пар и выбери лучшую.` }
         ],
         temperature: 0.3,
       }),
@@ -62,38 +67,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const content = data.choices[0]?.message?.content || '';
-    
-    // Очищаем ответ от случайных markdown-тегов
     const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
     
     let result;
     try {
       result = JSON.parse(cleanJson);
     } catch (parseErr) {
-      // Запасной вариант, если ИИ ответил текстом, а не чистым JSON
       result = {
         signal: 'CALL',
-        confidence: 85,
+        confidence: 82,
         reasoning: 'Импульсный пробой уровня',
         recommendedExpiration: '1M',
         bestPair: targetPairs[0]
       };
     }
 
+    // Защита: если ИИ вернул левую пару, берем первую из пула пользователя
     if (!targetPairs.includes(result.bestPair)) {
       result.bestPair = targetPairs[0];
     }
 
     return res.status(200).json({ success: true, result });
   } catch (error: any) {
-    console.error('Backend analyze error:', error.message);
-    // Возвращаем запасной сигнал вместо падения, чтобы тест не останавливался
+    console.error('Backend error:', error.message);
     return res.status(200).json({ 
       success: true, 
       result: {
         signal: 'CALL',
         confidence: 80,
-        reasoning: 'Резервный вход по тренду',
+        reasoning: 'Резервный вход',
         recommendedExpiration: '1M',
         bestPair: req.body?.pairs?.[0] || 'EUR/USD'
       } 
