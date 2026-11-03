@@ -32,14 +32,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 Твоя задача: провести параллельный аудит списка пар: ${JSON.stringify(targetPairs)} на таймфрейме ${timeframe}M.
 Режим риска: ${mode}. Активные стратегии: ${JSON.stringify(activeStrategies)}.
 
-Выбери НАИЛУЧШУЮ пару из переданного списка пар, которая дает самый сильный сигнал. 
+Выбери НАИЛУЧШУЮ пару из переданного списка пар. В режиме BALANCED или AGGRESSIVE старайся давать сигнал (CALL или PUT), сводя пропуски (SKIP) к минимуму, если есть микро-импульс.
 В поле "bestPair" ты ОБЯЗАН указать точное название пары строго из этого списка: ${JSON.stringify(targetPairs)}.
-Если везде флэт, верни signal "SKIP".
 
 Верни СТРОГО JSON-объект без markdown разметки:
 {
   "signal": "CALL" | "PUT" | "SKIP",
-  "confidence": число от 65 до 98,
+  "confidence": число от 70 до 98,
   "reasoning": "Краткая причина (до 12 слов) на русском",
   "recommendedExpiration": "1M" | "3M" | "5M",
   "bestPair": "точное имя пары из списка"
@@ -71,7 +70,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
     const result = JSON.parse(cleanJson);
 
-    // Защита: если ИИ вернул пару не из списка, подставляем первую из пула
     if (!targetPairs.includes(result.bestPair)) {
       result.bestPair = targetPairs[0];
     }
