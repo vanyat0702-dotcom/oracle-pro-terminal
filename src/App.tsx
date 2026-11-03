@@ -686,83 +686,94 @@ export default function App() {
             </button>
           </div>
 
-          <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-3.5 backdrop-blur flex flex-col gap-2">
-            <div className="flex justify-between items-center mb-1">
-              <span className="text-xs font-bold text-slate-400">ПРОСМОТР ГРАФИКА (ОДИНОЧНЫЙ / СЕТКА):</span>
-              <div className="flex gap-2">
-                <button onClick={() => setViewMode('single')} className={`px-2.5 py-1 rounded text-xs font-bold ${viewMode === 'single' ? 'bg-cyan-500 text-slate-950' : 'bg-slate-800 text-slate-400'}`}>Один график</button>
-                <button onClick={() => setViewMode('quad')} className={`px-2.5 py-1 rounded text-xs font-bold ${viewMode === 'quad' ? 'bg-cyan-500 text-slate-950' : 'bg-slate-800 text-slate-400'}`}>Сетка 4</button>
+          {/* ОСНОВНОЙ БЛОК: Слева столбиком пары (Просмотр графика), Справа график */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            
+            {/* ЛЕВАЯ КОЛОНКА: Вертикальный список пар для просмотра графика */}
+            <div className="lg:col-span-3 bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 backdrop-blur flex flex-col gap-3 max-h-[620px] overflow-hidden shadow-lg">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-cyan-400 tracking-wider">ПРОСМОТР ГРАФИКА:</span>
               </div>
-            </div>
-            <div className="grid grid-cols-4 sm:grid-cols-7 md:grid-cols-11 gap-1.5">
-              {TRADING_PAIRS.map((pair) => (
-                <button
-                  key={pair.id}
-                  onClick={() => setSelectedPair(pair)}
-                  className={`px-2 py-1.5 rounded-md text-[11px] font-bold transition-all text-center truncate ${selectedPair.id === pair.id ? 'bg-cyan-500 text-slate-950 font-black' : 'bg-slate-950/70 text-slate-300 border border-slate-800'}`}
-                >
-                  {pair.displaySymbol}
-                </button>
-              ))}
-            </div>
-          </div>
 
-          <div id="chart-container" className="flex-1 bg-slate-900/40 border border-slate-800 rounded-xl p-6 flex flex-col justify-between relative overflow-hidden backdrop-blur min-h-[620px]">
-            {viewMode === 'single' ? (
-              <>
-                <div className="flex justify-between items-center mb-4">
-                  <div className="flex items-center gap-3">
-                    <LineChart className="w-6 h-6 text-cyan-400" />
-                    <div>
-                      <span className="font-bold text-lg text-slate-100">{selectedPair.displaySymbol}</span>
-                      <span className="ml-3 text-sm text-cyan-400 font-mono">Таймфрейм: {timeframe}M</span>
-                    </div>
-                  </div>
+              {/* Кнопки переключения режима */}
+              <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                <button onClick={() => setViewMode('single')} className={`py-1 rounded text-[11px] font-bold ${viewMode === 'single' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Один</button>
+                <button onClick={() => setViewMode('quad')} className={`py-1 rounded text-[11px] font-bold ${viewMode === 'quad' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Сетка 4</button>
+              </div>
 
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 px-3 py-1 rounded-lg text-xs font-mono">
-                      <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                      <span className={`font-bold ${candleTimer <= 10 ? 'text-rose-400 animate-ping' : 'text-amber-400'}`}>{formatTimer(candleTimer)}</span>
-                    </div>
-                    <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs gap-1">
-                      {['1', '5', '15', '60', '240'].map((val) => (
-                        <button key={val} onClick={() => setTimeframe(val)} className={`px-3 py-1 rounded ${timeframe === val ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400'}`}>
-                          {val === '60' ? '1H' : val === '240' ? '4H' : `${val}M`}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden min-h-[500px] relative">
-                  <iframe
-                    key={`${selectedPair.symbol}-${timeframe}-${timezone}-${lang}-${activeIndicator}`}
-                    src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${selectedPair.symbol}&interval=${timeframe}&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=${activeIndicator === 'RSI' ? 'RSI@tv-basicstudies' : 'MACD@tv-basicstudies'}&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
-                    className="w-full h-full border-0 absolute inset-0 pointer-events-auto"
-                    title="TradingView Chart"
-                  ></iframe>
-                </div>
-              </>
-            ) : (
-              <div className="grid grid-cols-2 gap-4 flex-1 h-full min-h-[550px]">
-                {[quadPair1, quadPair2, quadPair3, quadPair4].map((qp, idx) => (
-                  <div key={idx} className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="font-bold text-sm text-cyan-400">{qp.displaySymbol}</span>
-                      <span className="text-xs font-mono text-slate-400">{timeframe}M</span>
-                    </div>
-                    <div className="flex-1 relative rounded-lg overflow-hidden border border-slate-900 min-h-[250px]">
-                      <iframe
-                        key={`quad-${qp.symbol}-${timeframe}-${timezone}`}
-                        src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_${idx}&symbol=${qp.symbol}&interval=${timeframe}&theme=dark&style=1&timezone=${timezone}&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}`}
-                        className="w-full h-full border-0 absolute inset-0"
-                        title={`Chart ${idx}`}
-                      ></iframe>
-                    </div>
-                  </div>
+              {/* Столбик валютных пар в 2 колонки */}
+              <div className="grid grid-cols-2 gap-1.5 overflow-y-auto pr-1 flex-1">
+                {TRADING_PAIRS.map((pair) => (
+                  <button
+                    key={pair.id}
+                    onClick={() => setSelectedPair(pair)}
+                    className={`px-2 py-2 rounded-lg text-[11px] font-bold transition-all text-center truncate border ${selectedPair.id === pair.id ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-sm' : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'}`}
+                  >
+                    {pair.displaySymbol}
+                  </button>
                 ))}
               </div>
-            )}
+            </div>
+
+            {/* ПРАВАЯ КОЛОНКА: График поднялся наверх */}
+            <div id="chart-container" className="lg:col-span-9 bg-slate-900/40 border border-slate-800 rounded-xl p-5 flex flex-col justify-between relative overflow-hidden backdrop-blur min-h-[620px]">
+              {viewMode === 'single' ? (
+                <>
+                  <div className="flex justify-between items-center mb-4">
+                    <div className="flex items-center gap-3">
+                      <LineChart className="w-6 h-6 text-cyan-400" />
+                      <div>
+                        <span className="font-bold text-lg text-slate-100">{selectedPair.displaySymbol}</span>
+                        <span className="ml-3 text-sm text-cyan-400 font-mono">Таймфрейм: {timeframe}M</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 px-3 py-1 rounded-lg text-xs font-mono">
+                        <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                        <span className={`font-bold ${candleTimer <= 10 ? 'text-rose-400 animate-ping' : 'text-amber-400'}`}>{formatTimer(candleTimer)}</span>
+                      </div>
+                      <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs gap-1">
+                        {['1', '5', '15', '60', '240'].map((val) => (
+                          <button key={val} onClick={() => setTimeframe(val)} className={`px-3 py-1 rounded ${timeframe === val ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400'}`}>
+                            {val === '60' ? '1H' : val === '240' ? '4H' : `${val}M`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden min-h-[500px] relative">
+                    <iframe
+                      key={`${selectedPair.symbol}-${timeframe}-${timezone}-${lang}-${activeIndicator}`}
+                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${selectedPair.symbol}&interval=${timeframe}&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=${activeIndicator === 'RSI' ? 'RSI@tv-basicstudies' : 'MACD@tv-basicstudies'}&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
+                      className="w-full h-full border-0 absolute inset-0 pointer-events-auto"
+                      title="TradingView Chart"
+                    ></iframe>
+                  </div>
+                </>
+              ) : (
+                <div className="grid grid-cols-2 gap-4 flex-1 h-full min-h-[550px]">
+                  {[quadPair1, quadPair2, quadPair3, quadPair4].map((qp, idx) => (
+                    <div key={idx} className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="font-bold text-sm text-cyan-400">{qp.displaySymbol}</span>
+                        <span className="text-xs font-mono text-slate-400">{timeframe}M</span>
+                      </div>
+                      <div className="flex-1 relative rounded-lg overflow-hidden border border-slate-900 min-h-[250px]">
+                        <iframe
+                          key={`quad-${qp.symbol}-${timeframe}-${timezone}`}
+                          src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_${idx}&symbol=${qp.symbol}&interval=${timeframe}&theme=dark&style=1&timezone=${timezone}&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}`}
+                          className="w-full h-full border-0 absolute inset-0"
+                          title={`Chart ${idx}`}
+                        ></iframe>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
           </div>
         </section>
 
