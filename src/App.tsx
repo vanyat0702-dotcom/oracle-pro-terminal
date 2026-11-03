@@ -49,7 +49,7 @@ export default function App() {
 
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [candleTimer, setCandleTimer] = useState<number>(0); 
-  const [aiSignal, setAiSignal] = useState<{ pair?: string; direction: 'CALL' | 'PUT'; confidence: number; nextCandleTime?: string } | null>(null);
+  const [aiSignal, setAiSignal] = useState<{ pair?: string; direction: 'CALL' | 'PUT' | 'SKIP'; confidence: number; nextCandleTime?: string; reasoning?: string } | null>(null);
   
   const [isAutoTestActive, setIsAutoTestActive] = useState<boolean>(false);
   
@@ -57,7 +57,7 @@ export default function App() {
     id: number;
     time: string;
     pair: string;
-    direction: 'CALL' | 'PUT';
+    direction: 'CALL' | 'PUT' | 'SKIPPED';
     targetCandleIndex: number;
     status: 'PENDING' | 'WIN' | 'LOSS' | 'SKIPPED';
   }>>(() => {
@@ -110,12 +110,12 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v10.4: Синхронизированный расчет свечей активен.' : 'Vision AI Core v10.4: Active.', 
+      text: lang === 'ru' ? 'Vision AI Core v10.4: Управление ИИ-мостом активировано.' : 'Vision AI Core v10.4: Active.', 
       type: 'info' 
     }
   ]);
 
-  const [historyList, setHistoryList] = useState<Array<{ id: number; time: string; pair: string; direction: 'CALL' | 'PUT'; winrate: number; strategy: string }>>([
+  const [historyList, setHistoryList] = useState<Array<{ id: number; time: string; pair: string; direction: 'CALL' | 'PUT' | 'SKIPPED'; winrate: number; strategy: string }>>([
     { id: 1, time: '01:30', pair: 'EUR/USD', direction: 'CALL', winrate: 94, strategy: 'Trend + Confluence Hub' }
   ]);
 
@@ -169,29 +169,38 @@ export default function App() {
     return pseudoPriceVariation >= 0 ? 'CALL' : 'PUT';
   };
 
-  const evaluateMarketConditions = (pairSymbol: string, targetCandleIdx: number) => {
-    const enabledStratsCount = strategies.filter(s => s.enabled).length;
-    if (enabledStratsCount < 2) {
-      return { shouldTrade: false, direction: null, confidence: 0, reason: 'Недостаточно активных фильтров' };
+  // ОСНОВНАЯ ФУНКЦИЯ СВЯЗИ С ИИ-ШЛЮЗОМ БЭКЕНДА
+  const fetchAiAnalysisFromBackend = async (pairSymbol: string, tf: string) => {
+    try {
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          pair: pairSymbol,
+          timeframe: tf,
+          activeStrategies: strategies.filter(s => s.enabled),
+          filters: {
+            newsFilterEnabled,
+            atrFilterEnabled,
+            riskCapEnabled
+          }
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.result) {
+        return data.result; // { signal: 'CALL'|'PUT'|'SKIP', confidence: number, reasoning: string }
+      } else {
+        console.error('API Error:', data.error);
+        return { signal: 'SKIP', confidence: 0, reasoning: 'Ошибка ответа бэкенда' };
+      }
+    } catch (err) {
+      console.error('Network error connecting to /api/analyze:', err);
+      return { signal: 'SKIP', confidence: 0, reasoning: 'Сетевой сбой шлюза' };
     }
-
-    if (newsFilterEnabled && Math.random() < 0.1) {
-      return { shouldTrade: false, direction: null, confidence: 0, reason: 'Новости / Выход важной статистики -> ПАУЗА 🛡' };
-    }
-
-    if (atrFilterEnabled && Math.random() < 0.1) {
-      return { shouldTrade: false, direction: null, confidence: 0, reason: 'ATR волатильность вне нормы -> ПРОПУСК' };
-    }
-
-    const expectedDir = getCandleActualDirection(pairSymbol, targetCandleIdx);
-    const confluenceScore = 86 + (Math.abs(targetCandleIdx) % 11);
-
-    return {
-      shouldTrade: true,
-      direction: expectedDir,
-      confidence: confluenceScore > 98 ? 95 : confluenceScore,
-      reason: expectedDir === 'CALL' ? 'Тренд ВОСХОДЯЩИЙ (CALL)' : 'Тренд НИСХОДЯЩИЙ (PUT)'
-    };
   };
 
   useEffect(() => {
@@ -213,7 +222,7 @@ export default function App() {
     setCandleTimer(initialInfo.remaining);
     currentCandleIndexRef.current = initialInfo.candleIndex;
 
-    const interval = setInterval(() => {
+    const interval = setInterval(async () => {
       const { candleIndex, remaining } = calculateCandleInfo();
       setCandleTimer(remaining);
 
@@ -243,7 +252,7 @@ export default function App() {
               targetCandleIndex: targetCandle
             }]);
 
-            addLog(`🧪 Сделка открыта: [${sig.pair}] ${sig.direction} на свечу #${targetCandle}`, 'sniper');
+            addLog(`🧪 Сделка открыта по воле ИИ: [${sig.pair}] ${sig.direction} на свечу #${targetCandle}`, 'sniper');
           });
           queuedSignalsRef.current = [];
         }
@@ -263,7 +272,7 @@ export default function App() {
                 : item
             ));
 
-            addLog(`🧪 Итог свечи #${candleIndex} [${pending.pair}] (Прогноз: ${pending.direction}, Факт: ${realCandleDirection}): [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
+            addLog(`🧪 Итог свечи #${candleIndex} [${pending.pair}] (Прогноз ИИ: ${pending.direction}, Факт: ${realCandleDirection}): [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
           });
         }
       }
@@ -274,30 +283,24 @@ export default function App() {
         hasTriggeredCurrentCandleRef.current = true;
         
         const activePairsToScan = selectedMultiPairsRef.current;
-        let bestSignal: { pair: string; direction: 'CALL' | 'PUT'; confidence: number } | null = null;
-        let maxConf = 0;
         const targetCandleForSignal = candleIndex + 1;
 
-        activePairsToScan.forEach((p) => {
-          const evalRes = evaluateMarketConditions(p.displaySymbol, targetCandleForSignal);
-          if (evalRes.shouldTrade && evalRes.direction && evalRes.confidence > maxConf) {
-            maxConf = evalRes.confidence;
-            bestSignal = { pair: p.displaySymbol, direction: evalRes.direction, confidence: evalRes.confidence };
-          }
-        });
+        // Запрашиваем аудит для активной пары или первой из списка через ИИ-мост
+        const pairToAnalyze = activePairsToScan[0] || selectedPair;
+        const aiResult = await fetchAiAnalysisFromBackend(pairToAnalyze.displaySymbol, timeframe);
 
         const currentTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-        if (!bestSignal) {
+        if (aiResult.signal === 'SKIP') {
           playBeep('alert');
-          addLog(`🛡 СКАНЕР: Защитные фильтры заблокировали вход. Свеча пропущена.`, 'info');
+          addLog(`🛡 ИИ-АНАЛИТИК: Защита рисков сработала. Свеча пропущена. (${aiResult.reasoning})`, 'info');
           
           if (isAutoTestActiveRef.current) {
             setAutoTestLogs(prev => [{
               id: Date.now(),
               time: currentTimeStr,
-              pair: selectedPair.displaySymbol,
-              direction: 'CALL',
+              pair: pairToAnalyze.displaySymbol,
+              direction: 'SKIPPED',
               targetCandleIndex: targetCandleForSignal,
               status: 'SKIPPED'
             }, ...prev]);
@@ -306,8 +309,7 @@ export default function App() {
         }
 
         playBeep('sniper');
-        const sig = bestSignal as { pair: string; direction: 'CALL' | 'PUT'; confidence: number };
-        const stratName = 'Trend Following + 5 Strategies Hub';
+        const stratName = 'Vision AI Master Hub';
         
         const nextCandleStartTime = new Date(Date.now() + remaining * 1000);
         const hours = nextCandleStartTime.getHours().toString().padStart(2, '0');
@@ -315,29 +317,30 @@ export default function App() {
         const nextCandleTimeStr = `${hours}:${minutes}`;
 
         setAiSignal({ 
-          pair: sig.pair, 
-          direction: sig.direction, 
-          confidence: sig.confidence, 
-          nextCandleTime: nextCandleTimeStr 
+          pair: pairToAnalyze.displaySymbol, 
+          direction: aiResult.signal, 
+          confidence: aiResult.confidence, 
+          nextCandleTime: nextCandleTimeStr,
+          reasoning: aiResult.reasoning
         });
 
         setHistoryList(prev => [
-          { id: Date.now(), time: currentTimeStr, pair: sig.pair, direction: sig.direction, winrate: sig.confidence, strategy: stratName },
+          { id: Date.now(), time: currentTimeStr, pair: pairToAnalyze.displaySymbol, direction: aiResult.signal, winrate: aiResult.confidence, strategy: stratName },
           ...prev
         ]);
 
         if (isAutoTestActiveRef.current) {
           queuedSignalsRef.current.push({
-            pair: sig.pair,
-            direction: sig.direction,
-            confidence: sig.confidence,
+            pair: pairToAnalyze.displaySymbol,
+            direction: aiResult.signal,
+            confidence: aiResult.confidence,
             timeStr: currentTimeStr
           });
           
-          addLog(`👁 Сигнал подтвержден по тренду: [${sig.pair}] ${sig.direction}. Ждем свечу N+1...`, 'sniper');
+          addLog(`👁 ИИ подтвердил сигнал: [${pairToAnalyze.displaySymbol}] ${aiResult.signal}. Ждем закрытия свечи N+1...`, 'sniper');
         }
 
-        addLog(`👁 СНАЙПЕР [${sig.pair}]: Вход по тренду -> ${sig.direction} (${sig.confidence}%)`, 'sniper');
+        addLog(`👁 ИИ СНАЙПЕР [${pairToAnalyze.displaySymbol}]: Вердикт -> ${aiResult.signal} (${aiResult.confidence}%) | ${aiResult.reasoning}`, 'sniper');
       }
     }, 1000);
 
@@ -349,22 +352,26 @@ export default function App() {
     setAiSignal(null);
     playBeep('alert');
     
-    addLog(`> 👁 Аудит тренда, новостей и волатильности ATR...`, 'vision');
+    addLog(`> 👁 Запрос глубокого ИИ-анализа рынка и стратегий у бэкенда...`, 'vision');
 
     try {
       const now = new Date();
       const tfSecs = parseInt(timeframe, 10) * 60;
-      const currentCandleIdx = Math.floor(now.getTime() / 1000 / tfSecs) + 1;
       
-      const evalRes = evaluateMarketConditions(selectedPair.displaySymbol, currentCandleIdx);
+      // Вызываем наш реальный ИИ-шлюз
+      const aiResult = await fetchAiAnalysisFromBackend(selectedPair.displaySymbol, timeframe);
 
-      if (!evalRes.shouldTrade) {
+      if (aiResult.signal === 'SKIP') {
         setIsAnalyzing(false);
-        addLog(`🛡 РЕЗУЛЬТАТ АУДИТА: Свеча пропущена. ${evalRes.reason}`, 'info');
+        addLog(`🛡 ВЕРДИКТ ИИ: Свеча пропущена. Причина: ${aiResult.reasoning}`, 'info');
+        setAiSignal({
+          pair: selectedPair.displaySymbol,
+          direction: 'SKIP',
+          confidence: 0,
+          reasoning: aiResult.reasoning
+        });
         return;
       }
-
-      const chosenDir = evalRes.direction || 'CALL';
 
       const rem = tfSecs - (Math.floor(now.getTime() / 1000) % tfSecs);
       const nextTime = new Date(Date.now() + rem * 1000);
@@ -372,16 +379,19 @@ export default function App() {
 
       setAiSignal({
         pair: selectedPair.displaySymbol,
-        direction: chosenDir,
-        confidence: evalRes.confidence,
-        nextCandleTime: nextTimeStr
+        direction: aiResult.signal,
+        confidence: aiResult.confidence,
+        nextCandleTime: nextTimeStr,
+        reasoning: aiResult.reasoning
       });
 
-      addLog(`🧠 ИИ Сканер: Сигнал одобрен. Направление: ${chosenDir} (${evalRes.confidence}%)`, 'vision');
+      addLog(`🧠 ИИ-Мозг: Сигнал строго подтвержден. Направление: ${aiResult.signal} (${aiResult.confidence}%) | ${aiResult.reasoning}`, 'vision');
 
     } catch (err) {
       console.error("API gateway connection error:", err);
       addLog('❌ Ошибка связи с ИИ-шлюзом бэкенда.', 'info');
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -451,9 +461,9 @@ export default function App() {
           <Zap className="w-8 h-8 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-              ORACLE PRO TERMINAL (ULTIMATE STRATEGY HUB v10.4)
+              ORACLE PRO TERMINAL (AI-MANAGED CONTROL v10.4)
             </h1>
-            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Intrade Bar Synchronized / Expanded Chart Engine</p>
+            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Под полным управлением ИИ-мозга / Intrade Bar Sync</p>
           </div>
         </div>
         
@@ -474,7 +484,7 @@ export default function App() {
 
           <span className="flex items-center gap-1.5 px-3 py-1 rounded-full border text-emerald-400 bg-emerald-950/60 border-emerald-800">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-            Feed: ONLINE
+            AI-Bridge: ONLINE
           </span>
         </div>
       </header>
@@ -485,7 +495,7 @@ export default function App() {
           <div className="bg-slate-900/90 border border-indigo-500/40 rounded-xl p-3.5 backdrop-blur flex flex-wrap items-center justify-between gap-3 shadow-lg">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-indigo-400" />
-              <span className="text-xs font-bold text-indigo-300">ЗАЩИТНЫЕ ИИ-ФИЛЬТРЫ:</span>
+              <span className="text-xs font-bold text-indigo-300">ИИ ЗАЩИТНЫЕ ФИЛЬТРЫ:</span>
             </div>
 
             <div className="flex items-center gap-4 text-xs">
@@ -496,7 +506,7 @@ export default function App() {
                   onChange={() => setNewsFilterEnabled(!newsFilterEnabled)}
                   className="rounded bg-slate-900 border-slate-700 text-indigo-500 focus:ring-0"
                 />
-                <span className="text-slate-300 font-medium">📰 Новостной фильтр</span>
+                <span className="text-slate-300 font-medium">📰 Новостной фильтр ИИ</span>
               </label>
 
               <label className="flex items-center gap-2 cursor-pointer bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
@@ -524,7 +534,7 @@ export default function App() {
           <div className="bg-slate-900/90 border border-cyan-500/40 rounded-xl p-4 backdrop-blur flex flex-col gap-3 shadow-lg">
             <div className="flex justify-between items-center">
               <div className="text-xs font-bold text-cyan-400 flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-cyan-400" /> РАБОЧИЕ СТРАТЕГИИ И ВИНРЕЙТ МОДУЛЕЙ (Активно: {strategies.filter(s => s.enabled).length})
+                <Sliders className="w-4 h-4 text-cyan-400" /> СТРАТЕГИИ ПОД КОНТРОЛЕМ ИИ (Активно: {strategies.filter(s => s.enabled).length})
               </div>
               <button 
                 onClick={() => setStrategies(prev => prev.map(s => ({ ...s, enabled: true })))}
@@ -611,9 +621,9 @@ export default function App() {
               <div className={`w-3.5 h-3.5 rounded-full ${isAutoTestActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'}`} />
               <div>
                 <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                  <TestTube className="w-4 h-4" /> ТРЕНДОВЫЙ СТРЕСС-ТЕСТ (ВЕРСИЯ v10.4)
+                  <TestTube className="w-4 h-4" /> ИИ СТРЕСС-ТЕСТ СТРАТЕГИЙ
                 </div>
-                <p className="text-[10px] text-slate-400">Строгая синхронизация прогноза и факта закрытия свечи.</p>
+                <p className="text-[10px] text-slate-400">Каждый сигнал проверяется лично ИИ-мозгом на сервере перед открытием свечи.</p>
               </div>
             </div>
 
@@ -650,7 +660,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* ГРАФИК ВО ВСЕЙ КРАСЕ ( style=1 ) */}
           <div id="chart-container" className="flex-1 bg-slate-900/40 border border-slate-800 rounded-xl p-6 flex flex-col justify-between relative overflow-hidden backdrop-blur min-h-[620px]">
             {viewMode === 'single' ? (
               <>
@@ -738,26 +747,34 @@ export default function App() {
           <div className="bg-gradient-to-b from-amber-950/60 to-slate-950 border-2 border-amber-500/80 rounded-xl p-4 text-center relative overflow-hidden shadow-lg shadow-amber-500/10">
             {!aiSignal ? (
               <div className="py-3 text-xs text-slate-400 font-mono animate-pulse">
-                {isAnalyzing ? `⏳ Проверка стратегий (${formatTimer(candleTimer)})...` : 'Нажмите АУДИТ РЫНКА'}
+                {isAnalyzing ? `⏳ ИИ анализирует рынок (${formatTimer(candleTimer)})...` : 'Нажмите АУДИТ РЫНКА'}
               </div>
             ) : (
               <div className="space-y-2">
                 <div className="text-xs font-bold text-cyan-300 tracking-wider">АКТИВ: {aiSignal.pair}</div>
                 <div className="text-2xl font-black flex items-center justify-center gap-2">
-                  <span className="text-amber-400">ВХОД:</span>
-                  <span className={aiSignal.direction === 'CALL' ? 'text-emerald-400 bg-emerald-950 px-3 py-0.5 rounded border border-emerald-500' : 'text-rose-400 bg-rose-950 px-3 py-0.5 rounded border border-rose-500'}>
+                  <span className="text-amber-400">ВЕРДИКТ:</span>
+                  <span className={aiSignal.direction === 'CALL' ? 'text-emerald-400 bg-emerald-950 px-3 py-0.5 rounded border border-emerald-500' : aiSignal.direction === 'PUT' ? 'text-rose-400 bg-rose-950 px-3 py-0.5 rounded border border-rose-500' : 'text-slate-400 bg-slate-900 px-3 py-0.5 rounded border border-slate-700'}>
                     {aiSignal.direction}
                   </span>
                 </div>
 
-                {aiSignal.nextCandleTime && (
+                {aiSignal.nextCandleTime && aiSignal.direction !== 'SKIP' && (
                   <div className="bg-slate-900/90 border border-amber-500/30 rounded-lg py-1.5 px-2">
                     <div className="text-[10px] text-amber-300 font-semibold uppercase tracking-wider">Свеча открывается в:</div>
                     <div className="text-xl font-mono font-black text-white tracking-widest">{aiSignal.nextCandleTime}</div>
                   </div>
                 )}
 
-                <div className="text-xs text-amber-300 font-mono">Совпадение стратегий: <span className="font-bold text-white">{aiSignal.confidence}%</span></div>
+                {aiSignal.reasoning && (
+                  <div className="text-[11px] text-slate-300 italic px-1">
+                    "{aiSignal.reasoning}"
+                  </div>
+                )}
+
+                {aiSignal.confidence > 0 && (
+                  <div className="text-xs text-amber-300 font-mono">Уверенность ИИ: <span className="font-bold text-white">{aiSignal.confidence}%</span></div>
+                )}
               </div>
             )}
           </div>
@@ -787,7 +804,7 @@ export default function App() {
                 {historyList.map(item => (
                   <div key={item.id} className="p-2 rounded bg-slate-900 border border-slate-800 flex justify-between">
                     <span className="text-cyan-400">{item.pair}</span>
-                    <span className={item.direction === 'CALL' ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>{item.direction} ({item.winrate}%)</span>
+                    <span className={item.direction === 'CALL' ? 'text-emerald-400 font-bold' : item.direction === 'PUT' ? 'text-rose-400 font-bold' : 'text-slate-400 font-bold'}>{item.direction} ({item.winrate}%)</span>
                   </div>
                 ))}
               </div>
@@ -868,7 +885,7 @@ export default function App() {
                           <span className="text-slate-400 font-bold">Свеча пропущена 🛡</span>
                         ) : (
                           <>
-                            <span className={item.direction === 'CALL' ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>{item.direction}</span>
+                            <span className={item.direction === 'CALL' ? 'text-emerald-400 font-bold' : item.direction === 'PUT' ? 'text-rose-400 font-bold' : 'text-slate-400 font-bold'}>{item.direction}</span>
                             <div>
                               {item.status === 'PENDING' && <span className="text-amber-400 animate-pulse">Ждём свечу #${item.targetCandleIndex}...</span>}
                               {item.status === 'WIN' && <span className="text-emerald-400 font-black">WIN 🟢</span>}
@@ -946,7 +963,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v10.4 (Ultimate Strategy & Safety Hub)</span>
+        <span>ORACLE PRO v10.4 (AI-Managed Control Hub)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
