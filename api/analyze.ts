@@ -26,21 +26,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { pairs, timeframe, activeStrategies, filters, mode = 'BALANCED' } = req.body;
 
-    // Если передан массив пар, берем их, иначе запасной вариант
-    const targetPairs = Array.isArray(pairs) ? pairs : [req.body.pair || 'EUR/USD'];
+    const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : [req.body.pair || 'EUR/USD'];
 
     const systemPrompt = `Ты — ультрабыстрый ИИ-скальпер терминала ORACLE PRO.
-Твоя задача: провести мгновенный параллельный аудит списка пар: ${JSON.stringify(targetPairs)} на таймфрейме ${timeframe}M.
+Твоя задача: провести параллельный аудит списка пар: ${JSON.stringify(targetPairs)} на таймфрейме ${timeframe}M.
 Режим риска: ${mode}. Активные стратегии: ${JSON.stringify(activeStrategies)}.
 
-Выбери НАИЛУЧШУЮ пару из списка, которая дает четкий сигнал без сильного флэта. Если абсолютно все пары во флэте, верни сигнал SKIP.
+Выбери НАИЛУЧШУЮ пару из переданного списка пар, которая дает самый сильный сигнал. 
+В поле "bestPair" ты ОБЯЗАН указать точное название пары строго из этого списка: ${JSON.stringify(targetPairs)}.
+Если везде флэт, верни signal "SKIP".
+
 Верни СТРОГО JSON-объект без markdown разметки:
 {
   "signal": "CALL" | "PUT" | "SKIP",
-  "confidence": число от 65 to 98,
+  "confidence": число от 65 до 98,
   "reasoning": "Краткая причина (до 12 слов) на русском",
   "recommendedExpiration": "1M" | "3M" | "5M",
-  "bestPair": "название выбранной пары из списка"
+  "bestPair": "точное имя пары из списка"
 }`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -53,7 +55,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Просканируй этот пул пар мгновенно и дай лучший сигнал.` }
+          { role: 'user', content: `Просканируй пул и выбери лучшую пару.` }
         ],
         temperature: mode === 'AGGRESSIVE' ? 0.4 : 0.2,
       }),
@@ -68,6 +70,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const content = data.choices[0]?.message?.content;
     const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
     const result = JSON.parse(cleanJson);
+
+    // Защита: если ИИ вернул пару не из списка, подставляем первую из пула
+    if (!targetPairs.includes(result.bestPair)) {
+      result.bestPair = targetPairs[0];
+    }
 
     return res.status(200).json({ success: true, result });
   } catch (error: any) {
