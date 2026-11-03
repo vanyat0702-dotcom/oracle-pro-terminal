@@ -67,7 +67,7 @@ export default function App() {
     status: 'PENDING' | 'WIN' | 'LOSS' | 'SKIPPED';
   }>>(() => {
     try {
-      const saved = localStorage.getItem('oracle_autotest_logs_v104');
+      const saved = localStorage.getItem('oracle_autotest_logs_v105');
       return saved ? JSON.parse(saved) : [];
     } catch (e) {
       return [];
@@ -76,7 +76,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('oracle_autotest_logs_v104', JSON.stringify(autoTestLogs));
+      localStorage.setItem('oracle_autotest_logs_v105', JSON.stringify(autoTestLogs));
     } catch (e) {
       console.log('Storage save error:', e);
     }
@@ -118,7 +118,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v10.4: Турбо-сканер и скальпинг запущены.' : 'Vision AI Core v10.4: Active.', 
+      text: lang === 'ru' ? 'Vision AI Core v10.5: Турбо-мультисканер активирован.' : 'Vision AI Core v10.5: Active.', 
       type: 'info' 
     }
   ]);
@@ -297,7 +297,13 @@ export default function App() {
 
         // Турбо-запрос всего пула разом
         const aiResult = await fetchAiAnalysisFromBackend(timeframe);
-        const pairToAnalyze = aiResult.bestPair || selectedPair.displaySymbol;
+        const chosenPairSymbol = aiResult.bestPair || selectedPair.displaySymbol;
+
+        // АВТОМАТИЧЕСКИ ПЕРЕКЛЮЧАЕМ ГРАФИК НА ВЫБРАННУЮ ИИ ПАРУ
+        const foundPairObj = TRADING_PAIRS.find(p => p.displaySymbol === chosenPairSymbol);
+        if (foundPairObj) {
+          setSelectedPair(foundPairObj);
+        }
 
         const currentTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -309,7 +315,7 @@ export default function App() {
             setAutoTestLogs(prev => [{
               id: Date.now(),
               time: currentTimeStr,
-              pair: pairToAnalyze,
+              pair: chosenPairSymbol,
               direction: 'SKIPPED',
               targetCandleIndex: targetCandleForSignal,
               status: 'SKIPPED'
@@ -327,7 +333,7 @@ export default function App() {
         const nextCandleTimeStr = `${hours}:${minutes}`;
 
         setAiSignal({ 
-          pair: pairToAnalyze, 
+          pair: chosenPairSymbol, 
           direction: aiResult.signal, 
           confidence: aiResult.confidence, 
           nextCandleTime: nextCandleTimeStr,
@@ -336,22 +342,22 @@ export default function App() {
         });
 
         setHistoryList(prev => [
-          { id: Date.now(), time: currentTimeStr, pair: pairToAnalyze, direction: aiResult.signal, winrate: aiResult.confidence, strategy: stratName },
+          { id: Date.now(), time: currentTimeStr, pair: chosenPairSymbol, direction: aiResult.signal, winrate: aiResult.confidence, strategy: stratName },
           ...prev
         ]);
 
         if (isAutoTestActiveRef.current) {
           queuedSignalsRef.current.push({
-            pair: pairToAnalyze,
+            pair: chosenPairSymbol,
             direction: aiResult.signal,
             confidence: aiResult.confidence,
             timeStr: currentTimeStr
           });
           
-          addLog(`👁 ИИ выбрал пару (${aiResult.recommendedExpiration}): [${pairToAnalyze}] ${aiResult.signal}. Ждем закрытия...`, 'sniper');
+          addLog(`👁 ИИ выбрал пару (${aiResult.recommendedExpiration}): [${chosenPairSymbol}] ${aiResult.signal}. Ждем закрытия...`, 'sniper');
         }
 
-        addLog(`👁 ИИ СНАЙПЕР [${pairToAnalyze}]: Вход -> ${aiResult.signal} (${aiResult.confidence}%) [Экспирация: ${aiResult.recommendedExpiration}]`, 'sniper');
+        addLog(`👁 ИИ СНАЙПЕР [${chosenPairSymbol}]: Вход -> ${aiResult.signal} (${aiResult.confidence}%) [Экспирация: ${aiResult.recommendedExpiration}]`, 'sniper');
       }
     }, 1000);
 
@@ -370,13 +376,19 @@ export default function App() {
       const tfSecs = parseInt(timeframe, 10) * 60;
       
       const aiResult = await fetchAiAnalysisFromBackend(timeframe);
-      const pairToAnalyze = aiResult.bestPair || selectedPair.displaySymbol;
+      const chosenPairSymbol = aiResult.bestPair || selectedPair.displaySymbol;
+
+      // АВТОМАТИЧЕСКИ ПЕРЕКЛЮЧАЕМ ГРАФИК НА ВЫБРАННУЮ ИИ ПАРУ
+      const foundPairObj = TRADING_PAIRS.find(p => p.displaySymbol === chosenPairSymbol);
+      if (foundPairObj) {
+        setSelectedPair(foundPairObj);
+      }
 
       if (aiResult.signal === 'SKIP') {
         setIsAnalyzing(false);
         addLog(`🛡 ВЕРДИКТ ИИ: Сигнал не найден. Причина: ${aiResult.reasoning}`, 'info');
         setAiSignal({
-          pair: pairToAnalyze,
+          pair: chosenPairSymbol,
           direction: 'SKIP',
           confidence: 0,
           reasoning: aiResult.reasoning,
@@ -390,7 +402,7 @@ export default function App() {
       const nextTimeStr = `${nextTime.getHours().toString().padStart(2, '0')}:${nextTime.getMinutes().toString().padStart(2, '0')}`;
 
       setAiSignal({
-        pair: pairToAnalyze,
+        pair: chosenPairSymbol,
         direction: aiResult.signal,
         confidence: aiResult.confidence,
         nextCandleTime: nextTimeStr,
@@ -398,7 +410,7 @@ export default function App() {
         recommendedExpiration: aiResult.recommendedExpiration || '1M'
       });
 
-      addLog(`🧠 ИИ-Мозг выбрал [${pairToAnalyze}]: Сигнал ${aiResult.signal} (${aiResult.confidence}%) | Экспирация: ${aiResult.recommendedExpiration || '1M'} | ${aiResult.reasoning}`, 'vision');
+      addLog(`🧠 ИИ-Мозг выбрал [${chosenPairSymbol}]: Сигнал ${aiResult.signal} (${aiResult.confidence}%) | Экспирация: ${aiResult.recommendedExpiration || '1M'} | ${aiResult.reasoning}`, 'vision');
 
     } catch (err) {
       console.error("API gateway connection error:", err);
@@ -474,9 +486,9 @@ export default function App() {
           <Zap className="w-8 h-8 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-              ORACLE PRO TERMINAL (TURBO MULTI-SCANNER v10.4)
+              ORACLE PRO TERMINAL (TURBO MULTI-SCANNER v10.5)
             </h1>
-            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Мгновенный выбор топ-пары / ИИ Управление</p>
+            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Авто-переключение топ-пары / ИИ Управление</p>
           </div>
         </div>
         
@@ -1006,7 +1018,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v10.4 (Turbo Multi-Scanner Hub)</span>
+        <span>ORACLE PRO v10.5 (Auto-Switch Multi-Scanner Hub)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
