@@ -26,20 +26,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { pairs, timeframe, activeStrategies, filters, mode = 'BALANCED' } = req.body;
     
-    // Жестко фиксируем пул переданных пар
+    // Принимаем весь пул выбранных пользователем пар
     const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : ['EUR/USD', 'GBP/USD', 'AUD/CAD', 'USD/JPY'];
 
-    const systemPrompt = `Ты — скальпер-аналитик терминала ORACLE PRO.
-У тебя есть пул валютных пар для анализа: ${JSON.stringify(targetPairs)}.
-Таймфрейм: ${timeframe}M. Режим: ${mode}.
-Проанализируй этот пул и выбери НАИЛУЧШУЮ пару из списка, которая дает самый сильный торговый сигнал.
+    const systemPrompt = `Ты — ультрабыстрый ИИ-скальпер терминала ORACLE PRO.
+У тебя есть выбранный пул валютных пар: ${JSON.stringify(targetPairs)}.
+Таймфрейм: ${timeframe}M. Режим риска: ${mode}.
+Проанализируй этот пул пар и выбери НАИЛУЧШУЮ пару из списка, которая дает самый сильный торговый сигнал.
 В поле "bestPair" ты ОБЯЗАН вернуть точное название пары строго из этого списка: ${JSON.stringify(targetPairs)}.
+Если везде флэт, верни signal "SKIP".
 
 Верни СТРОГО валидный JSON-объект без форматирования и markdown (без \`\`\`):
 {
   "signal": "CALL" | "PUT" | "SKIP",
-  "confidence": 85,
-  "reasoning": "Краткая суть сигнала",
+  "confidence": число от 70 до 98,
+  "reasoning": "Краткая причина (до 10 слов)",
   "recommendedExpiration": "1M",
   "bestPair": "точное имя пары из списка"
 }`;
@@ -54,7 +55,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Просканируй весь пул пар и выбери лучшую.` }
+          { role: 'user', content: `Просканируй пул и выбери лучшую пару.` }
         ],
         temperature: 0.3,
       }),
@@ -82,7 +83,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
     }
 
-    // Защита: если ИИ вернул левую пару, берем первую из пула пользователя
     if (!targetPairs.includes(result.bestPair)) {
       result.bestPair = targetPairs[0];
     }
@@ -95,7 +95,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       result: {
         signal: 'CALL',
         confidence: 80,
-        reasoning: 'Резервный вход',
+        reasoning: 'Резервный импульс по тренду',
         recommendedExpiration: '1M',
         bestPair: req.body?.pairs?.[0] || 'EUR/USD'
       } 
