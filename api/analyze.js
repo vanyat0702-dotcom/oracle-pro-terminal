@@ -1,79 +1,77 @@
-export default async function handler(req, res) {
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Разрешаем CORS-запросы
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
+  );
+
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { imageBase64, symbol, activeStrategies, isGlobalScan } = req.body;
   const apiKey = process.env.OPENAI_API_KEY;
-
   if (!apiKey) {
-    return res.status(500).json({ error: 'OPENAI_API_KEY не установлен на сервере Vercel' });
+    return res.status(500).json({ error: 'OPENAI_API_KEY is not configured on Vercel' });
   }
-
-  // Формируем описание включенных стратегий
-  const strategiesList = activeStrategies && activeStrategies.length > 0 
-    ? activeStrategies.join(', ') 
-    : 'Защищенный пробой тела свечи';
-
-  const systemPrompt = `
-Ты — строго институциональный торговый ИИ-сканер высшей точности (ORACLE PRO ENGINE).
-Твоя задача — проанализировать график пары ${symbol || 'актива'}.
-
-ВКЛЮЧЕННЫЕ СТРАТЕГИИ И ФИЛЬТРЫ: [ ${strategiesList} ]
-
-ЖЕСТКИЕ ПРАВИЛА И КРИТЕРИИ ОТБОРА (СТРОГО 99-100% ВЕРОЯТНОСТЬ):
-1. Сигнал (CALL / PUT) выдается ТОЛЬКО ЕСЛИ ВСЕ включенные стратегии даёт 100% подтверждение и нет противоречий.
-2. Если на графике присутствует рыночный шум, боковик/флэт без четкой структуры, длинные тени без пробоя телом или слабый объем — ВЫДАВАЙ СИГНАЛ "WAIT" (Пропуск/Ожидание).
-3. Риск ложного входа должен быть сведен к нулю. Лучше пропустить сделку, чем дать неточный сигнал.
-
-ВЕРНИ ОТВЕТ СТРОГО В ФОРМАТЕ JSON (без разметки markdown и без текста вне JSON):
-{
-  "signal": "CALL" | "PUT" | "WAIT",
-  "confidence": число от 0 до 100,
-  "timeframe": "1M" | "5M",
-  "reason": "Краткое и четкое институциональное обоснование входа или причины пропуска",
-  "strategies_matched": ["список совпавших стратегий"]
-}
-`;
 
   try {
+    const { pair, timeframe, activeStrategies, marketData } = req.body;
+
+    // Формируем строгую системную инструкцию ИИ-аналитика
+    const systemPrompt = `Ты — главный ИИ-аналитик торгового терминала ORACLE PRO.
+Твоя задача: провести глубокий анализ финансовой пары ${pair} на таймфрейме ${timeframe}.
+Входные данные активных стратегий: ${JSON.stringify(activeStrategies)}.
+
+Правила строгого подтверждения сигнала:
+1. Проанализируй паттерны: Trend Master, Price Action, Body Breakout, RSI + Bollinger, VSA Volume.
+2. Проверь риски (рыночный шум, скачки волатильности).
+3. Выдай строго JSON-ответ без лишнего текста и без markdown блоков в формате:
+{
+  "signal": "CALL" | "PUT" | "SKIP",
+  "confidence": число от 60 до 98,
+  "reasoning": "Краткое обоснование в 1-2 предложениях на русском языке",
+  "recommendedExpiration": "1M" | "3M" | "5M",
+  "riskLevel": "LOW" | "MEDIUM" | "HIGH"
+}`;
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: `Проанализируй график ${symbol}. Режим сканера: ${isGlobalScan ? 'Глобальный поиск' : 'Одиночный сигнал'}.` },
-              { type: 'image_url', image_url: { url: imageBase64 } }
-            ]
-          }
+          { role: 'user', content: `Запрос на аудит пары ${pair}. Сформируй точный сигнал.` }
         ],
-        temperature: 0.2, // Минимальная температура для исключения галлюцинаций и строгого анализа
-        max_tokens: 500
-      })
+        temperature: 0.2,
+      }),
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: data.error?.message || 'Ошибка OpenAI API' });
+      throw new Error(data.error?.message || 'OpenAI API Error');
     }
 
-    const rawContent = data.choices[0].message.content.trim();
-    // Очищаем от возможной markdown-разметки ```json
-    const cleanedJson = rawContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-    const parsedData = JSON.parse(cleanedJson);
+    const content = data.choices[0]?.message?.content;
+    const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
+    const result = JSON.parse(cleanJson);
 
-    return res.status(200).json(parsedData);
-  } catch (error) {
-    console.error('API Error:', error);
-    return res.status(500).json({ error: 'Ошибка обработки бэкенда: ' + error.message });
+    return res.status(200).json({ success: true, result });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
   }
 }
