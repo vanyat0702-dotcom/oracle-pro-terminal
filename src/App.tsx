@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShieldCheck, Zap, LineChart, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, LayoutGrid, Square, MessageSquare, Clock, Flame, StopCircle, History, Trash2, BookOpen, Volume2, VolumeX, Calculator, Sliders, CheckCircle2, Eye, TestTube, CheckSquare, Square as SquareIcon, Filter, AlertTriangle, Activity, BarChart2 } from 'lucide-react';
+import { ShieldCheck, Zap, LineChart, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, LayoutGrid, Square, MessageSquare, Clock, Flame, StopCircle, History, Trash2, BookOpen, Volume2, VolumeX, Calculator, Sliders, CheckCircle2, Eye, TestTube, CheckSquare, Square as SquareIcon, Filter, AlertTriangle, Activity, BarChart2, ChevronDown, ChevronUp } from 'lucide-react';
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
 import html2canvas from 'html2canvas';
 
@@ -24,6 +24,9 @@ export default function App() {
   const [activeIndicator, setActiveIndicator] = useState<string>('RSI');
 
   const [riskMode, setRiskMode] = useState<'SAFE' | 'BALANCED' | 'AGGRESSIVE'>('BALANCED');
+
+  // Состояния сворачивания верхних блоков для освобождения места
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
   const [newsFilterEnabled, setNewsFilterEnabled] = useState<boolean>(true);
   const [atrFilterEnabled, setAtrFilterEnabled] = useState<boolean>(true);
@@ -513,158 +516,107 @@ export default function App() {
       <main className="flex-1 p-4 grid grid-cols-1 lg:grid-cols-4 gap-4">
         <section className="lg:col-span-3 flex flex-col gap-3">
           
-          <div className="bg-slate-900/90 border border-amber-500/40 rounded-xl p-2.5 backdrop-blur flex flex-wrap items-center justify-between gap-3 shadow-lg">
-            <div className="flex items-center gap-2">
-              <Flame className="w-4 h-4 text-amber-400 animate-bounce" />
-              <span className="text-[11px] font-bold text-amber-300">РЕЖИМ ЧУВСТВИТЕЛЬНОСТИ ИИ:</span>
-            </div>
-
-            <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1 text-xs">
-              <button 
-                onClick={() => setRiskMode('SAFE')} 
-                className={`px-3 py-1 rounded-md font-bold transition-all text-[11px] ${riskMode === 'SAFE' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
-              >
-                🛡 SAFE (Снайпер)
-              </button>
-              <button 
-                onClick={() => setRiskMode('BALANCED')} 
-                className={`px-3 py-1 rounded-md font-bold transition-all text-[11px] ${riskMode === 'BALANCED' ? 'bg-cyan-500 text-slate-950 shadow' : 'text-slate-400 hover:text-slate-200'}`}
-              >
-                ⚡ BALANCED (Баланс)
-              </button>
-              <button 
-                onClick={() => setRiskMode('AGGRESSIVE')} 
-                className={`px-3 py-1 rounded-md font-bold transition-all text-[11px] ${riskMode === 'AGGRESSIVE' ? 'bg-rose-500 text-white shadow animate-pulse' : 'text-slate-400 hover:text-slate-200'}`}
-              >
-                🔥 AGGRESSIVE (Скальпинг)
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-slate-900/90 border border-indigo-500/40 rounded-xl p-2.5 backdrop-blur flex flex-wrap items-center justify-between gap-3 shadow-lg">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-indigo-400" />
-              <span className="text-[11px] font-bold text-indigo-300">ИИ ЗАЩИТНЫЕ ФИЛЬТРЫ:</span>
-            </div>
-
-            <div className="flex items-center gap-3 text-xs">
-              <label className="flex items-center gap-1.5 cursor-pointer bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 text-[11px]">
-                <input 
-                  type="checkbox" 
-                  checked={newsFilterEnabled} 
-                  onChange={() => setNewsFilterEnabled(!newsFilterEnabled)}
-                  className="rounded bg-slate-900 border-slate-700 text-indigo-500 focus:ring-0"
-                />
-                <span className="text-slate-300 font-medium">📰 Новостной фильтр ИИ</span>
-              </label>
-
-              <label className="flex items-center gap-1.5 cursor-pointer bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 text-[11px]">
-                <input 
-                  type="checkbox" 
-                  checked={atrFilterEnabled} 
-                  onChange={() => setAtrFilterEnabled(!atrFilterEnabled)}
-                  className="rounded bg-slate-900 border-slate-700 text-indigo-500 focus:ring-0"
-                />
-                <span className="text-slate-300 font-medium">📊 ATR Волатильность</span>
-              </label>
-
-              <label className="flex items-center gap-1.5 cursor-pointer bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 text-[11px]">
-                <input 
-                  type="checkbox" 
-                  checked={riskCapEnabled} 
-                  onChange={() => setRiskCapEnabled(!riskCapEnabled)}
-                  className="rounded bg-slate-900 border-slate-700 text-indigo-500 focus:ring-0"
-                />
-                <span className="text-slate-300 font-medium">🛡 Risk-Cap (До {maxMartingaleStep} шага)</span>
-              </label>
-            </div>
-          </div>
-
-          <div className="bg-slate-900/90 border border-cyan-500/40 rounded-xl p-3 backdrop-blur flex flex-col gap-2 shadow-lg">
-            <div className="flex justify-between items-center">
-              <div className="text-[11px] font-bold text-cyan-400 flex items-center gap-1.5">
-                <Sliders className="w-3.5 h-3.5 text-cyan-400" /> СТРАТЕГИИ ПОД КОНТРОЛЕМ ИИ (Активно: {strategies.filter(s => s.enabled).length})
+          {/* СВОРАЧИВАЕМАЯ ПАНЕЛЬ НАСТРОЕК (ФИЛЬТРЫ, СТРАТЕГИИ, МУЛЬТИВЫБОР) */}
+          <div className="bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-lg transition-all">
+            <button
+              onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+              className="w-full px-4 py-2.5 bg-slate-900 hover:bg-slate-850 flex items-center justify-between text-xs font-bold text-cyan-400 cursor-pointer border-b border-slate-800/50"
+            >
+              <div className="flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-cyan-400" />
+                <span>НАСТРОЙКИ СКАНИРОВАНИЯ И ИИ-ФИЛЬТРОВ</span>
+                <span className="text-[10px] text-slate-400 font-normal ml-2">
+                  (Режим: <span className="text-amber-400 font-bold">{riskMode}</span> | Стратегий: <span className="text-emerald-400 font-bold">{strategies.filter(s => s.enabled).length}</span> | Пар в пуле: <span className="text-cyan-400 font-bold">{selectedMultiPairs.length}</span>)
+                </span>
               </div>
-              <button 
-                onClick={() => setStrategies(prev => prev.map(s => ({ ...s, enabled: true })))}
-                className="text-[10px] text-cyan-300 hover:underline bg-cyan-950/50 px-2.5 py-0.5 rounded border border-cyan-800 font-bold"
-              >
-                Включить все
-              </button>
-            </div>
+              <div className="flex items-center gap-1 text-[11px] text-slate-400">
+                <span>{isSettingsOpen ? 'Свернуть' : 'Развернуть настройки'}</span>
+                {isSettingsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </div>
+            </button>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
-              {strategies.map((strat) => {
-                const total = strat.wins + strat.losses;
-                const winrate = total > 0 ? Math.round((strat.wins / total) * 100) : 0;
-                return (
-                  <button
-                    key={strat.id}
-                    onClick={() => toggleStrategy(strat.id)}
-                    className={`p-2 rounded-xl text-left transition-all flex flex-col justify-between gap-1 border cursor-pointer ${
-                      strat.enabled 
-                        ? 'bg-cyan-950/40 border-cyan-500 text-cyan-200 shadow-sm shadow-cyan-500/10' 
-                        : 'bg-slate-950/80 border-slate-800 text-slate-500 opacity-70'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold truncate">{strat.name}</span>
-                      <span className={`w-3 h-3 rounded-full flex items-center justify-center text-[9px] font-black ${strat.enabled ? 'bg-cyan-400 text-slate-950' : 'bg-slate-800 text-slate-600'}`}>
-                        {strat.enabled ? '✓' : ''}
-                      </span>
+            {/* Выпадающая начинка при клике */}
+            {isSettingsOpen && (
+              <div className="p-4 flex flex-col gap-3 bg-slate-950/60 backdrop-blur">
+                {/* 1. Режим риска */}
+                <div className="flex flex-wrap items-center justify-between gap-2 p-2 bg-slate-900/80 rounded-lg border border-amber-500/30">
+                  <div className="flex items-center gap-2">
+                    <Flame className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-bold text-amber-300">РЕЖИМ ЧУВСТВИТЕЛЬНОСТИ:</span>
+                  </div>
+                  <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1 text-xs">
+                    <button onClick={() => setRiskMode('SAFE')} className={`px-3 py-1 rounded font-bold ${riskMode === 'SAFE' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>🛡 SAFE</button>
+                    <button onClick={() => setRiskMode('BALANCED')} className={`px-3 py-1 rounded font-bold ${riskMode === 'BALANCED' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>⚡ BALANCED</button>
+                    <button onClick={() => setRiskMode('AGGRESSIVE')} className={`px-3 py-1 rounded font-bold ${riskMode === 'AGGRESSIVE' ? 'bg-rose-500 text-white' : 'text-slate-400'}`}>🔥 AGGRESSIVE</button>
+                  </div>
+                </div>
+
+                {/* 2. Защитные фильтры */}
+                <div className="flex flex-wrap items-center gap-4 text-xs p-2 bg-slate-900/80 rounded-lg border border-indigo-500/30">
+                  <span className="font-bold text-indigo-300">ФИЛЬТРЫ:</span>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" checked={newsFilterEnabled} onChange={() => setNewsFilterEnabled(!newsFilterEnabled)} className="rounded text-indigo-500" />
+                    <span className="text-slate-300">📰 Новостной фильтр</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" checked={atrFilterEnabled} onChange={() => setAtrFilterEnabled(!atrFilterEnabled)} className="rounded text-indigo-500" />
+                    <span className="text-slate-300">📊 ATR Волатильность</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" checked={riskCapEnabled} onChange={() => setRiskCapEnabled(!riskCapEnabled)} className="rounded text-indigo-500" />
+                    <span className="text-slate-300">🛡 Risk-Cap (до {maxMartingaleStep} шага)</span>
+                  </label>
+                </div>
+
+                {/* 3. Выбор стратегий */}
+                <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
+                  <div className="flex justify-between items-center text-xs font-bold text-cyan-400">
+                    <span>АКТИВНЫЕ СТРАТЕГИИ</span>
+                    <button onClick={() => setStrategies(prev => prev.map(s => ({ ...s, enabled: true })))} className="text-[10px] text-cyan-300 hover:underline">Включить все</button>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                    {strategies.map((strat) => (
+                      <button
+                        key={strat.id}
+                        onClick={() => toggleStrategy(strat.id)}
+                        className={`p-2 rounded-lg text-left text-xs font-bold transition-all border ${strat.enabled ? 'bg-cyan-950/60 border-cyan-500 text-cyan-300' : 'bg-slate-950 border-slate-800 text-slate-500'}`}
+                      >
+                        <div className="truncate">{strat.name}</div>
+                        <div className="text-[9px] text-emerald-400 font-mono mt-0.5">Win: {Math.round((strat.wins / (strat.wins + strat.losses)) * 100)}%</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 4. Мультивыбор пар */}
+                <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
+                  <div className="flex justify-between items-center text-xs font-bold text-cyan-400">
+                    <span>МУЛЬТИВЫБОР ПАР ДЛЯ СТРАТ-СКАНЕРА</span>
+                    <div className="flex gap-2 text-[10px]">
+                      <button onClick={() => setSelectedMultiPairs([...TRADING_PAIRS])} className="text-cyan-300 hover:underline">Выбрать все</button>
+                      <button onClick={() => setSelectedMultiPairs([TRADING_PAIRS[0]])} className="text-slate-400 hover:underline">Сбросить</button>
                     </div>
-                    <div className="flex justify-between items-center text-[10px] text-emerald-400 font-mono mt-0.5">
-                      <span>Win: {winrate}%</span>
-                      <span className="text-slate-400">({strat.wins}W / {strat.losses}L)</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                  </div>
+                  <div className="grid grid-cols-4 sm:grid-cols-8 lg:grid-cols-11 gap-1 max-h-24 overflow-y-auto pr-1">
+                    {TRADING_PAIRS.map((pair) => {
+                      const isChecked = selectedMultiPairs.some(p => p.id === pair.id);
+                      return (
+                        <button
+                          key={pair.id}
+                          onClick={() => togglePairSelection(pair)}
+                          className={`px-1.5 py-1 rounded text-[10px] font-bold border truncate ${isChecked ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300' : 'bg-slate-950 border-slate-800 text-slate-500'}`}
+                        >
+                          {pair.displaySymbol}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="bg-slate-900/90 border border-cyan-500/40 rounded-xl p-3 backdrop-blur flex flex-col gap-2 shadow-lg">
-            <div className="flex justify-between items-center">
-              <div className="text-[11px] font-bold text-cyan-400 flex items-center gap-1.5">
-                <CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> МУЛЬТИВЫБОР ВАЛЮТНЫХ ПАР (Выбрано: {selectedMultiPairs.length})
-              </div>
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => setSelectedMultiPairs([...TRADING_PAIRS])}
-                  className="text-[10px] text-cyan-300 hover:underline bg-cyan-950/50 px-2 py-0.5 rounded border border-cyan-800"
-                >
-                  Выбрать все
-                </button>
-                <button 
-                  onClick={() => setSelectedMultiPairs([TRADING_PAIRS[0]])}
-                  className="text-[10px] text-slate-400 hover:underline bg-slate-950 px-2 py-0.5 rounded border border-slate-800"
-                >
-                  Сбросить
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 sm:grid-cols-6 md:grid-cols-11 gap-1.5 max-h-20 overflow-y-auto pr-1">
-              {TRADING_PAIRS.map((pair) => {
-                const isChecked = selectedMultiPairs.some(p => p.id === pair.id);
-                return (
-                  <button
-                    key={pair.id}
-                    onClick={() => togglePairSelection(pair)}
-                    className={`px-2 py-1 rounded text-[10px] font-bold transition-all flex items-center justify-between gap-1 border ${
-                      isChecked 
-                        ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300' 
-                        : 'bg-slate-950 border-slate-800 text-slate-500'
-                    }`}
-                  >
-                    <span className="truncate">{pair.displaySymbol}</span>
-                    <span className={`w-1.5 h-1.5 rounded-full ${isChecked ? 'bg-cyan-400' : 'bg-slate-700'}`}></span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
+          {/* СТРЕСС-ТЕСТ ПЛАНКА */}
           <div className="bg-slate-900/90 border border-amber-500/50 rounded-xl p-3 backdrop-blur flex items-center justify-between shadow-lg">
             <div className="flex items-center gap-3">
               <div className={`w-3 h-3 rounded-full ${isAutoTestActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'}`} />
@@ -678,7 +630,7 @@ export default function App() {
 
             <button
               onClick={() => setIsAutoTestActive(!isAutoTestActive)}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all shadow-lg cursor-pointer ${
+              className={`px-3.5 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all shadow-lg cursor-pointer ${
                 isAutoTestActive 
                   ? 'bg-rose-500/20 text-rose-400 border border-rose-500/50 hover:bg-rose-500/30' 
                   : 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 hover:from-amber-400 shadow-amber-500/20'
@@ -688,16 +640,16 @@ export default function App() {
             </button>
           </div>
 
-          {/* ОСНОВНОЙ БЛОК: Справа график поднялся наверх, слева вертикальный сайдбар пар */}
+          {/* ГЛАВНЫЙ ЭКРАН: СЛЕВА ПАРЫ, СПРАВА ГРАФИК (ВСТАЛИ НАВЕРХ) */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
             
-            {/* ЛЕВАЯ КОЛОНКА (3 из 12): Список пар столбиком (Просмотр графика) */}
-            <div className="lg:col-span-3 bg-slate-900/90 border border-slate-800 rounded-xl p-3 backdrop-blur flex flex-col gap-2.5 max-h-[580px] overflow-hidden shadow-lg">
+            {/* ЛЕВАЯ КОЛОНКА (3 из 12): Список пар «Просмотр графика» */}
+            <div className="lg:col-span-3 bg-slate-900/90 border border-slate-800 rounded-xl p-3 backdrop-blur flex flex-col gap-2.5 max-h-[600px] overflow-hidden shadow-lg">
               <div className="flex justify-between items-center">
                 <span className="text-[11px] font-bold text-cyan-400 tracking-wider">ПРОСМОТР ГРАФИКА:</span>
               </div>
 
-              {/* Кнопки переключения режима */}
+              {/* Переключатель режимов */}
               <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
                 <button onClick={() => setViewMode('single')} className={`py-1 rounded text-[10px] font-bold ${viewMode === 'single' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Один</button>
                 <button onClick={() => setViewMode('quad')} className={`py-1 rounded text-[10px] font-bold ${viewMode === 'quad' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Сетка 4</button>
@@ -717,8 +669,8 @@ export default function App() {
               </div>
             </div>
 
-            {/* ПРАВАЯ КОЛОНКА (9 из 12): График поднялся наверх и параллелен ИИ-аналитику */}
-            <div id="chart-container" className="lg:col-span-9 bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex flex-col justify-between relative overflow-hidden backdrop-blur h-[580px] shadow-lg">
+            {/* ПРАВАЯ КОЛОНКА (9 из 12): Торговый график (ПОДНЯЛСЯ НАВЕРХ СРАЗУ ПОД ШАПКУ) */}
+            <div id="chart-container" className="lg:col-span-9 bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex flex-col justify-between relative overflow-hidden backdrop-blur h-[600px] shadow-lg">
               {viewMode === 'single' ? (
                 <>
                   <div className="flex justify-between items-center mb-3">
@@ -779,7 +731,7 @@ export default function App() {
           </div>
         </section>
 
-        {/* ПРАВАЯ ПАНЕЛЬ: VISION AI АНАЛИТИК (ПАРАЛЛЕЛЬНО ГРАФИКУ И ВСЕГДА В ЗОНЕ ВИДИМОСТИ) */}
+        {/* ПРАВАЯ ПАНЕЛЬ: VISION AI АНАЛИТИК С КНОПКОЙ АУДИТ И ЗОЛОТОЙ РАМКОЙ (ПАРАЛЛЕЛЬНО ГРАФИКУ) */}
         <aside className="bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex flex-col gap-3 backdrop-blur">
           <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
             <h2 className="font-bold text-slate-200 flex items-center gap-2 text-xs">
@@ -792,22 +744,23 @@ export default function App() {
             <button
               onClick={handleStartAnalysis}
               disabled={isAnalyzing}
-              className="bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-black py-2 px-2.5 rounded-xl text-[11px] uppercase cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1"
+              className="bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-black py-2.5 px-3 rounded-xl text-xs uppercase cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1 shadow-lg"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} /> АУДИТ РЫНКА
             </button>
             <button
               onClick={handleStopAnalysis}
               disabled={!isAnalyzing}
-              className="bg-rose-950/80 text-rose-300 border border-rose-800 font-black py-2 px-2.5 rounded-xl text-[11px] uppercase cursor-pointer disabled:opacity-40"
+              className="bg-rose-950/80 text-rose-300 border border-rose-800 font-black py-2.5 px-3 rounded-xl text-xs uppercase cursor-pointer disabled:opacity-40"
             >
               СТОП
             </button>
           </div>
 
-          <div className="bg-gradient-to-b from-amber-950/60 to-slate-950 border-2 border-amber-500/80 rounded-xl p-3 text-center relative overflow-hidden shadow-lg shadow-amber-500/10">
+          {/* ЗОЛОТАЯ КАРТОЧКА ВЕРДИКТА ИИ */}
+          <div className="bg-gradient-to-b from-amber-950/60 to-slate-950 border-2 border-amber-500/80 rounded-xl p-3.5 text-center relative overflow-hidden shadow-lg shadow-amber-500/10">
             {!aiSignal ? (
-              <div className="py-2.5 text-xs text-slate-400 font-mono animate-pulse">
+              <div className="py-3 text-xs text-slate-400 font-mono animate-pulse">
                 {isAnalyzing ? `⏳ Сканирование пула (${formatTimer(candleTimer)})...` : 'Нажмите АУДИТ РЫНКА'}
               </div>
             ) : (
@@ -842,6 +795,7 @@ export default function App() {
             )}
           </div>
 
+          {/* ВКЛАДКИ ДАННЫХ И ИСТОРИИ */}
           <div className="grid grid-cols-5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[10px]">
             <button onClick={() => setRightTab('logs')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Логи</button>
             <button onClick={() => setRightTab('history')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>История</button>
