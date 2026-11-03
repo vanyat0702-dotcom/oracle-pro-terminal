@@ -178,6 +178,7 @@ export default function App() {
   const fetchAiAnalysisFromBackend = async (tf: string) => {
     try {
       const activePairsSymbols = selectedMultiPairsRef.current.map(p => p.displaySymbol);
+      const activeStratNames = strategies.filter(s => s.enabled).map(s => s.name);
 
       const response = await fetch('/api/analyze', {
         method: 'POST',
@@ -188,7 +189,8 @@ export default function App() {
           pairs: activePairsSymbols,
           timeframe: tf,
           mode: riskModeRef.current,
-          activeStrategies: strategies.filter(s => s.enabled),
+          activeStrategies: activeStratNames,
+          strategy: activeStratNames[0] || 'Мульти-стратегия',
           filters: {
             newsFilterEnabled,
             atrFilterEnabled,
@@ -475,78 +477,78 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none">
-      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-4 flex items-center justify-between">
+      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Zap className="w-8 h-8 text-cyan-400 animate-pulse" />
+          <Zap className="w-7 h-7 text-cyan-400 animate-pulse" />
           <div>
-            <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
+            <h1 className="text-lg font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
               ORACLE PRO TERMINAL (TURBO MULTI-SCANNER v10.5)
             </h1>
-            <p className="text-[10px] text-slate-400 tracking-widest uppercase">Авто-переключение топ-пары / ИИ Управление</p>
+            <p className="text-[9px] text-slate-400 tracking-widest uppercase">Авто-переключение топ-пары / ИИ Управление</p>
           </div>
         </div>
         
         <div className="flex items-center gap-3 text-xs">
-          <button onClick={() => setSoundEnabled(!soundEnabled)} className="p-2 rounded-lg border bg-cyan-950/60 border-cyan-800 text-cyan-400">
+          <button onClick={() => setSoundEnabled(!soundEnabled)} className="p-1.5 rounded-lg border bg-cyan-950/60 border-cyan-800 text-cyan-400">
             {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
           </button>
 
           <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
-            <button onClick={() => setTimezone('Europe/Moscow')} className={`px-2.5 py-1 rounded text-[11px] font-bold ${timezone === 'Europe/Moscow' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>МСК</button>
-            <button onClick={() => setTimezone('Etc/UTC')} className={`px-2.5 py-1 rounded text-[11px] font-bold ${timezone === 'Etc/UTC' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>UTC</button>
+            <button onClick={() => setTimezone('Europe/Moscow')} className={`px-2 py-0.5 rounded text-[10px] font-bold ${timezone === 'Europe/Moscow' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>МСК</button>
+            <button onClick={() => setTimezone('Etc/UTC')} className={`px-2 py-0.5 rounded text-[10px] font-bold ${timezone === 'Etc/UTC' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>UTC</button>
           </div>
 
           <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
-            <button onClick={() => setLang('ru')} className={`px-2.5 py-1 rounded text-[11px] font-bold ${lang === 'ru' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>РУС</button>
-            <button onClick={() => setLang('en')} className={`px-2.5 py-1 rounded text-[11px] font-bold ${lang === 'en' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>ENG</button>
+            <button onClick={() => setLang('ru')} className={`px-2 py-0.5 rounded text-[10px] font-bold ${lang === 'ru' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>РУС</button>
+            <button onClick={() => setLang('en')} className={`px-2 py-0.5 rounded text-[10px] font-bold ${lang === 'en' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>ENG</button>
           </div>
 
-          <span className="flex items-center gap-1.5 px-3 py-1 rounded-full border text-emerald-400 bg-emerald-950/60 border-emerald-800">
+          <span className="flex items-center gap-1.5 px-3 py-1 rounded-full border text-emerald-400 bg-emerald-950/60 border-emerald-800 text-[11px]">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
             AI-Bridge: ONLINE
           </span>
         </div>
       </header>
 
-      <main className="flex-1 p-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <section className="lg:col-span-3 flex flex-col gap-4">
+      <main className="flex-1 p-4 grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <section className="lg:col-span-3 flex flex-col gap-3">
           
-          <div className="bg-slate-900/90 border border-amber-500/40 rounded-xl p-3.5 backdrop-blur flex flex-wrap items-center justify-between gap-3 shadow-lg">
+          <div className="bg-slate-900/90 border border-amber-500/40 rounded-xl p-2.5 backdrop-blur flex flex-wrap items-center justify-between gap-3 shadow-lg">
             <div className="flex items-center gap-2">
-              <Flame className="w-5 h-5 text-amber-400 animate-bounce" />
-              <span className="text-xs font-bold text-amber-300">РЕЖИМ ЧУВСТВИТЕЛЬНОСТИ ИИ:</span>
+              <Flame className="w-4 h-4 text-amber-400 animate-bounce" />
+              <span className="text-[11px] font-bold text-amber-300">РЕЖИМ ЧУВСТВИТЕЛЬНОСТИ ИИ:</span>
             </div>
 
             <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1 text-xs">
               <button 
                 onClick={() => setRiskMode('SAFE')} 
-                className={`px-3 py-1.5 rounded-md font-bold transition-all ${riskMode === 'SAFE' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                className={`px-3 py-1 rounded-md font-bold transition-all text-[11px] ${riskMode === 'SAFE' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}
               >
                 🛡 SAFE (Снайпер)
               </button>
               <button 
                 onClick={() => setRiskMode('BALANCED')} 
-                className={`px-3 py-1.5 rounded-md font-bold transition-all ${riskMode === 'BALANCED' ? 'bg-cyan-500 text-slate-950 shadow' : 'text-slate-400 hover:text-slate-200'}`}
+                className={`px-3 py-1 rounded-md font-bold transition-all text-[11px] ${riskMode === 'BALANCED' ? 'bg-cyan-500 text-slate-950 shadow' : 'text-slate-400 hover:text-slate-200'}`}
               >
                 ⚡ BALANCED (Баланс)
               </button>
               <button 
                 onClick={() => setRiskMode('AGGRESSIVE')} 
-                className={`px-3 py-1.5 rounded-md font-bold transition-all ${riskMode === 'AGGRESSIVE' ? 'bg-rose-500 text-white shadow animate-pulse' : 'text-slate-400 hover:text-slate-200'}`}
+                className={`px-3 py-1 rounded-md font-bold transition-all text-[11px] ${riskMode === 'AGGRESSIVE' ? 'bg-rose-500 text-white shadow animate-pulse' : 'text-slate-400 hover:text-slate-200'}`}
               >
                 🔥 AGGRESSIVE (Скальпинг)
               </button>
             </div>
           </div>
 
-          <div className="bg-slate-900/90 border border-indigo-500/40 rounded-xl p-3.5 backdrop-blur flex flex-wrap items-center justify-between gap-3 shadow-lg">
+          <div className="bg-slate-900/90 border border-indigo-500/40 rounded-xl p-2.5 backdrop-blur flex flex-wrap items-center justify-between gap-3 shadow-lg">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-indigo-400" />
-              <span className="text-xs font-bold text-indigo-300">ИИ ЗАЩИТНЫЕ ФИЛЬТРЫ:</span>
+              <ShieldCheck className="w-4 h-4 text-indigo-400" />
+              <span className="text-[11px] font-bold text-indigo-300">ИИ ЗАЩИТНЫЕ ФИЛЬТРЫ:</span>
             </div>
 
-            <div className="flex items-center gap-4 text-xs">
-              <label className="flex items-center gap-2 cursor-pointer bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
+            <div className="flex items-center gap-3 text-xs">
+              <label className="flex items-center gap-1.5 cursor-pointer bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 text-[11px]">
                 <input 
                   type="checkbox" 
                   checked={newsFilterEnabled} 
@@ -556,7 +558,7 @@ export default function App() {
                 <span className="text-slate-300 font-medium">📰 Новостной фильтр ИИ</span>
               </label>
 
-              <label className="flex items-center gap-2 cursor-pointer bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
+              <label className="flex items-center gap-1.5 cursor-pointer bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 text-[11px]">
                 <input 
                   type="checkbox" 
                   checked={atrFilterEnabled} 
@@ -566,7 +568,7 @@ export default function App() {
                 <span className="text-slate-300 font-medium">📊 ATR Волатильность</span>
               </label>
 
-              <label className="flex items-center gap-2 cursor-pointer bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
+              <label className="flex items-center gap-1.5 cursor-pointer bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800 text-[11px]">
                 <input 
                   type="checkbox" 
                   checked={riskCapEnabled} 
@@ -578,14 +580,14 @@ export default function App() {
             </div>
           </div>
 
-          <div className="bg-slate-900/90 border border-cyan-500/40 rounded-xl p-4 backdrop-blur flex flex-col gap-3 shadow-lg">
+          <div className="bg-slate-900/90 border border-cyan-500/40 rounded-xl p-3 backdrop-blur flex flex-col gap-2 shadow-lg">
             <div className="flex justify-between items-center">
-              <div className="text-xs font-bold text-cyan-400 flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-cyan-400" /> СТРАТЕГИИ ПОД КОНТРОЛЕМ ИИ (Активно: {strategies.filter(s => s.enabled).length})
+              <div className="text-[11px] font-bold text-cyan-400 flex items-center gap-1.5">
+                <Sliders className="w-3.5 h-3.5 text-cyan-400" /> СТРАТЕГИИ ПОД КОНТРОЛЕМ ИИ (Активно: {strategies.filter(s => s.enabled).length})
               </div>
               <button 
                 onClick={() => setStrategies(prev => prev.map(s => ({ ...s, enabled: true })))}
-                className="text-[10px] text-cyan-300 hover:underline bg-cyan-950/50 px-2.5 py-1 rounded border border-cyan-800 font-bold"
+                className="text-[10px] text-cyan-300 hover:underline bg-cyan-950/50 px-2.5 py-0.5 rounded border border-cyan-800 font-bold"
               >
                 Включить все
               </button>
@@ -599,19 +601,19 @@ export default function App() {
                   <button
                     key={strat.id}
                     onClick={() => toggleStrategy(strat.id)}
-                    className={`p-2.5 rounded-xl text-left transition-all flex flex-col justify-between gap-1 border cursor-pointer ${
+                    className={`p-2 rounded-xl text-left transition-all flex flex-col justify-between gap-1 border cursor-pointer ${
                       strat.enabled 
                         ? 'bg-cyan-950/40 border-cyan-500 text-cyan-200 shadow-sm shadow-cyan-500/10' 
                         : 'bg-slate-950/80 border-slate-800 text-slate-500 opacity-70'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold truncate">{strat.name}</span>
+                      <span className="text-[11px] font-bold truncate">{strat.name}</span>
                       <span className={`w-3 h-3 rounded-full flex items-center justify-center text-[9px] font-black ${strat.enabled ? 'bg-cyan-400 text-slate-950' : 'bg-slate-800 text-slate-600'}`}>
                         {strat.enabled ? '✓' : ''}
                       </span>
                     </div>
-                    <div className="flex justify-between items-center text-[10px] text-emerald-400 font-mono mt-1">
+                    <div className="flex justify-between items-center text-[10px] text-emerald-400 font-mono mt-0.5">
                       <span>Win: {winrate}%</span>
                       <span className="text-slate-400">({strat.wins}W / {strat.losses}L)</span>
                     </div>
@@ -621,10 +623,10 @@ export default function App() {
             </div>
           </div>
 
-          <div className="bg-slate-900/90 border border-cyan-500/40 rounded-xl p-4 backdrop-blur flex flex-col gap-2.5 shadow-lg">
+          <div className="bg-slate-900/90 border border-cyan-500/40 rounded-xl p-3 backdrop-blur flex flex-col gap-2 shadow-lg">
             <div className="flex justify-between items-center">
-              <div className="text-xs font-bold text-cyan-400 flex items-center gap-2">
-                <CheckSquare className="w-4 h-4 text-cyan-400" /> МУЛЬТИВЫБОР ВАЛЮТНЫХ ПАР (Выбрано: {selectedMultiPairs.length})
+              <div className="text-[11px] font-bold text-cyan-400 flex items-center gap-1.5">
+                <CheckSquare className="w-3.5 h-3.5 text-cyan-400" /> МУЛЬТИВЫБОР ВАЛЮТНЫХ ПАР (Выбрано: {selectedMultiPairs.length})
               </div>
               <div className="flex gap-2">
                 <button 
@@ -642,41 +644,41 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 sm:grid-cols-6 md:grid-cols-11 gap-1.5 max-h-24 overflow-y-auto pr-1">
+            <div className="grid grid-cols-3 sm:grid-cols-6 md:grid-cols-11 gap-1.5 max-h-20 overflow-y-auto pr-1">
               {TRADING_PAIRS.map((pair) => {
                 const isChecked = selectedMultiPairs.some(p => p.id === pair.id);
                 return (
                   <button
                     key={pair.id}
                     onClick={() => togglePairSelection(pair)}
-                    className={`px-2 py-1 rounded text-[11px] font-bold transition-all flex items-center justify-between gap-1 border ${
+                    className={`px-2 py-1 rounded text-[10px] font-bold transition-all flex items-center justify-between gap-1 border ${
                       isChecked 
                         ? 'bg-cyan-500/20 border-cyan-500 text-cyan-300' 
                         : 'bg-slate-950 border-slate-800 text-slate-500'
                     }`}
                   >
                     <span className="truncate">{pair.displaySymbol}</span>
-                    <span className={`w-2 h-2 rounded-full ${isChecked ? 'bg-cyan-400' : 'bg-slate-700'}`}></span>
+                    <span className={`w-1.5 h-1.5 rounded-full ${isChecked ? 'bg-cyan-400' : 'bg-slate-700'}`}></span>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          <div className="bg-slate-900/90 border border-amber-500/50 rounded-xl p-3.5 backdrop-blur flex items-center justify-between shadow-lg">
+          <div className="bg-slate-900/90 border border-amber-500/50 rounded-xl p-3 backdrop-blur flex items-center justify-between shadow-lg">
             <div className="flex items-center gap-3">
-              <div className={`w-3.5 h-3.5 rounded-full ${isAutoTestActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'}`} />
+              <div className={`w-3 h-3 rounded-full ${isAutoTestActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'}`} />
               <div>
-                <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                  <TestTube className="w-4 h-4" /> ТУРБО-СКАНЕР СТРЕСС-ТЕСТ
+                <div className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5">
+                  <TestTube className="w-3.5 h-3.5" /> ТУРБО-СКАНЕР СТРЕСС-ТЕСТ
                 </div>
-                <p className="text-[10px] text-slate-400">ИИ мгновенно выбирает лучшую пару из пула в режиме [{riskMode}].</p>
+                <p className="text-[9px] text-slate-400">ИИ мгновенно выбирает лучшую пару из пула в режиме [{riskMode}].</p>
               </div>
             </div>
 
             <button
               onClick={() => setIsAutoTestActive(!isAutoTestActive)}
-              className={`px-4 py-2 rounded-lg text-xs font-black uppercase transition-all shadow-lg cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all shadow-lg cursor-pointer ${
                 isAutoTestActive 
                   ? 'bg-rose-500/20 text-rose-400 border border-rose-500/50 hover:bg-rose-500/30' 
                   : 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 hover:from-amber-400 shadow-amber-500/20'
@@ -686,28 +688,28 @@ export default function App() {
             </button>
           </div>
 
-          {/* ОСНОВНОЙ БЛОК: Слева столбиком пары (Просмотр графика), Справа график */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          {/* ОСНОВНОЙ БЛОК: Справа график поднялся наверх, слева вертикальный сайдбар пар */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
             
-            {/* ЛЕВАЯ КОЛОНКА: Вертикальный список пар для просмотра графика */}
-            <div className="lg:col-span-3 bg-slate-900/90 border border-slate-800 rounded-xl p-3.5 backdrop-blur flex flex-col gap-3 max-h-[620px] overflow-hidden shadow-lg">
+            {/* ЛЕВАЯ КОЛОНКА (3 из 12): Список пар столбиком (Просмотр графика) */}
+            <div className="lg:col-span-3 bg-slate-900/90 border border-slate-800 rounded-xl p-3 backdrop-blur flex flex-col gap-2.5 max-h-[580px] overflow-hidden shadow-lg">
               <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-cyan-400 tracking-wider">ПРОСМОТР ГРАФИКА:</span>
+                <span className="text-[11px] font-bold text-cyan-400 tracking-wider">ПРОСМОТР ГРАФИКА:</span>
               </div>
 
               {/* Кнопки переключения режима */}
               <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
-                <button onClick={() => setViewMode('single')} className={`py-1 rounded text-[11px] font-bold ${viewMode === 'single' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Один</button>
-                <button onClick={() => setViewMode('quad')} className={`py-1 rounded text-[11px] font-bold ${viewMode === 'quad' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Сетка 4</button>
+                <button onClick={() => setViewMode('single')} className={`py-1 rounded text-[10px] font-bold ${viewMode === 'single' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Один</button>
+                <button onClick={() => setViewMode('quad')} className={`py-1 rounded text-[10px] font-bold ${viewMode === 'quad' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Сетка 4</button>
               </div>
 
-              {/* Столбик валютных пар в 2 колонки */}
+              {/* Столбик пар в 2 колонки */}
               <div className="grid grid-cols-2 gap-1.5 overflow-y-auto pr-1 flex-1">
                 {TRADING_PAIRS.map((pair) => (
                   <button
                     key={pair.id}
                     onClick={() => setSelectedPair(pair)}
-                    className={`px-2 py-2 rounded-lg text-[11px] font-bold transition-all text-center truncate border ${selectedPair.id === pair.id ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-sm' : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'}`}
+                    className={`px-2 py-2 rounded-lg text-[10px] font-bold transition-all text-center truncate border ${selectedPair.id === pair.id ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-sm' : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'}`}
                   >
                     {pair.displaySymbol}
                   </button>
@@ -715,27 +717,27 @@ export default function App() {
               </div>
             </div>
 
-            {/* ПРАВАЯ КОЛОНКА: График поднялся наверх */}
-            <div id="chart-container" className="lg:col-span-9 bg-slate-900/40 border border-slate-800 rounded-xl p-5 flex flex-col justify-between relative overflow-hidden backdrop-blur min-h-[620px]">
+            {/* ПРАВАЯ КОЛОНКА (9 из 12): График поднялся наверх и параллелен ИИ-аналитику */}
+            <div id="chart-container" className="lg:col-span-9 bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex flex-col justify-between relative overflow-hidden backdrop-blur h-[580px] shadow-lg">
               {viewMode === 'single' ? (
                 <>
-                  <div className="flex justify-between items-center mb-4">
-                    <div className="flex items-center gap-3">
-                      <LineChart className="w-6 h-6 text-cyan-400" />
+                  <div className="flex justify-between items-center mb-3">
+                    <div className="flex items-center gap-2.5">
+                      <LineChart className="w-5 h-5 text-cyan-400" />
                       <div>
-                        <span className="font-bold text-lg text-slate-100">{selectedPair.displaySymbol}</span>
-                        <span className="ml-3 text-sm text-cyan-400 font-mono">Таймфрейм: {timeframe}M</span>
+                        <span className="font-bold text-base text-slate-100">{selectedPair.displaySymbol}</span>
+                        <span className="ml-2 text-xs text-cyan-400 font-mono">Таймфрейм: {timeframe}M</span>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 px-3 py-1 rounded-lg text-xs font-mono">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 px-2.5 py-1 rounded-lg text-xs font-mono">
                         <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
                         <span className={`font-bold ${candleTimer <= 10 ? 'text-rose-400 animate-ping' : 'text-amber-400'}`}>{formatTimer(candleTimer)}</span>
                       </div>
                       <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs gap-1">
                         {['1', '5', '15', '60', '240'].map((val) => (
-                          <button key={val} onClick={() => setTimeframe(val)} className={`px-3 py-1 rounded ${timeframe === val ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400'}`}>
+                          <button key={val} onClick={() => setTimeframe(val)} className={`px-2.5 py-0.5 rounded ${timeframe === val ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400'}`}>
                             {val === '60' ? '1H' : val === '240' ? '4H' : `${val}M`}
                           </button>
                         ))}
@@ -743,7 +745,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden min-h-[500px] relative">
+                  <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden relative">
                     <iframe
                       key={`${selectedPair.symbol}-${timeframe}-${timezone}-${lang}-${activeIndicator}`}
                       src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${selectedPair.symbol}&interval=${timeframe}&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=${activeIndicator === 'RSI' ? 'RSI@tv-basicstudies' : 'MACD@tv-basicstudies'}&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
@@ -753,14 +755,14 @@ export default function App() {
                   </div>
                 </>
               ) : (
-                <div className="grid grid-cols-2 gap-4 flex-1 h-full min-h-[550px]">
+                <div className="grid grid-cols-2 gap-3 flex-1 h-full min-h-[500px]">
                   {[quadPair1, quadPair2, quadPair3, quadPair4].map((qp, idx) => (
-                    <div key={idx} className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="font-bold text-sm text-cyan-400">{qp.displaySymbol}</span>
-                        <span className="text-xs font-mono text-slate-400">{timeframe}M</span>
+                    <div key={idx} className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex flex-col">
+                      <div className="flex justify-between items-center mb-1.5">
+                        <span className="font-bold text-xs text-cyan-400">{qp.displaySymbol}</span>
+                        <span className="text-[10px] font-mono text-slate-400">{timeframe}M</span>
                       </div>
-                      <div className="flex-1 relative rounded-lg overflow-hidden border border-slate-900 min-h-[250px]">
+                      <div className="flex-1 relative rounded-lg overflow-hidden border border-slate-900 min-h-[220px]">
                         <iframe
                           key={`quad-${qp.symbol}-${timeframe}-${timezone}`}
                           src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_${idx}&symbol=${qp.symbol}&interval=${timeframe}&theme=dark&style=1&timezone=${timezone}&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}`}
@@ -777,9 +779,10 @@ export default function App() {
           </div>
         </section>
 
-        <aside className="bg-slate-900/40 border border-slate-800 rounded-xl p-5 flex flex-col gap-4 backdrop-blur">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h2 className="font-bold text-slate-200 flex items-center gap-2 text-sm">
+        {/* ПРАВАЯ ПАНЕЛЬ: VISION AI АНАЛИТИК (ПАРАЛЛЕЛЬНО ГРАФИКУ И ВСЕГДА В ЗОНЕ ВИДИМОСТИ) */}
+        <aside className="bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex flex-col gap-3 backdrop-blur">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+            <h2 className="font-bold text-slate-200 flex items-center gap-2 text-xs">
               <BrainCircuit className="w-4 h-4 text-cyan-400 animate-pulse" />
               VISION AI АНАЛИТИК
             </h2>
@@ -789,80 +792,80 @@ export default function App() {
             <button
               onClick={handleStartAnalysis}
               disabled={isAnalyzing}
-              className="bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-black py-2.5 px-3 rounded-xl text-xs uppercase cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1"
+              className="bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-black py-2 px-2.5 rounded-xl text-[11px] uppercase cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} /> АУДИТ РЫНКА
             </button>
             <button
               onClick={handleStopAnalysis}
               disabled={!isAnalyzing}
-              className="bg-rose-950/80 text-rose-300 border border-rose-800 font-black py-2.5 px-3 rounded-xl text-xs uppercase cursor-pointer disabled:opacity-40"
+              className="bg-rose-950/80 text-rose-300 border border-rose-800 font-black py-2 px-2.5 rounded-xl text-[11px] uppercase cursor-pointer disabled:opacity-40"
             >
               СТОП
             </button>
           </div>
 
-          <div className="bg-gradient-to-b from-amber-950/60 to-slate-950 border-2 border-amber-500/80 rounded-xl p-4 text-center relative overflow-hidden shadow-lg shadow-amber-500/10">
+          <div className="bg-gradient-to-b from-amber-950/60 to-slate-950 border-2 border-amber-500/80 rounded-xl p-3 text-center relative overflow-hidden shadow-lg shadow-amber-500/10">
             {!aiSignal ? (
-              <div className="py-3 text-xs text-slate-400 font-mono animate-pulse">
-                {isAnalyzing ? `⏳ Турбо-сканер выбирает пару (${formatTimer(candleTimer)})...` : 'Нажмите АУДИТ РЫНКА'}
+              <div className="py-2.5 text-xs text-slate-400 font-mono animate-pulse">
+                {isAnalyzing ? `⏳ Сканирование пула (${formatTimer(candleTimer)})...` : 'Нажмите АУДИТ РЫНКА'}
               </div>
             ) : (
-              <div className="space-y-2">
-                <div className="text-xs font-bold text-cyan-300 tracking-wider">АКТИВ: {aiSignal.pair}</div>
-                <div className="text-2xl font-black flex items-center justify-center gap-2">
-                  <span className="text-amber-400">ВЕРДИКТ:</span>
-                  <span className={aiSignal.direction === 'CALL' ? 'text-emerald-400 bg-emerald-950 px-3 py-0.5 rounded border border-emerald-500' : aiSignal.direction === 'PUT' ? 'text-rose-400 bg-rose-950 px-3 py-0.5 rounded border border-rose-500' : 'text-slate-400 bg-slate-900 px-3 py-0.5 rounded border border-slate-700'}>
+              <div className="space-y-1.5">
+                <div className="text-[11px] font-bold text-cyan-300 tracking-wider">АКТИВ: {aiSignal.pair}</div>
+                <div className="text-xl font-black flex items-center justify-center gap-2">
+                  <span className="text-amber-400 text-xs">ВЕРДИКТ:</span>
+                  <span className={aiSignal.direction === 'CALL' ? 'text-emerald-400 bg-emerald-950 px-2.5 py-0.5 rounded border border-emerald-500 text-base' : aiSignal.direction === 'PUT' ? 'text-rose-400 bg-rose-950 px-2.5 py-0.5 rounded border border-rose-500 text-base' : 'text-slate-400 bg-slate-900 px-2.5 py-0.5 rounded border border-slate-700 text-base'}>
                     {aiSignal.direction}
                   </span>
                 </div>
 
                 {aiSignal.nextCandleTime && aiSignal.direction !== 'SKIP' && (
-                  <div className="bg-slate-900/90 border border-amber-500/30 rounded-lg py-1.5 px-2">
-                    <div className="text-[10px] text-amber-300 font-semibold uppercase tracking-wider">
+                  <div className="bg-slate-900/90 border border-amber-500/30 rounded-lg py-1 px-2">
+                    <div className="text-[9px] text-amber-300 font-semibold uppercase tracking-wider">
                       Экспирация: <span className="text-emerald-400 font-bold">{aiSignal.recommendedExpiration || '1M'}</span> | Старт в:
                     </div>
-                    <div className="text-xl font-mono font-black text-white tracking-widest">{aiSignal.nextCandleTime}</div>
+                    <div className="text-base font-mono font-black text-white tracking-widest">{aiSignal.nextCandleTime}</div>
                   </div>
                 )}
 
                 {aiSignal.reasoning && (
-                  <div className="text-[11px] text-slate-300 italic px-1">
+                  <div className="text-[10px] text-slate-300 italic px-1">
                     "{aiSignal.reasoning}"
                   </div>
                 )}
 
                 {aiSignal.confidence > 0 && (
-                  <div className="text-xs text-amber-300 font-mono">Уверенность ИИ: <span className="font-bold text-white">{aiSignal.confidence}%</span></div>
+                  <div className="text-[10px] text-amber-300 font-mono">Уверенность ИИ: <span className="font-bold text-white">{aiSignal.confidence}%</span></div>
                 )}
               </div>
             )}
           </div>
 
           <div className="grid grid-cols-5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[10px]">
-            <button onClick={() => setRightTab('logs')} className={`py-1.5 rounded-lg font-bold truncate ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Логи</button>
-            <button onClick={() => setRightTab('history')} className={`py-1.5 rounded-lg font-bold truncate ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>История</button>
-            <button onClick={() => setRightTab('autotest')} className={`py-1.5 rounded-lg font-bold truncate ${rightTab === 'autotest' ? 'bg-amber-500 text-slate-950' : 'text-amber-400'}`}>Тест</button>
-            <button onClick={() => setRightTab('martingale')} className={`py-1.5 rounded-lg font-bold truncate ${rightTab === 'martingale' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Мартен</button>
-            <button onClick={() => setRightTab('strategies')} className={`py-1.5 rounded-lg font-bold truncate ${rightTab === 'strategies' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Стат</button>
+            <button onClick={() => setRightTab('logs')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Логи</button>
+            <button onClick={() => setRightTab('history')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>История</button>
+            <button onClick={() => setRightTab('autotest')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'autotest' ? 'bg-amber-500 text-slate-950' : 'text-amber-400'}`}>Тест</button>
+            <button onClick={() => setRightTab('martingale')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'martingale' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Мартен</button>
+            <button onClick={() => setRightTab('strategies')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'strategies' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Стат</button>
           </div>
 
           {rightTab === 'logs' ? (
-            <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-2 overflow-hidden min-h-[220px]">
-              <div className="flex-1 overflow-y-auto space-y-2 pr-1 text-[11px] font-mono">
+            <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-2 overflow-hidden min-h-[180px]">
+              <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 text-[10px] font-mono">
                 {aiLogs.map(log => (
-                  <div key={log.id} className={`p-2 rounded border ${log.type === 'vision' ? 'bg-indigo-950/40 border-indigo-500 text-indigo-200 font-bold' : 'bg-slate-900/60 border-slate-800 text-slate-400'}`}>
-                    <div className="flex justify-between text-[10px] text-slate-500 mb-0.5"><span>{log.time}</span><span>{log.type}</span></div>
+                  <div key={log.id} className={`p-1.5 rounded border ${log.type === 'vision' ? 'bg-indigo-950/40 border-indigo-500 text-indigo-200 font-bold' : 'bg-slate-900/60 border-slate-800 text-slate-400'}`}>
+                    <div className="flex justify-between text-[9px] text-slate-500 mb-0.5"><span>{log.time}</span><span>{log.type}</span></div>
                     <p>{log.text}</p>
                   </div>
                 ))}
               </div>
             </div>
           ) : rightTab === 'history' ? (
-            <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-2 overflow-hidden min-h-[220px]">
-              <div className="flex-1 overflow-y-auto space-y-2 pr-1 text-[11px] font-mono">
+            <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-2 overflow-hidden min-h-[180px]">
+              <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 text-[10px] font-mono">
                 {historyList.map(item => (
-                  <div key={item.id} className="p-2 rounded bg-slate-900 border border-slate-800 flex justify-between">
+                  <div key={item.id} className="p-1.5 rounded bg-slate-900 border border-slate-800 flex justify-between">
                     <span className="text-cyan-400">{item.pair}</span>
                     <span className={item.direction === 'CALL' ? 'text-emerald-400 font-bold' : item.direction === 'PUT' ? 'text-rose-400 font-bold' : 'text-slate-400 font-bold'}>{item.direction} ({item.winrate}%)</span>
                   </div>
@@ -870,29 +873,29 @@ export default function App() {
               </div>
             </div>
           ) : rightTab === 'autotest' ? (
-            <div className="flex-1 bg-slate-950/90 border border-amber-500/40 rounded-xl p-3 flex flex-col gap-2 overflow-hidden min-h-[220px] font-mono">
+            <div className="flex-1 bg-slate-950/90 border border-amber-500/40 rounded-xl p-2.5 flex flex-col gap-2 overflow-hidden min-h-[180px] font-mono">
               <div className="grid grid-cols-3 gap-1 text-center text-[10px]">
                 <div 
                   onClick={() => setAutotestFilter(autotestFilter === 'WIN' ? 'ALL' : 'WIN')}
-                  className={`p-1.5 rounded border cursor-pointer transition-all ${autotestFilter === 'WIN' ? 'bg-emerald-950 border-emerald-500' : 'bg-slate-900 border-slate-800'}`}
+                  className={`p-1 rounded border cursor-pointer transition-all ${autotestFilter === 'WIN' ? 'bg-emerald-950 border-emerald-500' : 'bg-slate-900 border-slate-800'}`}
                 >
-                  <div className="text-slate-400">Плюсы</div>
-                  <div className="text-emerald-400 font-bold text-sm">
+                  <div className="text-slate-400 text-[9px]">Плюсы</div>
+                  <div className="text-emerald-400 font-bold text-xs">
                     {autoTestLogs.filter(l => l.status === 'WIN').length}
                   </div>
                 </div>
                 <div 
                   onClick={() => setAutotestFilter(autotestFilter === 'LOSS' ? 'ALL' : 'LOSS')}
-                  className={`p-1.5 rounded border cursor-pointer transition-all ${autotestFilter === 'LOSS' ? 'bg-rose-950 border-rose-500' : 'bg-slate-900 border-slate-800'}`}
+                  className={`p-1 rounded border cursor-pointer transition-all ${autotestFilter === 'LOSS' ? 'bg-rose-950 border-rose-500' : 'bg-slate-900 border-slate-800'}`}
                 >
-                  <div className="text-slate-400">Минусы</div>
-                  <div className="text-rose-400 font-bold text-sm">
+                  <div className="text-slate-400 text-[9px]">Минусы</div>
+                  <div className="text-rose-400 font-bold text-xs">
                     {autoTestLogs.filter(l => l.status === 'LOSS').length}
                   </div>
                 </div>
-                <div className="bg-slate-900 p-1.5 rounded border border-slate-800">
-                  <div className="text-slate-400">Винрейт</div>
-                  <div className="text-amber-400 font-bold text-sm">
+                <div className="bg-slate-900 p-1 rounded border border-slate-800">
+                  <div className="text-slate-400 text-[9px]">Винрейт</div>
+                  <div className="text-amber-400 font-bold text-xs">
                     {autoTestLogs.filter(l => l.status !== 'PENDING' && l.status !== 'SKIPPED').length > 0 
                       ? Math.round((autoTestLogs.filter(l => l.status === 'WIN').length / autoTestLogs.filter(l => l.status !== 'PENDING' && l.status !== 'SKIPPED').length) * 100) 
                       : 0}%
@@ -900,54 +903,53 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="flex justify-between items-center gap-1 text-[10px] pt-1">
+              <div className="flex justify-between items-center gap-1 text-[10px] pt-0.5">
                 <div className="flex gap-1">
                   <button 
                     onClick={() => setAutotestFilter('ALL')} 
-                    className={`px-2 py-0.5 rounded border ${autotestFilter === 'ALL' ? 'bg-amber-500 text-slate-950 font-bold border-amber-600' : 'bg-slate-900 text-slate-400 border-slate-800'}`}
+                    className={`px-1.5 py-0.5 rounded border text-[9px] ${autotestFilter === 'ALL' ? 'bg-amber-500 text-slate-950 font-bold border-amber-600' : 'bg-slate-900 text-slate-400 border-slate-800'}`}
                   >
                     Все
                   </button>
                   {selectedPairFilter && (
                     <button 
                       onClick={() => setSelectedPairFilter(null)}
-                      className="px-2 py-0.5 rounded border bg-cyan-950 text-cyan-300 border-cyan-800"
+                      className="px-1.5 py-0.5 rounded border bg-cyan-950 text-cyan-300 border-cyan-800 text-[9px]"
                     >
-                      Пара: {selectedPairFilter} ✕
+                      {selectedPairFilter} ✕
                     </button>
                   )}
                 </div>
                 <button 
                   onClick={clearAutoTestHistory}
-                  className="px-2 py-0.5 rounded bg-rose-950/80 text-rose-300 border border-rose-800 flex items-center gap-1 hover:bg-rose-900"
-                  title="Очистить историю тестов"
+                  className="px-1.5 py-0.5 rounded bg-rose-950/80 text-rose-300 border border-rose-800 flex items-center gap-1 text-[9px]"
                 >
-                  <Trash2 className="w-3 h-3" /> Очистить
+                  <Trash2 className="w-2.5 h-2.5" /> Очистить
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 text-[11px]">
+              <div className="flex-1 overflow-y-auto space-y-1 pr-1 text-[10px]">
                 {filteredAutoTestLogs.length === 0 ? (
-                  <div className="text-center text-slate-500 py-8 italic">Нет записей под выбранный фильтр.</div>
+                  <div className="text-center text-slate-500 py-6 italic text-[10px]">Нет записей.</div>
                 ) : (
                   filteredAutoTestLogs.map(item => (
-                    <div key={item.id} className="p-2 rounded bg-slate-900/80 border border-slate-800 flex justify-between items-center text-[10px]">
+                    <div key={item.id} className="p-1.5 rounded bg-slate-900/80 border border-slate-800 flex justify-between items-center text-[10px]">
                       <div>
                         <span 
                           onClick={() => setSelectedPairFilter(selectedPairFilter === item.pair ? null : item.pair)}
                           className="text-cyan-400 font-bold cursor-pointer hover:underline"
                         >
                           {item.pair}
-                        </span> <span className="text-slate-500">({item.time})</span>
+                        </span> <span className="text-slate-500 text-[9px]">({item.time})</span>
                       </div>
                       <div className="text-right">
                         {item.status === 'SKIPPED' ? (
-                          <span className="text-slate-400 font-bold">Свеча пропущена 🛡</span>
+                          <span className="text-slate-400 font-bold">Пропуск 🛡</span>
                         ) : (
                           <>
                             <span className={item.direction === 'CALL' ? 'text-emerald-400 font-bold' : item.direction === 'PUT' ? 'text-rose-400 font-bold' : 'text-slate-400 font-bold'}>{item.direction}</span>
                             <div>
-                              {item.status === 'PENDING' && <span className="text-amber-400 animate-pulse">Ждём свечу #${item.targetCandleIndex}...</span>}
+                              {item.status === 'PENDING' && <span className="text-amber-400 animate-pulse text-[9px]">Ждем #${item.targetCandleIndex}</span>}
                               {item.status === 'WIN' && <span className="text-emerald-400 font-black">WIN 🟢</span>}
                               {item.status === 'LOSS' && <span className="text-rose-400 font-black">LOSS 🔴</span>}
                             </div>
@@ -960,21 +962,21 @@ export default function App() {
               </div>
             </div>
           ) : rightTab === 'strategies' ? (
-            <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-2 overflow-hidden min-h-[220px] font-mono text-[11px]">
-              <div className="text-xs font-bold text-cyan-400 mb-1">ЭФФЕКТИВНОСТЬ СТРАТЕГИЙ:</div>
-              <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+            <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-2 overflow-hidden min-h-[180px] font-mono text-[10px]">
+              <div className="text-[11px] font-bold text-cyan-400">ЭФФЕКТИВНОСТЬ:</div>
+              <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
                 {strategies.map(s => {
                   const total = s.wins + s.losses;
                   const winrate = total > 0 ? Math.round((s.wins / total) * 100) : 0;
                   return (
-                    <div key={s.id} className="p-2 rounded bg-slate-900 border border-slate-800 flex flex-col gap-1">
+                    <div key={s.id} className="p-1.5 rounded bg-slate-900 border border-slate-800 flex flex-col gap-0.5">
                       <div className="flex justify-between items-center">
-                        <span className="text-white font-bold truncate">{s.name}</span>
-                        <span className="text-emerald-400 font-black">{winrate}%</span>
+                        <span className="text-white font-bold truncate text-[10px]">{s.name}</span>
+                        <span className="text-emerald-400 font-black text-[10px]">{winrate}%</span>
                       </div>
-                      <div className="flex justify-between text-[10px] text-slate-400">
-                        <span>Побед: {s.wins} | Поражений: {s.losses}</span>
-                        <button onClick={() => toggleStrategy(s.id)} className={`px-2 py-0.5 rounded ${s.enabled ? 'bg-cyan-950 text-cyan-300 border border-cyan-800' : 'bg-slate-800 text-slate-400'}`}>
+                      <div className="flex justify-between text-[9px] text-slate-400">
+                        <span>Побед: {s.wins} | Пор: {s.losses}</span>
+                        <button onClick={() => toggleStrategy(s.id)} className={`px-1.5 py-0.2 rounded ${s.enabled ? 'bg-cyan-950 text-cyan-300 border border-cyan-800' : 'bg-slate-800 text-slate-400'}`}>
                           {s.enabled ? 'Вкл' : 'Выкл'}
                         </button>
                       </div>
@@ -984,34 +986,34 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-3 flex flex-col gap-3 font-mono">
+            <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-2 font-mono">
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">Старт ($):</label>
-                  <input type="number" value={startAmount} onChange={(e) => setStartAmount(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs"/>
+                  <label className="text-[9px] text-slate-400 block mb-0.5">Старт ($):</label>
+                  <input type="number" value={startAmount} onChange={(e) => setStartAmount(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-white text-xs"/>
                 </div>
                 <div>
-                  <label className="text-[10px] text-slate-400 block mb-1">Выплата (%):</label>
-                  <input type="number" value={payoutPercent} onChange={(e) => setPayoutPercent(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs"/>
+                  <label className="text-[9px] text-slate-400 block mb-0.5">Выплата (%):</label>
+                  <input type="number" value={payoutPercent} onChange={(e) => setPayoutPercent(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-white text-xs"/>
                 </div>
               </div>
-              <div className="flex items-center justify-between text-[11px] bg-slate-900 p-2 rounded border border-indigo-500/30">
-                <span className="text-indigo-300">Риск-лимит шагов:</span>
+              <div className="flex items-center justify-between text-[10px] bg-slate-900 p-1.5 rounded border border-indigo-500/30">
+                <span className="text-indigo-300">Риск-лимит:</span>
                 <select 
                   value={maxMartingaleStep} 
                   onChange={(e) => setMaxMartingaleStep(Number(e.target.value))}
-                  className="bg-slate-950 text-white border border-slate-700 rounded px-2 py-0.5 text-xs"
+                  className="bg-slate-950 text-white border border-slate-700 rounded px-1.5 py-0.5 text-[10px]"
                 >
-                  <option value={2}>Сброс после 2 шага</option>
-                  <option value={3}>Сброс после 3 шага</option>
-                  <option value={4}>Сброс после 4 шага</option>
+                  <option value={2}>Шаг 2</option>
+                  <option value={3}>Шаг 3</option>
+                  <option value={4}>Шаг 4</option>
                 </select>
               </div>
-              <div className="flex-1 overflow-y-auto space-y-1.5 text-[11px]">
+              <div className="flex-1 overflow-y-auto space-y-1 text-[10px]">
                 {calculateMartingale().map(step => (
-                  <div key={step.step} className={`p-2 rounded border flex justify-between items-center ${step.isCapped ? 'bg-amber-950/30 border-amber-600/50' : 'bg-slate-900 border-slate-800'}`}>
+                  <div key={step.step} className={`p-1.5 rounded border flex justify-between items-center ${step.isCapped ? 'bg-amber-950/30 border-amber-600/50' : 'bg-slate-950 border-slate-800'}`}>
                     <div>
-                      <div>Шаг {step.step}: ${step.amount} {step.isCapped && <span className="text-[9px] text-amber-400 font-bold">(RISK-CAP СБРОС)</span>}</div>
+                      <div>Шаг {step.step}: ${step.amount} {step.isCapped && <span className="text-[8px] text-amber-400 font-bold">(СБРОС)</span>}</div>
                     </div>
                     <span className="text-emerald-400">+${step.profit}</span>
                   </div>
