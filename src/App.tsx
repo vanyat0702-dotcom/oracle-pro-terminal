@@ -23,7 +23,8 @@ export default function App() {
   const [rightTab, setRightTab] = useState<'logs' | 'history' | 'autotest' | 'martingale' | 'strategies'>('autotest');
   const [activeIndicator, setActiveIndicator] = useState<string>('RSI');
 
-  const [riskMode, setRiskMode] = useState<'SAFE' | 'BALANCED' | 'AGGRESSIVE'>('BALANCED');
+  // Увеличенный выбор режимов торговли с новыми тактиками
+  const [riskMode, setRiskMode] = useState<'SAFE' | 'BALANCED' | 'AGGRESSIVE' | 'BREAKOUT' | 'ANTITILT' | 'TRENDSURF'>('BALANCED');
 
   // Состояния сворачивания верхних блоков для освобождения места
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
@@ -36,13 +37,16 @@ export default function App() {
   const [autotestFilter, setAutotestFilter] = useState<'ALL' | 'WIN' | 'LOSS' | 'SKIPPED'>('ALL');
   const [selectedPairFilter, setSelectedPairFilter] = useState<string | null>(null);
 
+  // Расширенный набор стратегических модулей под все режимы
   const [strategies, setStrategies] = useState([
-    { id: 'trend_following', name: 'Трендовый фильтр (Trend Master)', enabled: true, wins: 14, losses: 3, desc: 'Торговля строго по направлению глобального тренда' },
-    { id: 'price_action', name: 'Price Action & Пин-бар', enabled: true, wins: 19, losses: 5, desc: 'Поиск разворотных паттернов у ключевых уровней' },
-    { id: 'body_breakout', name: 'Защита тела свечи (Body Breakout)', enabled: true, wins: 11, losses: 4, desc: 'Игнор ложных пробоев теней, вход по телу' },
-    { id: 'rsi_bollinger', name: 'RSI + Bollinger Reversal', enabled: true, wins: 8, losses: 6, desc: 'Отскок от границ канала при перекупленности' },
-    { id: 'vsa_volume', name: 'VSA Analysis (Объемы)', enabled: true, wins: 15, losses: 4, desc: 'Анализ тикового объема и импульса' },
-    { id: 'volume_scalping', name: 'Импульсный Скальпинг (1M)', enabled: true, wins: 12, losses: 2, desc: 'Быстрый вход на 1 минуту при всплеске объема' }
+    { id: 'trend_following', name: 'Трендовый фильтр (Trend Master)', mode: 'balanced', enabled: true, wins: 14, losses: 3, desc: 'Торговля строго по направлению глобального тренда' },
+    { id: 'price_action', name: 'Price Action & Пин-бар', mode: 'sniper', enabled: true, wins: 19, losses: 5, desc: 'Поиск разворотных паттернов у ключевых уровней' },
+    { id: 'body_breakout', name: 'Защита тела свечи (Body Breakout)', mode: 'balanced', enabled: true, wins: 11, losses: 4, desc: 'Игнор ложных пробоев теней, вход по телу' },
+    { id: 'rsi_bollinger', name: 'RSI + Bollinger Reversal', mode: 'antitilt', enabled: true, wins: 8, losses: 6, desc: 'Отскок от границ канала при перекупленности' },
+    { id: 'vsa_volume', name: 'VSA Analysis (Объемы)', mode: 'balanced', enabled: true, wins: 15, losses: 4, desc: 'Анализ тикового объема и импульса' },
+    { id: 'volume_scalping', name: 'Импульсный Скальпинг (1M)', mode: 'scalping', enabled: true, wins: 12, losses: 2, desc: 'Быстрый вход на 1 минуту при всплеске объема' },
+    { id: 'breakout_impulse', name: 'Импульсный пробой уровня', mode: 'breakout', enabled: true, wins: 10, losses: 3, desc: 'Вход на прорыв узкого диапазона при объеме' },
+    { id: 'trend_rider_ema', name: 'Трендовый откат к EMA (20/50)', mode: 'trendsurf', enabled: true, wins: 16, losses: 4, desc: 'Удержание позиций по среднесрочному тренду' }
   ]);
 
   const [startAmount, setStartAmount] = useState<string>("100");
@@ -74,6 +78,26 @@ export default function App() {
       return [];
     }
   });
+
+  // Автоматическое переключение / включение нужных стратегий при смене режима торговли
+  useEffect(() => {
+    setStrategies(prev => prev.map(s => {
+      if (riskMode === 'BALANCED') {
+        return { ...s, enabled: s.mode === 'balanced' || s.id === 'trend_following' };
+      } else if (riskMode === 'SAFE') {
+        return { ...s, enabled: s.mode === 'sniper' || s.mode === 'antitilt' };
+      } else if (riskMode === 'AGGRESSIVE') {
+        return { ...s, enabled: true }; // Все включено для максимального охвата
+      } else if (riskMode === 'BREAKOUT') {
+        return { ...s, enabled: s.mode === 'breakout' || s.id === 'breakout_impulse' };
+      } else if (riskMode === 'ANTITILT') {
+        return { ...s, enabled: s.mode === 'antitilt' || s.id === 'rsi_bollinger' };
+      } else if (riskMode === 'TRENDSURF') {
+        return { ...s, enabled: s.mode === 'trendsurf' || s.id === 'trend_rider_ema' };
+      }
+      return s;
+    }));
+  }, [riskMode]);
 
   useEffect(() => {
     try {
@@ -119,7 +143,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v10.5: Турбо-мультисканер активирован.' : 'Vision AI Core v10.5: Active.', 
+      text: lang === 'ru' ? 'Vision AI Core v10.5: Расширенные режимы и авто-стратегии активированы.' : 'Vision AI Core v10.5: Active.', 
       type: 'info' 
     }
   ]);
@@ -487,7 +511,7 @@ export default function App() {
             <h1 className="text-lg font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
               ORACLE PRO TERMINAL (TURBO MULTI-SCANNER v10.5)
             </h1>
-            <p className="text-[9px] text-slate-400 tracking-widest uppercase">Авто-переключение топ-пары / ИИ Управление</p>
+            <p className="text-[9px] text-slate-400 tracking-widest uppercase">Авто-переключение топ-пары / Режимы ИИ</p>
           </div>
         </div>
         
@@ -516,7 +540,7 @@ export default function App() {
       <main className="flex-1 p-4 grid grid-cols-1 lg:grid-cols-4 gap-4">
         <section className="lg:col-span-3 flex flex-col gap-3">
           
-          {/* СВОРАЧИВАЕМАЯ ПАНЕЛЬ НАСТРОЕК (ФИЛЬТРЫ, СТРАТЕГИИ, МУЛЬТИВЫБОР) */}
+          {/* СВОРАЧИВАЕМАЯ ПАНЕЛЬ НАСТРОЕК (ФИЛЬТРЫ, СТРАТЕГИИ, РЕЖИМЫ, МУЛЬТИВЫБОР) */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-lg transition-all">
             <button
               onClick={() => setIsSettingsOpen(!isSettingsOpen)}
@@ -524,9 +548,9 @@ export default function App() {
             >
               <div className="flex items-center gap-2">
                 <Sliders className="w-4 h-4 text-cyan-400" />
-                <span>НАСТРОЙКИ СКАНИРОВАНИЯ И ИИ-ФИЛЬТРОВ</span>
+                <span>НАСТРОЙКИ СКАНИРОВАНИЯ И ИИ-РЕЖИМОВ</span>
                 <span className="text-[10px] text-slate-400 font-normal ml-2">
-                  (Режим: <span className="text-amber-400 font-bold">{riskMode}</span> | Стратегий: <span className="text-emerald-400 font-bold">{strategies.filter(s => s.enabled).length}</span> | Пар в пуле: <span className="text-cyan-400 font-bold">{selectedMultiPairs.length}</span>)
+                  (Режим: <span className="text-amber-400 font-bold">{riskMode}</span> | Стратегий вкл: <span className="text-emerald-400 font-bold">{strategies.filter(s => s.enabled).length}</span> | Пар в пуле: <span className="text-cyan-400 font-bold">{selectedMultiPairs.length}</span>)
                 </span>
               </div>
               <div className="flex items-center gap-1 text-[11px] text-slate-400">
@@ -538,16 +562,19 @@ export default function App() {
             {/* Выпадающая начинка при клике */}
             {isSettingsOpen && (
               <div className="p-4 flex flex-col gap-3 bg-slate-950/60 backdrop-blur">
-                {/* 1. Режим риска */}
-                <div className="flex flex-wrap items-center justify-between gap-2 p-2 bg-slate-900/80 rounded-lg border border-amber-500/30">
-                  <div className="flex items-center gap-2">
+                {/* 1. Режим торговли (включая новые боевые режимы) */}
+                <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-amber-500/30">
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
                     <Flame className="w-4 h-4 text-amber-400" />
-                    <span className="text-xs font-bold text-amber-300">РЕЖИМ ЧУВСТВИТЕЛЬНОСТИ:</span>
+                    <span>БОЕВОЙ РЕЖИМ ТОРГОВЛИ И ИИ-АНАЛИЗА:</span>
                   </div>
-                  <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1 text-xs">
-                    <button onClick={() => setRiskMode('SAFE')} className={`px-3 py-1 rounded font-bold ${riskMode === 'SAFE' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}>🛡 SAFE</button>
-                    <button onClick={() => setRiskMode('BALANCED')} className={`px-3 py-1 rounded font-bold ${riskMode === 'BALANCED' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>⚡ BALANCED</button>
-                    <button onClick={() => setRiskMode('AGGRESSIVE')} className={`px-3 py-1 rounded font-bold ${riskMode === 'AGGRESSIVE' ? 'bg-rose-500 text-white' : 'text-slate-400'}`}>🔥 AGGRESSIVE</button>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 text-xs">
+                    <button onClick={() => setRiskMode('BALANCED')} className={`p-2 rounded font-bold text-center border ${riskMode === 'BALANCED' ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>⚡ Баланс</button>
+                    <button onClick={() => setRiskMode('SAFE')} className={`p-2 rounded font-bold text-center border ${riskMode === 'SAFE' ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🎯 Снайпер</button>
+                    <button onClick={() => setRiskMode('AGGRESSIVE')} className={`p-2 rounded font-bold text-center border ${riskMode === 'AGGRESSIVE' ? 'bg-rose-500 text-white border-rose-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🔥 Скальпинг</button>
+                    <button onClick={() => setRiskMode('BREAKOUT')} className={`p-2 rounded font-bold text-center border ${riskMode === 'BREAKOUT' ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🚀 Пробойник</button>
+                    <button onClick={() => setRiskMode('ANTITILT')} className={`p-2 rounded font-bold text-center border ${riskMode === 'ANTITILT' ? 'bg-emerald-600 text-white border-emerald-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🛡 Анти-Тильт</button>
+                    <button onClick={() => setRiskMode('TRENDSURF')} className={`p-2 rounded font-bold text-center border ${riskMode === 'TRENDSURF' ? 'bg-blue-600 text-white border-blue-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🌊 Тренд-Серфер</button>
                   </div>
                 </div>
 
@@ -571,10 +598,10 @@ export default function App() {
                 {/* 3. Выбор стратегий */}
                 <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
                   <div className="flex justify-between items-center text-xs font-bold text-cyan-400">
-                    <span>АКТИВНЫЕ СТРАТЕГИИ</span>
+                    <span>АКТИВНЫЕ СТРАТЕГИИ (АВТОМАТИЧЕСКИ ПОД РЕЖИМ)</span>
                     <button onClick={() => setStrategies(prev => prev.map(s => ({ ...s, enabled: true })))} className="text-[10px] text-cyan-300 hover:underline">Включить все</button>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
                     {strategies.map((strat) => (
                       <button
                         key={strat.id}
@@ -640,7 +667,7 @@ export default function App() {
             </button>
           </div>
 
-          {/* ГЛАВНЫЙ ЭКРАН: СЛЕВА ПАРЫ, СПРАВА ГРАФИК (ВСТАЛИ НАВЕРХ) */}
+          {/* ГЛАВНЫЙ ЭКРАН: СЛЕВА ПАРЫ, СПРАВА ГРАФИК */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
             
             {/* ЛЕВАЯ КОЛОНКА (3 из 12): Список пар «Просмотр графика» */}
@@ -669,7 +696,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* ПРАВАЯ КОЛОНКА (9 из 12): Торговый график (ПОДНЯЛСЯ НАВЕРХ СРАЗУ ПОД ШАПКУ) */}
+            {/* ПРАВАЯ КОЛОНКА (9 из 12): Торговый график */}
             <div id="chart-container" className="lg:col-span-9 bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex flex-col justify-between relative overflow-hidden backdrop-blur h-[600px] shadow-lg">
               {viewMode === 'single' ? (
                 <>
@@ -731,7 +758,7 @@ export default function App() {
           </div>
         </section>
 
-        {/* ПРАВАЯ ПАНЕЛЬ: VISION AI АНАЛИТИК С КНОПКОЙ АУДИТ И ЗОЛОТОЙ РАМКОЙ (ПАРАЛЛЕЛЬНО ГРАФИКУ) */}
+        {/* ПРАВАЯ ПАНЕЛЬ: VISION AI АНАЛИТИК */}
         <aside className="bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex flex-col gap-3 backdrop-blur">
           <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
             <h2 className="font-bold text-slate-200 flex items-center gap-2 text-xs">
