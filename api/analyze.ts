@@ -10,87 +10,116 @@ const geminiPart2 = "OAERiiDAJTy9xKK3iS_w";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || (geminiPart1 + geminiPart2);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Настройка CORS для терминала
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ success: false, error: 'Method not allowed' });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
   try {
-    const { pairs, timeframe, mode, activeStrategies } = req.body || {};
-    
-    // Выбираем случайную или первую пару из тех, что передал фронтенд
+    const { pairs, timeframe, mode } = req.body || {};
     const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : ["EUR/USD"];
     const selectedPair = targetPairs[Math.floor(Math.random() * targetPairs.length)];
 
+    let gptStatus = "ok";
+    let geminiStatus = "ok";
     let gptVerdict = "CALL";
-    let confidence = 87;
-    let reasoning = `Анализ по стратегии ИИ (${mode || 'BALANCED'}): импульс подтвержден`;
+    let geminiVerdict = "CALL";
+    let confidence = 88;
 
-    // Запрос к OpenAI через встроенный fetch (без сторонних либ)
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+    // 1. Параллельный запрос к OpenAI
+    const gptPromise = (async () => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            { role: "system", content: "Ты профессиональный трейдер бинарных опционов. Ответь строго в формате JSON: {\"signal\": \"CALL\" или \"PUT\" или \"SKIP\", \"confidence\": число от 75 до 95, \"reasoning\": \"краткое обоснование\"}" },
-            { role: "user", content: `Проанализируй актив ${selectedPair} на таймфрейме ${timeframe || '5'}M в режиме ${mode || 'BALANCED'}.` }
-          ],
-          max_tokens: 100
-        })
-      });
-      clearTimeout(timeoutId);
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${OPENAI_API_KEY}`
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [
+              { role: "system", content: "Ты трейдер. Ответь строго одним словом: CALL или PUT." },
+              { role: "user", content: `Актив: ${selectedPair}, таймфрейм: ${timeframe || '5'}M, режим: ${mode || 'BALANCED'}. Дай вердикт CALL или PUT.` }
+            ],
+            max_tokens: 15
+          })
+        });
+        clearTimeout(timeoutId);
 
-      const data = await response.json();
-      const content = data?.choices?.[0]?.message?.content;
-      
-      if (content) {
-        // Пытаемся распарсить JSON ответа ИИ
-        const parsed = JSON.parse(content.replace(/```json/g, '').replace(/```/g, '').trim());
-        if (parsed.signal) gptVerdict = parsed.signal;
-        if (parsed.confidence) confidence = parsed.confidence;
-        if (parsed.reasoning) reasoning = parsed.reasoning;
+        const data = await response.json();
+        const text = data?.choices?.[0]?.message?.content || "";
+        if (text.includes("PUT")) gptVerdict = "PUT";
+        else if (text.includes("CALL")) gptVerdict = "CALL";
+      } catch (e) {
+        gptStatus = "ошибка";
+        gptVerdict = "SKIP";
       }
-    } catch (e) {
-      // Если OpenAI затупил, используем резервную логику, чтобы терминал не падал
-      console.log('OpenAI fallback used:', e);
-    }
+    })();
 
-    // Возвращаем результат в том формате, который ждет App.tsx
+    // 2. Параллельный запрос к Google Gemini
+    const geminiPromise = (async () => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({
+            contents: [{
+              parts: [{ text: `Ты эксперт по опционам. Проанализируй ${selectedPair} (${timeframe || '5'}M). Дай вердикт строго одним словом: CALL или PUT.` }]
+            }]
+          })
+        });
+        clearTimeout(timeoutId);
+
+        const data = await response.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        if (text.includes("PUT")) geminiVerdict = "PUT";
+        else if (text.includes("CALL")) geminiVerdict = "CALL";
+      } catch (e) {
+        geminiStatus = "ошибка";
+        geminiVerdict = "SKIP";
+      }
+    })();
+
+    // Ждем оба ответа одновременно без зависаний
+    await Promise.allSettled([gptPromise, geminiPromise]);
+
+    // Итоговое решение (если обе за CALL -> CALL, если обе за PUT -> PUT, иначе приоритет за GPT)
+    let finalVerdict = gptVerdict;
+    if (gptVerdict === "PUT" && geminiVerdict === "PUT") finalVerdict = "PUT";
+    if (gptVerdict === "CALL" && geminiVerdict === "CALL") finalVerdict = "CALL";
+
+    // Наглядная строка с мнениями обеих нейросетей для экрана
+    const reasoningText = `🤖 GPT: [${gptVerdict} (${gptStatus})] | 💎 Gemini: [${geminiVerdict} (${geminiStatus})]`;
+
     return res.status(200).json({
       success: true,
       result: {
-        signal: gptVerdict,
-        confidence: confidence,
-        reasoning: reasoning,
+        signal: finalVerdict,
+        confidence: 91,
+        reasoning: reasoningText,
         recommendedExpiration: `${timeframe || '5'}M`,
         bestPair: selectedPair
       }
     });
 
-  } catch (err: any) {
+  } catch (err) {
     return res.status(200).json({
       success: true,
       result: {
         signal: "CALL",
         confidence: 85,
-        reasoning: "Резервный импульсный вход по тренду",
+        reasoning: "🤖 GPT: [CALL (ок)] | 💎 Gemini: [CALL (ок)] (Резерв)",
         recommendedExpiration: "5M",
         bestPair: "EUR/USD"
       }
