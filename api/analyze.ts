@@ -18,15 +18,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
+  const openAiKey = process.env.OPENAI_API_KEY;
+  const geminiKey = process.env.GEMINI_API_KEY;
+  
   const { pairs, timeframe, activeStrategies, strategy, mode = 'BALANCED' } = req.body || {};
   const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : ['EUR/USD', 'GBP/USD', 'AUD/CAD', 'USD/JPY'];
-
   const currentTF = timeframe ? `${timeframe}M` : '1M';
 
-  // 🛠 ЧЕТКАЯ ОБРАБОТКА НАЗВАНИЯ СТРАТЕГИИ (Убираем [object Object])
+  // Обработка названия стратегии
   let selectedStrategyName = 'Скальпинг';
-
   if (typeof strategy === 'string' && strategy.trim().length > 0) {
     selectedStrategyName = strategy;
   } else if (typeof strategy === 'object' && strategy !== null && strategy.name) {
@@ -40,8 +40,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // Если API-ключ не настроен, выдаем автономный сигнал без ошибок
-  if (!apiKey) {
+  // Если ключи не заданы вообще ни у кого
+  if (!openAiKey && !geminiKey) {
     const randomPair = targetPairs[Math.floor(Math.random() * targetPairs.length)];
     const signals: ('CALL' | 'PUT' | 'SKIP')[] = ['CALL', 'PUT', 'SKIP'];
     const randomSignal = signals[Math.floor(Math.random() * signals.length)];
@@ -51,15 +51,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       result: {
         signal: randomSignal,
         confidence: Math.floor(Math.random() * 15) + 82,
-        reasoning: `Анализ по стратегии "${selectedStrategyName}" на TF ${currentTF}`,
+        reasoning: `Автономный режим по стратегии "${selectedStrategyName}"`,
         recommendedExpiration: currentTF,
         bestPair: randomPair
       }
     });
   }
 
-  try {
-    const prompt = `Ты — профессиональный ИИ-аналитик торгового терминала ORACLE PRO.
+  const prompt = `Ты — профессиональный ИИ-аналитик торгового терминала ORACLE PRO.
 Проанализируй пул валютных пар: ${JSON.stringify(targetPairs)}.
 Выбранная торговая стратегия: "${selectedStrategyName}".
 Выбранный таймфрейм: ${currentTF}.
@@ -68,7 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА:
 1. Выбери НАИЛУЧШУЮ пару из списка ${JSON.stringify(targetPairs)}.
 2. Экспирация СТРОГО под таймфрейм (${currentTF}).
-3. В поле "reasoning" напиши только краткую причину входа на русском языке (до 8 слов). Не пиши никаких объектов или кодов!
+3. В поле "reasoning" напиши только краткую причину входа на русском языке (до 8 слов). Без лишнего текста!
 4. Верни СТРОГО чистый JSON без markdown (без \`\`\`json):
 {
   "signal": "CALL" | "PUT" | "SKIP",
@@ -78,32 +77,68 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   "bestPair": "точное название пары из списка"
 }`;
 
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.2,
-          responseMimeType: "application/json"
-        }
-      }),
-    });
+  try {
+    let result = null;
 
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error?.message || 'Gemini API Error');
+    // 1. Сначала пробуем запросить у OpenAI (ChatGPT), если есть ключ
+    if (openAiKey) {
+      try {
+        const openAiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${openAiKey}`
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.2
+          })
+        });
+        const openAiData = await openAiRes.json();
+        const content = openAiData.choices?.[0]?.message?.content;
+        if (content) {
+          const cleanJson = content.replace(/```json/g, '').replace(/```/g, '').trim();
+          result = JSON.parse(cleanJson);
+        }
+      } catch (err) {
+        console.error('OpenAI error, falling back to Gemini:', err);
+      }
     }
 
-    const textContent = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    const cleanJson = textContent.replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    let result = JSON.parse(cleanJson);
+    // 2. Если OpenAI недоступен или ключа нет, пробуем Gemini
+    if (!result && geminiKey) {
+      try {
+        const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              temperature: 0.2,
+              responseMimeType: "application/json"
+            }
+          }),
+        });
+        const geminiData = await geminiRes.json();
+        const textContent = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+        const cleanJson = textContent.replace(/```json/g, '').replace(/```/g, '').trim();
+        result = JSON.parse(cleanJson);
+      } catch (err) {
+        console.error('Gemini error:', err);
+      }
+    }
+
+    if (!result) {
+      throw new Error('Обе нейросети не смогли сформировать ответ');
+    }
+
     if (!targetPairs.includes(result.bestPair)) {
       result.bestPair = targetPairs[0];
     }
 
     return res.status(200).json({ success: true, result });
+
   } catch (error: any) {
     console.error('Backend error:', error.message);
     return res.status(200).json({ 
