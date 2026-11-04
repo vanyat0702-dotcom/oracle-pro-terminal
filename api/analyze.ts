@@ -25,6 +25,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : ['EUR/USD', 'GBP/USD', 'AUD/CAD', 'USD/JPY'];
   const currentTF = timeframe ? `${timeframe}M` : '1M';
 
+  // Обработка названия стратегии
   let selectedStrategyName = 'Скальпинг';
   if (typeof strategy === 'string' && strategy.trim().length > 0) {
     selectedStrategyName = strategy;
@@ -43,21 +44,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 Проанализируй пул валютных пар: ${JSON.stringify(targetPairs)}.
 Стратегия: "${selectedStrategyName}".
 Таймфрейм: ${currentTF}.
-Верни СТРОГО чистый JSON без markdown:
+Режим риска: ${mode}.
+Верни СТРОГО чистый JSON без markdown (без \`\`\`json):
 {
   "signal": "CALL" | "PUT" | "SKIP",
-  "confidence": число от 70 to 98,
-  "reasoning": "Краткая суть анализа",
+  "confidence": число от 70 до 98,
+  "reasoning": "Краткая суть анализа на русском до 8 слов",
   "recommendedExpiration": "${currentTF}",
   "bestPair": "название пары из списка"
 }`;
 
-  let openAiResult = null;
-  let geminiResult = null;
+  let openAiStatus = 'не запущен';
+  let geminiStatus = 'не запущен';
+  let openAiParsed = null;
+  let geminiParsed = null;
 
-  // 1. Параллельный опрос OpenAI и Gemini
   const promises = [];
 
+  // 1. Запрос к OpenAI (ChatGPT)
   if (openAiKey) {
     promises.push(
       fetch('https://api.openai.com/v1/chat/completions', {
@@ -69,20 +73,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           temperature: 0.2
         })
       })
-      .then(r => r.json())
-      .then(data => {
+      .then(async r => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error?.message || 'OpenAI Error');
         const content = data.choices?.[0]?.message?.content;
         if (content) {
-          openAiResult = JSON.parse(content.replace(/```json/g, '').replace(/```/g, '').trim());
+          const clean = content.replace(/```json/g, '').replace(/```/g, '').trim();
+          openAiParsed = JSON.parse(clean);
+          openAiStatus = openAiParsed.signal || 'OK';
+        } else {
+          openAiStatus = 'пустой ответ';
         }
       })
-      .catch(err => console.error('OpenAI fetch error:', err))
+      .catch(err => {
+        openAiStatus = `ошибка: ${err.message}`;
+      })
     );
+  } else {
+    openAiStatus = 'нет ключа';
   }
 
+  // 2. Запрос к Gemini (Google)
   if (geminiKey) {
     promises.push(
-      fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+      fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -90,35 +104,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           generationConfig: { temperature: 0.2, responseMimeType: "application/json" }
         })
       })
-      .then(r => r.json())
-      .then(data => {
+      .then(async r => {
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error?.message || 'Gemini Error');
         const textContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (textContent) {
-          geminiResult = JSON.parse(textContent.replace(/```json/g, '').replace(/```/g, '').trim());
+          const clean = textContent.replace(/```json/g, '').replace(/```/g, '').trim();
+          geminiParsed = JSON.parse(clean);
+          geminiStatus = geminiParsed.signal || 'OK';
+        } else {
+          geminiStatus = 'пустой ответ';
         }
       })
-      .catch(err => console.error('Gemini fetch error:', err))
+      .catch(err => {
+        geminiStatus = `ошибка: ${err.message}`;
+      })
     );
+  } else {
+    geminiStatus = 'нет ключа';
   }
 
-  // Ждем оба ответа одновременно
+  // Ждем оба запроса
   await Promise.all(promises);
 
-  // Формируем совместный консенсус
-  const finalSignal = openAiResult?.signal || geminiResult?.signal || 'CALL';
-  const finalPair = openAiResult?.bestPair || geminiResult?.bestPair || targetPairs[0];
-  const avgConfidence = Math.round(((openAiResult?.confidence || 85) + (geminiResult?.confidence || 85)) / 2);
+  // Берем данные от того, кто ответил успешно, либо дефолт
+  const activeResult = openAiParsed || geminiParsed || {
+    signal: 'CALL',
+    confidence: 85,
+    reasoning: 'Сбой обеих нейросетей',
+    recommendedExpiration: currentTF,
+    bestPair: targetPairs[0]
+  };
 
-  const combinedReasoning = `GPT: ${openAiResult?.signal || 'нет ответа'} | Gemini: ${geminiResult?.signal || 'нет ответа'}`;
+  // Выводим статусы обоих ИИ на экран для проверки
+  activeResult.reasoning = `GPT: ${openAiStatus} | Gemini: ${geminiStatus}`;
+
+  if (!targetPairs.includes(activeResult.bestPair)) {
+    activeResult.bestPair = targetPairs[0];
+  }
 
   return res.status(200).json({
     success: true,
-    result: {
-      signal: finalSignal,
-      confidence: avgConfidence,
-      reasoning: combinedReasoning,
-      recommendedExpiration: currentTF,
-      bestPair: finalPair
-    }
+    result: activeResult
   });
 }
