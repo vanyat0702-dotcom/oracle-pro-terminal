@@ -160,7 +160,7 @@ export default function App() {
     setWsStatus(true);
   }, [selectedPair]);
 
-  const fetchAiAnalysisFromBackend = async (tf: string, currentRemSec: number) => {
+  const fetchAiAnalysisFromBackend = async (tf: string, currentRemSec: number, openTimeStr: string) => {
     try {
       const activePairsSymbols = selectedMultiPairs.map(p => p.displaySymbol);
       const activeStratNames = strategies.filter(s => s.enabled).map(s => s.name);
@@ -173,6 +173,7 @@ export default function App() {
           timeframe: tf,
           mode: riskModeRef.current,
           secondsRemaining: currentRemSec,
+          candleOpenTime: openTimeStr,
           activeStrategies: activeStratNames,
           strategy: activeStratNames[0] || 'Мульти-стратегия',
           filters: { newsFilterEnabled, atrFilterEnabled, riskCapEnabled }
@@ -221,7 +222,10 @@ export default function App() {
         setAuditStepText('🎯 Снайперское окно! Авто-анализ рынка...');
         addLog('🤖 Автопилот: сработка на 12 секундах до закрытия свечи.', 'sniper');
 
-        const aiResult = await fetchAiAnalysisFromBackend(timeframe, remaining);
+        const nextTime = new Date(Date.now() + remaining * 1000);
+        const candleOpenTimeStr = `${nextTime.getHours().toString().padStart(2, '0')}:${nextTime.getMinutes().toString().padStart(2, '0')}`;
+
+        const aiResult = await fetchAiAnalysisFromBackend(timeframe, remaining, candleOpenTimeStr);
         const chosenPairSymbol = aiResult.bestPair || selectedPair.displaySymbol;
 
         const foundPairObj = TRADING_PAIRS.find(p => p.displaySymbol === chosenPairSymbol);
@@ -246,14 +250,12 @@ export default function App() {
         }
 
         playBeep('sniper');
-        const nextTime = new Date(Date.now() + remaining * 1000);
-        const nextTimeStr = `${nextTime.getHours().toString().padStart(2, '0')}:${nextTime.getMinutes().toString().padStart(2, '0')}`;
 
         setAiSignal({
           pair: chosenPairSymbol,
           direction: aiResult.signal,
           confidence: aiResult.confidence,
-          nextCandleTime: nextTimeStr,
+          nextCandleTime: candleOpenTimeStr,
           reasoning: aiResult.reasoning,
           recommendedExpiration: aiResult.recommendedExpiration || '5M'
         });
@@ -263,10 +265,10 @@ export default function App() {
           ...prev
         ]);
 
-        addLog(`🧠 АВТОПИЛОТ [${chosenPairSymbol}]: Сигнал ${aiResult.signal} (${aiResult.confidence}%) | ${aiResult.reasoning}`, 'vision');
+        addLog(`🧠 АВТОПИЛОТ [${chosenPairSymbol}]: Сигнал ${aiResult.signal} (${aiResult.confidence}%) | Старт свечи: ${candleOpenTimeStr}`, 'vision');
         setAuditStepText('⏳ Сигнал выдан! Автопилот ждет следующую свечу...');
 
-        // АВТОМАТИЧЕСКИЙ ОТПРАВИТЕЛЬ РЕЗУЛЬТАТА (WIN / LOSS) ЧЕРЕЗ ВРЕМЯ ЭКСПИРАЦИИ
+        // АВТОМАТИЧЕСКИЙ ОТПРАВИТЕЛЬ РЕЗУЛЬТАТА (WIN / LOSS)
         const tfMins = parseInt(timeframe, 10) || 5;
         const expirationMs = tfMins * 60 * 1000;
 
@@ -282,11 +284,12 @@ export default function App() {
                 action: 'send_result',
                 pair: chosenPairSymbol,
                 direction: aiResult.signal,
+                candleOpenTime: candleOpenTimeStr,
                 outcome: outcome,
                 pips: pips
               }),
             });
-            addLog(`📊 Итог свечи по ${chosenPairSymbol}: ${outcome} (${pips} п.) отправлен в Telegram`, 'info');
+            addLog(`📊 Итог свечи (${candleOpenTimeStr}) по ${chosenPairSymbol}: ${outcome} (${pips} п.)`, 'info');
           } catch (e) {
             console.error("Error sending candle result:", e);
           }
@@ -614,7 +617,7 @@ export default function App() {
                 {aiSignal.nextCandleTime && aiSignal.direction !== 'SKIP' && (
                   <div className="bg-slate-900/90 border border-amber-500/30 rounded-lg py-1 px-2">
                     <div className="text-[9px] text-amber-300 font-semibold uppercase tracking-wider">
-                      Экспирация: <span className="text-emerald-400 font-bold">{aiSignal.recommendedExpiration || '5M'}</span> | Старт в:
+                      Экспирация: <span className="text-emerald-400 font-bold">{aiSignal.recommendedExpiration || '5M'}</span> | Старт свечи:
                     </div>
                     <div className="text-base font-mono font-black text-white tracking-widest">{aiSignal.nextCandleTime}</div>
                   </div>
