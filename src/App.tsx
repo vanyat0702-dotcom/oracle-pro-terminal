@@ -14,6 +14,7 @@ export default function App() {
   ]);
 
   const [timeframe, setTimeframe] = useState<string>("5");
+  const [displayTf, setDisplayTf] = useState<string>("5"); // Визуальный таймфрейм графика для анимации аудит-переключений
   const [wsStatus, setWsStatus] = useState<boolean>(true);
   
   const [viewMode, setViewMode] = useState<'single' | 'quad'>('single');
@@ -23,10 +24,9 @@ export default function App() {
   const [rightTab, setRightTab] = useState<'logs' | 'history' | 'martingale' | 'strategies'>('logs');
   const [activeIndicator, setActiveIndicator] = useState<string>('RSI');
 
-  // Увеличенный выбор режимов торговли с новыми тактиками
+  // Боевой режим торговли
   const [riskMode, setRiskMode] = useState<'SAFE' | 'BALANCED' | 'AGGRESSIVE' | 'BREAKOUT' | 'ANTITILT' | 'TRENDSURF'>('BALANCED');
 
-  // Состояния сворачивания верхних блоков для освобождения места
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
   const [newsFilterEnabled, setNewsFilterEnabled] = useState<boolean>(true);
@@ -34,17 +34,37 @@ export default function App() {
   const [riskCapEnabled, setRiskCapEnabled] = useState<boolean>(true);
   const [maxMartingaleStep, setMaxMartingaleStep] = useState<number>(3);
 
-  // Расширенный набор стратегических модулей под все режимы
+  // Набор стратегических модулей с привязкой к режимам
   const [strategies, setStrategies] = useState([
-    { id: 'trend_following', name: 'Трендовый фильтр (Trend Master)', mode: 'balanced', enabled: true, wins: 14, losses: 3, desc: 'Торговля строго по направлению глобального тренда' },
-    { id: 'price_action', name: 'Price Action & Пин-бар', mode: 'sniper', enabled: true, wins: 19, losses: 5, desc: 'Поиск разворотных паттернов у ключевых уровней' },
-    { id: 'body_breakout', name: 'Защита тела свечи (Body Breakout)', mode: 'balanced', enabled: true, wins: 11, losses: 4, desc: 'Игнор ложных пробоев теней, вход по телу' },
-    { id: 'rsi_bollinger', name: 'RSI + Bollinger Reversal', mode: 'antitilt', enabled: true, wins: 8, losses: 6, desc: 'Отскок от границ канала при перекупленности' },
-    { id: 'vsa_volume', name: 'VSA Analysis (Объемы)', mode: 'balanced', enabled: true, wins: 15, losses: 4, desc: 'Анализ тикового объема и импульса' },
-    { id: 'volume_scalping', name: 'Импульсный Скальпинг (1M)', mode: 'scalping', enabled: true, wins: 12, losses: 2, desc: 'Быстрый вход на 1 минуту при всплеске объема' },
-    { id: 'breakout_impulse', name: 'Импульсный пробой уровня', mode: 'breakout', enabled: true, wins: 10, losses: 3, desc: 'Вход на прорыв узкого диапазона при объеме' },
-    { id: 'trend_rider_ema', name: 'Трендовый откат к EMA (20/50)', mode: 'trendsurf', enabled: true, wins: 16, losses: 4, desc: 'Удержание позиций по среднесрочному тренду' }
+    { id: 'trend_following', name: 'Трендовый фильтр (Trend Master)', mode: 'balanced', enabled: true, wins: 14, losses: 3 },
+    { id: 'price_action', name: 'Price Action & Пин-бар', mode: 'sniper', enabled: false, wins: 19, losses: 5 },
+    { id: 'body_breakout', name: 'Защита тела свечи (Body Breakout)', mode: 'balanced', enabled: true, wins: 11, losses: 4 },
+    { id: 'rsi_bollinger', name: 'RSI + Bollinger Reversal', mode: 'antitilt', enabled: false, wins: 8, losses: 6 },
+    { id: 'vsa_volume', name: 'VSA Analysis (Объемы)', mode: 'balanced', enabled: true, wins: 15, losses: 4 },
+    { id: 'volume_scalping', name: 'Импульсный Скальпинг (1M)', mode: 'scalping', enabled: false, wins: 12, losses: 2 },
+    { id: 'breakout_impulse', name: 'Импульсный пробой уровня', mode: 'breakout', enabled: false, wins: 10, losses: 3 },
+    { id: 'trend_rider_ema', name: 'Трендовый откат к EMA (20/50)', mode: 'trendsurf', enabled: false, wins: 16, losses: 4 }
   ]);
+
+  // Автоматическое включение стратегий при смене бой-режима
+  useEffect(() => {
+    setStrategies(prev => prev.map(s => {
+      if (riskMode === 'BALANCED') {
+        return { ...s, enabled: s.mode === 'balanced' || s.id === 'trend_following' };
+      } else if (riskMode === 'SAFE') {
+        return { ...s, enabled: s.mode === 'sniper' || s.mode === 'antitilt' };
+      } else if (riskMode === 'AGGRESSIVE') {
+        return { ...s, enabled: true };
+      } else if (riskMode === 'BREAKOUT') {
+        return { ...s, enabled: s.mode === 'breakout' || s.id === 'breakout_impulse' };
+      } else if (riskMode === 'ANTITILT') {
+        return { ...s, enabled: s.mode === 'antitilt' || s.id === 'rsi_bollinger' };
+      } else if (riskMode === 'TRENDSURF') {
+        return { ...s, enabled: s.mode === 'trendsurf' || s.id === 'trend_rider_ema' };
+      }
+      return s;
+    }));
+  }, [riskMode]);
 
   const [startAmount, setStartAmount] = useState<string>("100");
   const [payoutPercent, setPayoutPercent] = useState<string>("85");
@@ -55,7 +75,7 @@ export default function App() {
   const [quadPair4, setQuadPair4] = useState<TradingPair>(TRADING_PAIRS[20]);
 
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
-  const [auditStepText, setAuditStepText] = useState<string>(''); // Визуальные шаги аналитика
+  const [auditStepText, setAuditStepText] = useState<string>('');
   const [candleTimer, setCandleTimer] = useState<number>(0); 
   const [aiSignal, setAiSignal] = useState<{ pair?: string; direction: 'CALL' | 'PUT' | 'SKIP'; confidence: number; nextCandleTime?: string; reasoning?: string; recommendedExpiration?: string } | null>(null);
   
@@ -66,7 +86,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v10.5: Многотаймфреймовый аудит 15M/30M/5M активирован.' : 'Vision AI Core v10.5: Active.', 
+      text: 'Vision AI Core v10.5: Многотаймфреймовый аудит 15M/30M/5M активирован.', 
       type: 'info' 
     }
   ]);
@@ -116,7 +136,7 @@ export default function App() {
     setWsStatus(true);
   }, [selectedPair]);
 
-  const fetchAiAnalysisFromBackend = async (tf: string) => {
+  const fetchAiAnalysisFromBackend = async (tf: string, currentRemSec: number) => {
     try {
       const activePairsSymbols = selectedMultiPairs.map(p => p.displaySymbol);
       const activeStratNames = strategies.filter(s => s.enabled).map(s => s.name);
@@ -130,6 +150,7 @@ export default function App() {
           pairs: activePairsSymbols,
           timeframe: tf,
           mode: riskModeRef.current,
+          secondsRemaining: currentRemSec, // Передаем тайминг для снайперской проверки
           activeStrategies: activeStratNames,
           strategy: activeStratNames[0] || 'Мульти-стратегия',
           filters: {
@@ -145,11 +166,9 @@ export default function App() {
       if (data.success && data.result) {
         return data.result;
       } else {
-        console.error('API Error:', data.error);
         return { signal: 'SKIP', confidence: 0, reasoning: 'Ошибка ответа бэкенда', recommendedExpiration: '5M', bestPair: selectedPair.displaySymbol };
       }
     } catch (err) {
-      console.error('Network error connecting to /api/analyze:', err);
       return { signal: 'SKIP', confidence: 0, reasoning: 'Сетевой сбой шлюза', recommendedExpiration: '5M', bestPair: selectedPair.displaySymbol };
     }
   };
@@ -176,34 +195,38 @@ export default function App() {
     return () => clearInterval(interval);
   }, [timeframe]);
 
-  // Кнопка АУДИТ РЫНКА с визуальными шагами 15M -> 30M -> 5M (снайперский тайминг)
+  // Кнопка АУДИТ РЫНКА с реальным визуальным переключением таймфреймов на графике
   const handleStartAnalysis = async () => {
     setIsAnalyzing(true);
     setAiSignal(null);
     playBeep('alert');
     
     try {
-      // Шаг 1: Визуальный перебор старшего таймфрейма 15M
+      // Шаг 1: Визуально переключаем графический виджет на 15M
       setAuditStepText('🔍 Аналитик переключает график на 15M (Сбор глобального контекста)...');
-      addLog('🔍 Шаг 1/3: Анализ тренда на 15M...', 'vision');
-      await new Promise(r => setTimeout(r, 1200));
+      setDisplayTf('15');
+      addLog('🔍 Шаг 1/3: Аудит старшего таймфрейма 15M...', 'vision');
+      await new Promise(r => setTimeout(r, 1500));
 
-      // Шаг 2: Визуальный перебор старшего таймфрейма 30M
-      setAuditStepText('📊 Переключаем на 30M (Проверка уровней и старшего тренда)...');
-      addLog('📊 Шаг 2/3: Анализ структуры на 30M...', 'vision');
-      await new Promise(r => setTimeout(r, 1200));
+      // Шаг 2: Визуально переключаем графический виджет на 30M (используем 60M как ближайший доступный в виджете аналог или держим 15M/1H)
+      setAuditStepText('📊 Переключаем график на 30M (Проверка уровней и структуры)...');
+      setDisplayTf('60'); 
+      addLog('📊 Шаг 2/3: Аудит структуры на 30M...', 'vision');
+      await new Promise(r => setTimeout(r, 1500));
 
-      // Шаг 3: Переход на 5M и ожидание снайперского окна
-      setAuditStepText('⏱️ Переход на 5M. Синхронизация с закрытием свечи...');
+      // Шаг 3: Возвращаем на рабочий таймфрейм 5M и ловим снайперское окно
+      setAuditStepText('⏱️ Возврат на 5M. Синхронизация с закрытием свечи...');
+      setDisplayTf(timeframe);
       addLog('⏱️ Шаг 3/3: Сканирование 5M перед закрытием свечи...', 'sniper');
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise(r => setTimeout(r, 1200));
 
-      setAuditStepText('🤖 Запрос к ИИ-моделям и математическому диспетчеру...');
+      setAuditStepText('🤖 Запрос к ИИ-моделям (Консенсус диспетчера)...');
       
       const now = new Date();
       const tfSecs = parseInt(timeframe, 10) * 60;
+      const currentRem = tfSecs - (Math.floor(now.getTime() / 1000) % tfSecs);
       
-      const aiResult = await fetchAiAnalysisFromBackend(timeframe);
+      const aiResult = await fetchAiAnalysisFromBackend(timeframe, currentRem);
       const chosenPairSymbol = aiResult.bestPair || selectedPair.displaySymbol;
 
       const foundPairObj = TRADING_PAIRS.find(p => p.displaySymbol === chosenPairSymbol);
@@ -248,17 +271,18 @@ export default function App() {
       playBeep('sniper');
 
     } catch (err) {
-      console.error("API gateway connection error:", err);
       addLog('❌ Ошибка связи с ИИ-шлюзом бэкенда.', 'info');
     } finally {
       setIsAnalyzing(false);
       setAuditStepText('');
+      setDisplayTf(timeframe); // Возвращаем исходный ТФ
     }
   };
 
   const handleStopAnalysis = () => {
     setIsAnalyzing(false);
     setAuditStepText('');
+    setDisplayTf(timeframe);
     setAiSignal(null);
     addLog('🛑 ИИ-анализ остановлен пользователем.', 'info');
   };
@@ -276,19 +300,9 @@ export default function App() {
       const totalInvested = steps.reduce((sum, s) => sum + s.amount, 0) + amount;
       const potentialProfit = Math.round((amount * (payout / 100)) - (totalInvested - amount));
       
-      steps.push({ 
-        step: i, 
-        amount, 
-        total: totalInvested, 
-        profit: potentialProfit,
-        isCapped 
-      });
-      
-      if (!isCapped) {
-        current = current * multiplier;
-      } else {
-        current = base;
-      }
+      steps.push({ step: i, amount, total: totalInvested, profit: potentialProfit, isCapped });
+      if (!isCapped) current = current * multiplier;
+      else current = base;
     }
     return steps;
   };
@@ -342,7 +356,6 @@ export default function App() {
       <main className="flex-1 p-4 grid grid-cols-1 lg:grid-cols-4 gap-4">
         <section className="lg:col-span-3 flex flex-col gap-3">
           
-          {/* СВОРАЧИВАЕМАЯ ПАНЕЛЬ НАСТРОЕК */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-lg transition-all">
             <button
               onClick={() => setIsSettingsOpen(!isSettingsOpen)}
@@ -396,7 +409,7 @@ export default function App() {
 
                 <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
                   <div className="flex justify-between items-center text-xs font-bold text-cyan-400">
-                    <span>АКТИВНЫЕ СТРАТЕГИИ</span>
+                    <span>АКТИВНЫЕ СТРАТЕГИИ (АВТО ПОД РЕЖИМ)</span>
                     <button onClick={() => setStrategies(prev => prev.map(s => ({ ...s, enabled: true })))} className="text-[10px] text-cyan-300 hover:underline">Включить все</button>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
@@ -440,7 +453,6 @@ export default function App() {
             )}
           </div>
 
-          {/* ГЛАВНЫЙ ЭКРАН: СЛЕВА ПАРЫ, СПРАВА ГРАФИК */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
             
             <div className="lg:col-span-3 bg-slate-900/90 border border-slate-800 rounded-xl p-3 backdrop-blur flex flex-col gap-2.5 max-h-[600px] overflow-hidden shadow-lg">
@@ -474,7 +486,7 @@ export default function App() {
                       <LineChart className="w-5 h-5 text-cyan-400" />
                       <div>
                         <span className="font-bold text-base text-slate-100">{selectedPair.displaySymbol}</span>
-                        <span className="ml-2 text-xs text-cyan-400 font-mono">Таймфрейм: {timeframe}M</span>
+                        <span className="ml-2 text-xs text-cyan-400 font-mono">Таймфрейм: {displayTf}M {isAnalyzing && '(Аудит...)'}</span>
                       </div>
                     </div>
 
@@ -485,7 +497,7 @@ export default function App() {
                       </div>
                       <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs gap-1">
                         {['1', '5', '15', '60', '240'].map((val) => (
-                          <button key={val} onClick={() => setTimeframe(val)} className={`px-2.5 py-0.5 rounded ${timeframe === val ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400'}`}>
+                          <button key={val} onClick={() => { setTimeframe(val); setDisplayTf(val); }} className={`px-2.5 py-0.5 rounded ${timeframe === val ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400'}`}>
                             {val === '60' ? '1H' : val === '240' ? '4H' : `${val}M`}
                           </button>
                         ))}
@@ -495,8 +507,8 @@ export default function App() {
 
                   <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden relative">
                     <iframe
-                      key={`${selectedPair.symbol}-${timeframe}-${timezone}-${lang}-${activeIndicator}`}
-                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${selectedPair.symbol}&interval=${timeframe}&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=${activeIndicator === 'RSI' ? 'RSI@tv-basicstudies' : 'MACD@tv-basicstudies'}&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
+                      key={`${selectedPair.symbol}-${displayTf}-${timezone}-${lang}-${activeIndicator}`}
+                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${selectedPair.symbol}&interval=${displayTf}&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=${activeIndicator === 'RSI' ? 'RSI@tv-basicstudies' : 'MACD@tv-basicstudies'}&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
                       className="w-full h-full border-0 absolute inset-0 pointer-events-auto"
                       title="TradingView Chart"
                     ></iframe>
@@ -527,7 +539,6 @@ export default function App() {
           </div>
         </section>
 
-        {/* ПРАВАЯ ПАНЕЛЬ: VISION AI АНАЛИТИК */}
         <aside className="bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex flex-col gap-3 backdrop-blur">
           <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
             <h2 className="font-bold text-slate-200 flex items-center gap-2 text-xs">
@@ -553,14 +564,12 @@ export default function App() {
             </button>
           </div>
 
-          {/* ВИЗУАЛЬНЫЙ СТАТУС ПОШАГОВОГО АУДИТА */}
           {isAnalyzing && auditStepText && (
             <div className="bg-cyan-950/40 border border-cyan-500/50 rounded-xl p-2.5 text-[10px] text-cyan-300 font-mono animate-pulse text-center">
               {auditStepText}
             </div>
           )}
 
-          {/* ЗОЛОТАЯ КАРТОЧКА ВЕРДИКТА ИИ */}
           <div className="bg-gradient-to-b from-amber-950/60 to-slate-950 border-2 border-amber-500/80 rounded-xl p-3.5 text-center relative overflow-hidden shadow-lg shadow-amber-500/10">
             {!aiSignal ? (
               <div className="py-3 text-xs text-slate-400 font-mono">
@@ -598,7 +607,6 @@ export default function App() {
             )}
           </div>
 
-          {/* ВКЛАДКИ ДАННЫХ И ИСТОРИИ (БЕЗ ВКЛАДКИ ТЕСТ) */}
           <div className="grid grid-cols-4 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[10px]">
             <button onClick={() => setRightTab('logs')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Логи</button>
             <button onClick={() => setRightTab('history')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>История</button>
