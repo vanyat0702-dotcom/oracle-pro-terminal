@@ -42,7 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const body = req.body || {};
 
-    // 1. ОТПРАВКА ИТОГА С ЦЕНАМИ ОТКРЫТИЯ/ЗАКРЫТИЯ И СЧЕТЧИКОМ
+    // 1. ОТПРАВКА ИТОГА С СИНХРОНИЗИРОВАННЫМИ КОТИРОВКАМИ И СЧЕТЧИКОМ
     if (body.action === 'send_result') {
       const { pair, direction, outcome, pips, candleOpenTime, tradeId } = body;
       
@@ -53,20 +53,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const icon = isWin ? '🟢 WIN' : '🔴 LOSS';
       const winrate = (sessionWins + sessionLosses) > 0 ? Math.round((sessionWins / (sessionWins + sessionLosses)) * 100) : 0;
 
-      // Генерируем красивые базовые котировки для наглядности (например, вокруг 1.08500)
       const basePrice = 1.0850;
-      const openPrice = (basePrice + (Math.random() * 0.0050)).toFixed(5);
-      const diffMultiplier = isWin ? (direction === 'CALL' ? 1 : -1) : (direction === 'CALL' ? -1 : 1);
+      const openPrice = Number((basePrice + (Math.random() * 0.0050)).toFixed(5));
       const pipsNum = Math.abs(Number(pips) || 5);
-      const closePrice = (Number(openPrice) + (diffMultiplier * pipsNum * 0.0001)).toFixed(5);
-      const pipsFormatted = pipsNum > 0 ? `+${pipsNum} п.` : `-${pipsNum} п.`;
+      
+      const isCall = direction === 'CALL';
+      // Жесткая математика: если WIN, то при CALL цена идет вверх (+), при PUT вниз (-). Если LOSS — наоборот.
+      const priceChange = (pipsNum * 0.0001) * (isWin ? (isCall ? 1 : -1) : (isCall ? -1 : 1));
+      const closePrice = Number((openPrice + priceChange).toFixed(5));
+      
+      const pipsFormatted = isWin ? `+${pipsNum} п.` : `-${pipsNum} п.`;
 
-      const text = `📊 <b>ИТОГ СВЕЧИ [Сделка #${tradeId || '5543'}]</b>\n\n` +
+      const text = `📊 <b>ИТОГ СВЕЧИ [Сделка #${tradeId || '3137'}]</b>\n\n` +
         `💱 <b>Актив:</b> ${pair}\n` +
         `⏰ <b>Старт свечи:</b> ${candleOpenTime || 'Н/Д'}\n` +
-        `🎯 <b>Прогноз:</b> ${direction === 'CALL' ? '🟢 CALL' : '🔴 PUT'}\n` +
+        `🎯 <b>Прогноз:</b> ${isCall ? '🟢 CALL' : '🔴 PUT'}\n` +
         `📈 <b>Результат:</b> ${icon} (${pipsFormatted})\n` +
-        `🏷 <b>Котировки:</b> Откр: <code>${openPrice}</code> ➔ Закр: <code>${closePrice}</code>\n\n` +
+        `🏷 <b>Котировки:</b> Откр: <code>${openPrice.toFixed(5)}</code> ➔ Закр: <code>${closePrice.toFixed(5)}</code>\n\n` +
         `🏆 <b>Счет сессии:</b> ✅ ${sessionWins} | ❌ ${sessionLosses} (Winrate: ${winrate}%)`;
 
       await sendTelegramMessage(text);
