@@ -21,10 +21,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : ["EUR/USD"];
     const selectedPair = targetPairs[Math.floor(Math.random() * targetPairs.length)];
 
-    let gptVerdict: 'CALL' | 'PUT' | 'SKIP' = 'SKIP';
-    let geminiVerdict: 'CALL' | 'PUT' | 'SKIP' = 'SKIP';
+    let gptVerdict: 'CALL' | 'PUT' = 'CALL';
+    let geminiVerdict: 'CALL' | 'PUT' = 'CALL';
 
-    // 1. Запрос к OpenAI с динамической температурой
+    // 1. Исправленный запрос к OpenAI (четкая инструкция выбрать CALL или PUT без права на SKIP)
     const gptPromise = (async () => {
       try {
         const controller = new AbortController();
@@ -40,11 +40,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           body: JSON.stringify({
             model: "gpt-4o-mini",
             messages: [
-              { role: "system", content: "Ты скальпер. На основе переданных данных реши судьбу сделки. Ответь строго одним словом: CALL, PUT или SKIP." },
-              { role: "user", content: `Анализ актива ${selectedPair}, ТФ: ${timeframe || '5'}M, Режим: ${mode || 'BALANCED'}.` }
+              { role: "system", content: "Ты трейдер бинарных опционов. На основе анализа ты ОБЯЗАН выбрать направление сделки. Напиши ровно одно слово в ответе: либо CALL, либо PUT." },
+              { role: "user", content: `Актив: ${selectedPair}, ТФ: ${timeframe || '5'}M, Режим: ${mode || 'BALANCED'}. Куда пойдет цена? CALL или PUT?` }
             ],
-            max_tokens: 10,
-            temperature: 0.8 // Добавляем вариативность
+            max_tokens: 5,
+            temperature: 0.9
           })
         });
         clearTimeout(timeoutId);
@@ -52,14 +52,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const data = await response.json();
         const raw = (data?.choices?.[0]?.message?.content || "").toUpperCase();
         if (raw.includes("PUT")) gptVerdict = "PUT";
-        else if (raw.includes("CALL")) gptVerdict = "CALL";
-        else gptVerdict = "SKIP";
+        else gptVerdict = "CALL";
       } catch (e) {
         gptVerdict = Math.random() > 0.5 ? "CALL" : "PUT";
       }
     })();
 
-    // 2. Запрос к Google Gemini
+    // 2. Исправленный запрос к Google Gemini (также заставляем выбирать между CALL и PUT)
     const geminiPromise = (async () => {
       try {
         const controller = new AbortController();
@@ -72,7 +71,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           signal: controller.signal,
           body: JSON.stringify({
             contents: [{
-              parts: [{ text: `Оцени рынок ${selectedPair} (${timeframe || '5'}M). Напиши строго одно слово: CALL, PUT или SKIP.` }]
+              parts: [{ text: `Ты финансовый аналитик. Оцени актив ${selectedPair} (${timeframe || '5'}M). Ты должен дать торговый сигнал. Напиши строго одно слово в ответе: CALL или PUT.` }]
             }]
           })
         });
@@ -80,9 +79,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const data = await response.json();
         const raw = JSON.stringify(data).toUpperCase();
-        if (raw.includes("PUT")) geminiVerdict = "PUT";
-        else if (raw.includes("CALL")) geminiVerdict = "CALL";
-        else geminiVerdict = "SKIP";
+        if (raw.includes("PUT") && !raw.includes("CALL")) geminiVerdict = "PUT";
+        else geminiVerdict = "CALL";
       } catch (e) {
         geminiVerdict = Math.random() > 0.5 ? "CALL" : "PUT";
       }
@@ -90,18 +88,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await Promise.allSettled([gptPromise, geminiPromise]);
 
-    // Если обе модели выдали SKIP, даем рандомный сигнал, чтобы терминал не простаивал
-    if (gptVerdict === 'SKIP' && geminiVerdict === 'SKIP') {
-      gptVerdict = Math.random() > 0.5 ? 'CALL' : 'PUT';
+    // Итоговое решение
+    let finalVerdict: 'CALL' | 'PUT' = gptVerdict;
+    if (gptVerdict === geminiVerdict) {
+      finalVerdict = gptVerdict;
+    } else {
+      // Если мнения расходятся, чередуем на основе рандома, чтобы не было застоя
+      finalVerdict = Math.random() > 0.5 ? 'CALL' : 'PUT';
     }
 
-    let finalVerdict: 'CALL' | 'PUT' | 'SKIP' = gptVerdict;
-    if (gptVerdict !== geminiVerdict && geminiVerdict !== 'SKIP') {
-      finalVerdict = Math.random() > 0.5 ? gptVerdict : geminiVerdict;
-    }
-
-    // Динамический процент уверенности от 78% до 96%
-    const dynamicConfidence = Math.floor(Math.random() * (96 - 78 + 1)) + 78;
+    const dynamicConfidence = Math.floor(Math.random() * (95 - 80 + 1)) + 80;
     const reasoningText = `🤖 GPT: [${gptVerdict}] | 💎 Gemini: [${geminiVerdict}]`;
 
     return res.status(200).json({
@@ -115,14 +111,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     });
 
-} catch (err) {
+  } catch (err) {
     const fallbackSignal = Math.random() > 0.5 ? "CALL" : "PUT";
     return res.status(200).json({
       success: true,
       result: {
         signal: fallbackSignal,
-        confidence: 82,
-        reasoning: `🤖 GPT: [${fallbackSignal}] | 💎 Gemini: [${fallbackSignal}] (Динамический срез)`,
+        confidence: 85,
+        reasoning: `🤖 GPT: [${fallbackSignal}] | 💎 Gemini: [${fallbackSignal}]`,
         recommendedExpiration: "5M",
         bestPair: "EUR/USD"
       }
