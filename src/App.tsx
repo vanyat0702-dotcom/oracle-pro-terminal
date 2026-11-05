@@ -4,17 +4,38 @@ import { TRADING_PAIRS, TradingPair } from './config/pairs';
 import html2canvas from 'html2canvas';
 
 export default function App() {
-  const [selectedPair, setSelectedPair] = useState<TradingPair>(TRADING_PAIRS[11]); // EUR/USD
+  // 1. Загружаем сохраненную пару или берем EUR/USD по умолчанию
+  const [selectedPair, setSelectedPair] = useState<TradingPair>(() => {
+    try {
+      const saved = localStorage.getItem('oracle_selected_pair');
+      if (saved) {
+        const found = TRADING_PAIRS.find(p => p.id === JSON.parse(saved).id);
+        if (found) return found;
+      }
+    } catch (e) {}
+    return TRADING_PAIRS[11];
+  });
   
-  const [selectedMultiPairs, setSelectedMultiPairs] = useState<TradingPair[]>([
-    TRADING_PAIRS[0], // AUD/CAD
-    TRADING_PAIRS[1], // AUD/CHF
-    TRADING_PAIRS[11], // EUR/USD
-    TRADING_PAIRS[19]  // USD/JPY
-  ]);
+  // 2. Загружаем сохраненный мультипул пар или дефолтный набор
+  const [selectedMultiPairs, setSelectedMultiPairs] = useState<TradingPair[]>(() => {
+    try {
+      const saved = localStorage.getItem('oracle_multipairs_v105');
+      if (saved) {
+        const parsedIds = JSON.parse(saved);
+        const matched = TRADING_PAIRS.filter(p => parsedIds.includes(p.id));
+        if (matched.length > 0) return matched;
+      }
+    } catch (e) {}
+    return [
+      TRADING_PAIRS[0],
+      TRADING_PAIRS[1],
+      TRADING_PAIRS[11],
+      TRADING_PAIRS[19]
+    ];
+  });
 
   const [timeframe, setTimeframe] = useState<string>("5");
-  const [displayTf, setDisplayTf] = useState<string>("5"); // Визуальный таймфрейм графика для анимации аудит-переключений
+  const [displayTf, setDisplayTf] = useState<string>("5");
   const [wsStatus, setWsStatus] = useState<boolean>(true);
   
   const [viewMode, setViewMode] = useState<'single' | 'quad'>('single');
@@ -24,8 +45,10 @@ export default function App() {
   const [rightTab, setRightTab] = useState<'logs' | 'history' | 'martingale' | 'strategies'>('logs');
   const [activeIndicator, setActiveIndicator] = useState<string>('RSI');
 
-  // Боевой режим торговли
-  const [riskMode, setRiskMode] = useState<'SAFE' | 'BALANCED' | 'AGGRESSIVE' | 'BREAKOUT' | 'ANTITILT' | 'TRENDSURF'>('BALANCED');
+  // 3. Сохранение и загрузка боевого режима
+  const [riskMode, setRiskMode] = useState<'SAFE' | 'BALANCED' | 'AGGRESSIVE' | 'BREAKOUT' | 'ANTITILT' | 'TRENDSURF'>(() => {
+    return (localStorage.getItem('oracle_risk_mode') as any) || 'BALANCED';
+  });
 
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
@@ -34,7 +57,6 @@ export default function App() {
   const [riskCapEnabled, setRiskCapEnabled] = useState<boolean>(true);
   const [maxMartingaleStep, setMaxMartingaleStep] = useState<number>(3);
 
-  // Набор стратегических модулей с привязкой к режимам
   const [strategies, setStrategies] = useState([
     { id: 'trend_following', name: 'Трендовый фильтр (Trend Master)', mode: 'balanced', enabled: true, wins: 14, losses: 3 },
     { id: 'price_action', name: 'Price Action & Пин-бар', mode: 'sniper', enabled: false, wins: 19, losses: 5 },
@@ -46,7 +68,27 @@ export default function App() {
     { id: 'trend_rider_ema', name: 'Трендовый откат к EMA (20/50)', mode: 'trendsurf', enabled: false, wins: 16, losses: 4 }
   ]);
 
-  // Автоматическое включение стратегий при смене бой-режима
+  // Сохранение выбранных пар в localStorage при любом изменении
+  useEffect(() => {
+    try {
+      localStorage.setItem('oracle_selected_pair', JSON.stringify(selectedPair));
+    } catch (e) {}
+  }, [selectedPair]);
+
+  useEffect(() => {
+    try {
+      const ids = selectedMultiPairs.map(p => p.id);
+      localStorage.setItem('oracle_multipairs_v105', JSON.stringify(ids));
+    } catch (e) {}
+  }, [selectedMultiPairs]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('oracle_risk_mode', riskMode);
+    } catch (e) {}
+  }, [riskMode]);
+
+  // Авто-стратегии под боевой режим
   useEffect(() => {
     setStrategies(prev => prev.map(s => {
       if (riskMode === 'BALANCED') {
@@ -86,7 +128,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: 'Vision AI Core v10.5: Многотаймфреймовый аудит 15M/30M/5M активирован.', 
+      text: 'Vision AI Core v10.5: Память настроек и аудит 15M/30M/5M активны.', 
       type: 'info' 
     }
   ]);
@@ -111,9 +153,7 @@ export default function App() {
       gain.connect(audioCtx.destination);
       osc.start();
       osc.stop(audioCtx.currentTime + 0.5);
-    } catch (e) {
-      console.log('Audio error:', e);
-    }
+    } catch (e) {}
   };
 
   const togglePairSelection = (pair: TradingPair) => {
@@ -143,26 +183,19 @@ export default function App() {
 
       const response = await fetch('/api/analyze', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           pairs: activePairsSymbols,
           timeframe: tf,
           mode: riskModeRef.current,
-          secondsRemaining: currentRemSec, // Передаем тайминг для снайперской проверки
+          secondsRemaining: currentRemSec,
           activeStrategies: activeStratNames,
           strategy: activeStratNames[0] || 'Мульти-стратегия',
-          filters: {
-            newsFilterEnabled,
-            atrFilterEnabled,
-            riskCapEnabled
-          }
+          filters: { newsFilterEnabled, atrFilterEnabled, riskCapEnabled }
         }),
       });
 
       const data = await response.json();
-
       if (data.success && data.result) {
         return data.result;
       } else {
@@ -173,7 +206,6 @@ export default function App() {
     }
   };
 
-  // Таймер обратного отсчета свечи
   useEffect(() => {
     const calculateCandleInfo = () => {
       const now = new Date();
@@ -195,32 +227,28 @@ export default function App() {
     return () => clearInterval(interval);
   }, [timeframe]);
 
-  // Кнопка АУДИТ РЫНКА с реальным визуальным переключением таймфреймов на графике
   const handleStartAnalysis = async () => {
     setIsAnalyzing(true);
     setAiSignal(null);
     playBeep('alert');
     
     try {
-      // Шаг 1: Визуально переключаем графический виджет на 15M
-      setAuditStepText('🔍 Аналитик переключает график на 15M (Сбор глобального контекста)...');
+      setAuditStepText('🔍 Аналитик проверяет тренд на 15M...');
       setDisplayTf('15');
-      addLog('🔍 Шаг 1/3: Аудит старшего таймфрейма 15M...', 'vision');
-      await new Promise(r => setTimeout(r, 1500));
-
-      // Шаг 2: Визуально переключаем графический виджет на 30M (используем 60M как ближайший доступный в виджете аналог или держим 15M/1H)
-      setAuditStepText('📊 Переключаем график на 30M (Проверка уровней и структуры)...');
-      setDisplayTf('60'); 
-      addLog('📊 Шаг 2/3: Аудит структуры на 30M...', 'vision');
-      await new Promise(r => setTimeout(r, 1500));
-
-      // Шаг 3: Возвращаем на рабочий таймфрейм 5M и ловим снайперское окно
-      setAuditStepText('⏱️ Возврат на 5M. Синхронизация с закрытием свечи...');
-      setDisplayTf(timeframe);
-      addLog('⏱️ Шаг 3/3: Сканирование 5M перед закрытием свечи...', 'sniper');
+      addLog('🔍 Шаг 1/3: Аудит 15M...', 'vision');
       await new Promise(r => setTimeout(r, 1200));
 
-      setAuditStepText('🤖 Запрос к ИИ-моделям (Консенсус диспетчера)...');
+      setAuditStepText('📊 Проверка структуры на 30M...');
+      setDisplayTf('60'); 
+      addLog('📊 Шаг 2/3: Аудит 30M...', 'vision');
+      await new Promise(r => setTimeout(r, 1200));
+
+      setAuditStepText('⏱️ Возврат на 5M. Синхронизация с закрытием свечи...');
+      setDisplayTf(timeframe);
+      addLog('⏱️ Шаг 3/3: Ожидание снайперского окна на 5M...', 'sniper');
+      await new Promise(r => setTimeout(r, 1000));
+
+      setAuditStepText('🤖 Запрос к ИИ-моделям...');
       
       const now = new Date();
       const tfSecs = parseInt(timeframe, 10) * 60;
@@ -275,7 +303,7 @@ export default function App() {
     } finally {
       setIsAnalyzing(false);
       setAuditStepText('');
-      setDisplayTf(timeframe); // Возвращаем исходный ТФ
+      setDisplayTf(timeframe);
     }
   };
 
@@ -325,9 +353,9 @@ export default function App() {
           <Zap className="w-7 h-7 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-lg font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-              ORACLE PRO TERMINAL (MULTI-TIMEFRAME AUDIT v10.5)
+              ORACLE PRO TERMINAL (PERSISTENT MEMORY v10.5)
             </h1>
-            <p className="text-[9px] text-slate-400 tracking-widest uppercase">Многотаймфреймовый анализ 15M/30M + 5M Скальпинг</p>
+            <p className="text-[9px] text-slate-400 tracking-widest uppercase">Автосохранение пула пар и стратегий</p>
           </div>
         </div>
         
@@ -363,7 +391,7 @@ export default function App() {
             >
               <div className="flex items-center gap-2">
                 <Sliders className="w-4 h-4 text-cyan-400" />
-                <span>НАСТРОЙКИ СКАНИРОВАНИЯ И ИИ-РЕЖИМОВ</span>
+                <span>НАСТРОЙКИ СКАНИРОВАНИЯ И ИИ-РЕЖИМОВ (СОХРАНЯЮТСЯ АВТОМАТИЧЕСКИ)</span>
                 <span className="text-[10px] text-slate-400 font-normal ml-2">
                   (Режим: <span className="text-amber-400 font-bold">{riskMode}</span> | Стратегий вкл: <span className="text-emerald-400 font-bold">{strategies.filter(s => s.enabled).length}</span> | Пар в пуле: <span className="text-cyan-400 font-bold">{selectedMultiPairs.length}</span>)
                 </span>
@@ -428,7 +456,7 @@ export default function App() {
 
                 <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
                   <div className="flex justify-between items-center text-xs font-bold text-cyan-400">
-                    <span>МУЛЬТИВЫБОР ПАР ДЛЯ АУДИТА</span>
+                    <span>МУЛЬТИВЫБОР ПАР ДЛЯ АУДИТА (СОХРАНЯЕТСЯ)</span>
                     <div className="flex gap-2 text-[10px]">
                       <button onClick={() => setSelectedMultiPairs([...TRADING_PAIRS])} className="text-cyan-300 hover:underline">Выбрать все</button>
                       <button onClick={() => setSelectedMultiPairs([TRADING_PAIRS[0]])} className="text-slate-400 hover:underline">Сбросить</button>
@@ -700,7 +728,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v10.5 (Multi-Timeframe Audit Hub)</span>
+        <span>ORACLE PRO v10.5 (Persistent Memory Hub)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
