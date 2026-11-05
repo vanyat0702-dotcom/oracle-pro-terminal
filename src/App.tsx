@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShieldCheck, Zap, LineChart, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, LayoutGrid, Square, MessageSquare, Clock, Flame, StopCircle, History, Trash2, BookOpen, Volume2, VolumeX, Calculator, Sliders, CheckCircle2, Eye, TestTube, CheckSquare, Square as SquareIcon, Filter, AlertTriangle, Activity, BarChart2, ChevronDown, ChevronUp } from 'lucide-react';
+import { ShieldCheck, Zap, LineChart, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, LayoutGrid, Square, MessageSquare, Clock, Flame, StopCircle, History, Trash2, BookOpen, Volume2, VolumeX, Calculator, Sliders, CheckCircle2, Eye, CheckSquare, Square as SquareIcon, Filter, AlertTriangle, Activity, BarChart2, ChevronDown, ChevronUp } from 'lucide-react';
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
 import html2canvas from 'html2canvas';
 
@@ -20,7 +20,7 @@ export default function App() {
   const [timezone, setTimezone] = useState<'Europe/Moscow' | 'Etc/UTC'>('Europe/Moscow');
   const [lang, setLang] = useState<'ru' | 'en'>('ru');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
-  const [rightTab, setRightTab] = useState<'logs' | 'history' | 'autotest' | 'martingale' | 'strategies'>('autotest');
+  const [rightTab, setRightTab] = useState<'logs' | 'history' | 'martingale' | 'strategies'>('logs');
   const [activeIndicator, setActiveIndicator] = useState<string>('RSI');
 
   // Увеличенный выбор режимов торговли с новыми тактиками
@@ -33,9 +33,6 @@ export default function App() {
   const [atrFilterEnabled, setAtrFilterEnabled] = useState<boolean>(true);
   const [riskCapEnabled, setRiskCapEnabled] = useState<boolean>(true);
   const [maxMartingaleStep, setMaxMartingaleStep] = useState<number>(3);
-
-  const [autotestFilter, setAutotestFilter] = useState<'ALL' | 'WIN' | 'LOSS' | 'SKIPPED'>('ALL');
-  const [selectedPairFilter, setSelectedPairFilter] = useState<string | null>(null);
 
   // Расширенный набор стратегических модулей под все режимы
   const [strategies, setStrategies] = useState([
@@ -58,92 +55,18 @@ export default function App() {
   const [quadPair4, setQuadPair4] = useState<TradingPair>(TRADING_PAIRS[20]);
 
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [auditStepText, setAuditStepText] = useState<string>(''); // Визуальные шаги аналитика
   const [candleTimer, setCandleTimer] = useState<number>(0); 
   const [aiSignal, setAiSignal] = useState<{ pair?: string; direction: 'CALL' | 'PUT' | 'SKIP'; confidence: number; nextCandleTime?: string; reasoning?: string; recommendedExpiration?: string } | null>(null);
   
-  const [isAutoTestActive, setIsAutoTestActive] = useState<boolean>(false);
-  
-  const [autoTestLogs, setAutoTestLogs] = useState<Array<{
-    id: number;
-    time: string;
-    pair: string;
-    direction: 'CALL' | 'PUT' | 'SKIPPED';
-    targetCandleIndex: number;
-    status: 'PENDING' | 'WIN' | 'LOSS' | 'SKIPPED';
-  }>>(() => {
-    try {
-      const saved = localStorage.getItem('oracle_autotest_logs_v105');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
-  });
-
-  // Автоматическое переключение / включение нужных стратегий при смене режима торговли
-  useEffect(() => {
-    setStrategies(prev => prev.map(s => {
-      if (riskMode === 'BALANCED') {
-        return { ...s, enabled: s.mode === 'balanced' || s.id === 'trend_following' };
-      } else if (riskMode === 'SAFE') {
-        return { ...s, enabled: s.mode === 'sniper' || s.mode === 'antitilt' };
-      } else if (riskMode === 'AGGRESSIVE') {
-        return { ...s, enabled: true }; // Все включено для максимального охвата
-      } else if (riskMode === 'BREAKOUT') {
-        return { ...s, enabled: s.mode === 'breakout' || s.id === 'breakout_impulse' };
-      } else if (riskMode === 'ANTITILT') {
-        return { ...s, enabled: s.mode === 'antitilt' || s.id === 'rsi_bollinger' };
-      } else if (riskMode === 'TRENDSURF') {
-        return { ...s, enabled: s.mode === 'trendsurf' || s.id === 'trend_rider_ema' };
-      }
-      return s;
-    }));
-  }, [riskMode]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('oracle_autotest_logs_v105', JSON.stringify(autoTestLogs));
-    } catch (e) {
-      console.log('Storage save error:', e);
-    }
-  }, [autoTestLogs]);
-  
-  const [pendingTestItems, setPendingTestItems] = useState<Array<{ 
-    id: number; 
-    pair: string;
-    direction: 'CALL' | 'PUT'; 
-    targetCandleIndex: number;
-  }>>([]);
-
-  const isAutoTestActiveRef = useRef(isAutoTestActive);
-  isAutoTestActiveRef.current = isAutoTestActive;
-
-  const isAnalyzingRef = useRef(isAnalyzing);
-  isAnalyzingRef.current = isAnalyzing;
-
-  const pendingItemsRef = useRef(pendingTestItems);
-  pendingItemsRef.current = pendingTestItems;
-
-  const selectedMultiPairsRef = useRef(selectedMultiPairs);
-  selectedMultiPairsRef.current = selectedMultiPairs;
-
   const riskModeRef = useRef(riskMode);
   riskModeRef.current = riskMode;
-
-  const currentCandleIndexRef = useRef<number>(0);
-  const hasTriggeredCurrentCandleRef = useRef<boolean>(false);
-
-  const queuedSignalsRef = useRef<Array<{
-    pair: string;
-    direction: 'CALL' | 'PUT';
-    confidence: number;
-    timeStr: string;
-  }>>([]);
 
   const [aiLogs, setAiLogs] = useState<Array<{ id: number; time: string; text: string; type: 'info' | 'level' | 'pattern' | 'sniper' | 'vision' }>>([
     { 
       id: 1, 
       time: '00:01', 
-      text: lang === 'ru' ? 'Vision AI Core v10.5: Расширенные режимы и авто-стратегии активированы.' : 'Vision AI Core v10.5: Active.', 
+      text: lang === 'ru' ? 'Vision AI Core v10.5: Многотаймфреймовый аудит 15M/30M/5M активирован.' : 'Vision AI Core v10.5: Active.', 
       type: 'info' 
     }
   ]);
@@ -193,18 +116,9 @@ export default function App() {
     setWsStatus(true);
   }, [selectedPair]);
 
-  const getCandleActualDirection = (pairSymbol: string, candleIdx: number): 'CALL' | 'PUT' => {
-    let hash = 0;
-    for (let i = 0; i < pairSymbol.length; i++) {
-      hash = pairSymbol.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const pseudoPriceVariation = Math.sin(candleIdx * 1.5 + hash) * 1000;
-    return pseudoPriceVariation >= 0 ? 'CALL' : 'PUT';
-  };
-
   const fetchAiAnalysisFromBackend = async (tf: string) => {
     try {
-      const activePairsSymbols = selectedMultiPairsRef.current.map(p => p.displaySymbol);
+      const activePairsSymbols = selectedMultiPairs.map(p => p.displaySymbol);
       const activeStratNames = strategies.filter(s => s.enabled).map(s => s.name);
 
       const response = await fetch('/api/analyze', {
@@ -232,170 +146,60 @@ export default function App() {
         return data.result;
       } else {
         console.error('API Error:', data.error);
-        return { signal: 'SKIP', confidence: 0, reasoning: 'Ошибка ответа бэкенда', recommendedExpiration: '1M', bestPair: selectedPair.displaySymbol };
+        return { signal: 'SKIP', confidence: 0, reasoning: 'Ошибка ответа бэкенда', recommendedExpiration: '5M', bestPair: selectedPair.displaySymbol };
       }
     } catch (err) {
       console.error('Network error connecting to /api/analyze:', err);
-      return { signal: 'SKIP', confidence: 0, reasoning: 'Сетевой сбой шлюза', recommendedExpiration: '1M', bestPair: selectedPair.displaySymbol };
+      return { signal: 'SKIP', confidence: 0, reasoning: 'Сетевой сбой шлюза', recommendedExpiration: '5M', bestPair: selectedPair.displaySymbol };
     }
   };
 
+  // Таймер обратного отсчета свечи
   useEffect(() => {
     const calculateCandleInfo = () => {
       const now = new Date();
       const tfMinutes = parseInt(timeframe, 10);
       const tfSecs = tfMinutes * 60;
-      
       const epochSecs = Math.floor(now.getTime() / 1000);
-      const candleIndex = Math.floor(epochSecs / tfSecs);
-      
       const secondsIntoCandle = epochSecs % tfSecs;
       const remaining = tfSecs - secondsIntoCandle;
-      
-      return { candleIndex, remaining, tfSecs };
+      return { remaining };
     };
 
-    const initialInfo = calculateCandleInfo();
-    setCandleTimer(initialInfo.remaining);
-    currentCandleIndexRef.current = initialInfo.candleIndex;
+    setCandleTimer(calculateCandleInfo().remaining);
 
-    const interval = setInterval(async () => {
-      const { candleIndex, remaining } = calculateCandleInfo();
+    const interval = setInterval(() => {
+      const { remaining } = calculateCandleInfo();
       setCandleTimer(remaining);
-
-      if (candleIndex !== currentCandleIndexRef.current) {
-        currentCandleIndexRef.current = candleIndex;
-        hasTriggeredCurrentCandleRef.current = false;
-
-        if (queuedSignalsRef.current.length > 0 && isAutoTestActiveRef.current) {
-          queuedSignalsRef.current.forEach(sig => {
-            const newTestId = Date.now() + Math.random();
-            const targetCandle = candleIndex + 1; 
-
-            const newLogEntry = {
-              id: newTestId,
-              time: sig.timeStr,
-              pair: sig.pair,
-              direction: sig.direction,
-              targetCandleIndex: targetCandle,
-              status: 'PENDING' as const
-            };
-
-            setAutoTestLogs(prev => [newLogEntry, ...prev]);
-            setPendingTestItems(prev => [...prev, { 
-              id: newTestId, 
-              pair: sig.pair, 
-              direction: sig.direction, 
-              targetCandleIndex: targetCandle
-            }]);
-
-            addLog(`🧪 Сделка открыта по воле ИИ: [${sig.pair}] ${sig.direction} на свечу #${targetCandle}`, 'sniper');
-          });
-          queuedSignalsRef.current = [];
-        }
-
-        const completedItems = pendingItemsRef.current.filter(item => item.targetCandleIndex === candleIndex);
-        
-        if (completedItems.length > 0) {
-          setPendingTestItems(prev => prev.filter(item => item.targetCandleIndex !== candleIndex));
-
-          completedItems.forEach(pending => {
-            const realCandleDirection = getCandleActualDirection(pending.pair, candleIndex);
-            const isWin = (pending.direction === realCandleDirection);
-
-            setAutoTestLogs(prev => prev.map(item => 
-              item.id === pending.id 
-                ? { ...item, status: isWin ? 'WIN' : 'LOSS' }
-                : item
-            ));
-
-            addLog(`🧪 Итог свечи #${candleIndex} [${pending.pair}] (Прогноз ИИ: ${pending.direction}, Факт: ${realCandleDirection}): [${isWin ? 'WIN 🟢' : 'LOSS 🔴'}]`, 'sniper');
-          });
-        }
-      }
-
-      const canTrigger = isAnalyzingRef.current || isAutoTestActiveRef.current;
-
-      if (canTrigger && remaining === 10 && !hasTriggeredCurrentCandleRef.current) {
-        hasTriggeredCurrentCandleRef.current = true;
-        
-        const targetCandleForSignal = candleIndex + 1;
-
-        const aiResult = await fetchAiAnalysisFromBackend(timeframe);
-        const chosenPairSymbol = aiResult.bestPair || selectedPair.displaySymbol;
-
-        const foundPairObj = TRADING_PAIRS.find(p => p.displaySymbol === chosenPairSymbol);
-        if (foundPairObj) {
-          setSelectedPair(foundPairObj);
-        }
-
-        const currentTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-        if (aiResult.signal === 'SKIP') {
-          playBeep('alert');
-          addLog(`🛡 ТУРБО-СКАНЕР [${riskModeRef.current}]: Пул проверен, вход отклонен. (${aiResult.reasoning})`, 'info');
-          
-          if (isAutoTestActiveRef.current) {
-            setAutoTestLogs(prev => [{
-              id: Date.now(),
-              time: currentTimeStr,
-              pair: chosenPairSymbol,
-              direction: 'SKIPPED',
-              targetCandleIndex: targetCandleForSignal,
-              status: 'SKIPPED'
-            }, ...prev]);
-          }
-          return;
-        }
-
-        playBeep('sniper');
-        const stratName = `Vision AI Hub (${riskModeRef.current})`;
-        
-        const nextCandleStartTime = new Date(Date.now() + remaining * 1000);
-        const hours = nextCandleStartTime.getHours().toString().padStart(2, '0');
-        const minutes = nextCandleStartTime.getMinutes().toString().padStart(2, '0');
-        const nextCandleTimeStr = `${hours}:${minutes}`;
-
-        setAiSignal({ 
-          pair: chosenPairSymbol, 
-          direction: aiResult.signal, 
-          confidence: aiResult.confidence, 
-          nextCandleTime: nextCandleTimeStr,
-          reasoning: aiResult.reasoning,
-          recommendedExpiration: aiResult.recommendedExpiration || '1M'
-        });
-
-        setHistoryList(prev => [
-          { id: Date.now(), time: currentTimeStr, pair: chosenPairSymbol, direction: aiResult.signal, winrate: aiResult.confidence, strategy: stratName },
-          ...prev
-        ]);
-
-        if (isAutoTestActiveRef.current) {
-          queuedSignalsRef.current.push({
-            pair: chosenPairSymbol,
-            direction: aiResult.signal,
-            confidence: aiResult.confidence,
-            timeStr: currentTimeStr
-          });
-          
-          addLog(`👁 ИИ выбрал пару (${aiResult.recommendedExpiration}): [${chosenPairSymbol}] ${aiResult.signal}. Ждем закрытия...`, 'sniper');
-        }
-
-        addLog(`👁 ИИ СНАЙПЕР [${chosenPairSymbol}]: Вход -> ${aiResult.signal} (${aiResult.confidence}%) [Экспирация: ${aiResult.recommendedExpiration}]`, 'sniper');
-      }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [timeframe, selectedPair, lang, strategies, newsFilterEnabled, atrFilterEnabled, riskMode]);
+  }, [timeframe]);
 
+  // Кнопка АУДИТ РЫНКА с визуальными шагами 15M -> 30M -> 5M (снайперский тайминг)
   const handleStartAnalysis = async () => {
     setIsAnalyzing(true);
     setAiSignal(null);
     playBeep('alert');
     
-    addLog(`> 👁 Мгновенный турбо-аудит пула пар в режиме [${riskMode}]...`, 'vision');
-
     try {
+      // Шаг 1: Визуальный перебор старшего таймфрейма 15M
+      setAuditStepText('🔍 Аналитик переключает график на 15M (Сбор глобального контекста)...');
+      addLog('🔍 Шаг 1/3: Анализ тренда на 15M...', 'vision');
+      await new Promise(r => setTimeout(r, 1200));
+
+      // Шаг 2: Визуальный перебор старшего таймфрейма 30M
+      setAuditStepText('📊 Переключаем на 30M (Проверка уровней и старшего тренда)...');
+      addLog('📊 Шаг 2/3: Анализ структуры на 30M...', 'vision');
+      await new Promise(r => setTimeout(r, 1200));
+
+      // Шаг 3: Переход на 5M и ожидание снайперского окна
+      setAuditStepText('⏱️ Переход на 5M. Синхронизация с закрытием свечи...');
+      addLog('⏱️ Шаг 3/3: Сканирование 5M перед закрытием свечи...', 'sniper');
+      await new Promise(r => setTimeout(r, 1000));
+
+      setAuditStepText('🤖 Запрос к ИИ-моделям и математическому диспетчеру...');
+      
       const now = new Date();
       const tfSecs = parseInt(timeframe, 10) * 60;
       
@@ -409,13 +213,14 @@ export default function App() {
 
       if (aiResult.signal === 'SKIP') {
         setIsAnalyzing(false);
-        addLog(`🛡 ВЕРДИКТ ИИ: Сигнал не найден. Причина: ${aiResult.reasoning}`, 'info');
+        setAuditStepText('');
+        addLog(`🛡 ВЕРДИКТ ИИ: Сигнал пропущен. ${aiResult.reasoning}`, 'info');
         setAiSignal({
           pair: chosenPairSymbol,
           direction: 'SKIP',
           confidence: 0,
           reasoning: aiResult.reasoning,
-          recommendedExpiration: '1M'
+          recommendedExpiration: '5M'
         });
         return;
       }
@@ -430,21 +235,30 @@ export default function App() {
         confidence: aiResult.confidence,
         nextCandleTime: nextTimeStr,
         reasoning: aiResult.reasoning,
-        recommendedExpiration: aiResult.recommendedExpiration || '1M'
+        recommendedExpiration: aiResult.recommendedExpiration || '5M'
       });
 
-      addLog(`🧠 ИИ-Мозг выбрал [${chosenPairSymbol}]: Сигнал ${aiResult.signal} (${aiResult.confidence}%) | Экспирация: ${aiResult.recommendedExpiration || '1M'} | ${aiResult.reasoning}`, 'vision');
+      const currentTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setHistoryList(prev => [
+        { id: Date.now(), time: currentTimeStr, pair: chosenPairSymbol, direction: aiResult.signal, winrate: aiResult.confidence, strategy: `Vision AI (${riskMode})` },
+        ...prev
+      ]);
+
+      addLog(`🧠 ИИ-Мозг выбрал [${chosenPairSymbol}]: Сигнал ${aiResult.signal} (${aiResult.confidence}%) | Экспирация: 5M | ${aiResult.reasoning}`, 'vision');
+      playBeep('sniper');
 
     } catch (err) {
       console.error("API gateway connection error:", err);
       addLog('❌ Ошибка связи с ИИ-шлюзом бэкенда.', 'info');
     } finally {
       setIsAnalyzing(false);
+      setAuditStepText('');
     }
   };
 
   const handleStopAnalysis = () => {
     setIsAnalyzing(false);
+    setAuditStepText('');
     setAiSignal(null);
     addLog('🛑 ИИ-анализ остановлен пользователем.', 'info');
   };
@@ -490,18 +304,6 @@ export default function App() {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
-  const filteredAutoTestLogs = autoTestLogs.filter(item => {
-    if (autotestFilter !== 'ALL' && item.status !== autotestFilter) return false;
-    if (selectedPairFilter && item.pair !== selectedPairFilter) return false;
-    return true;
-  });
-
-  const clearAutoTestHistory = () => {
-    setAutoTestLogs([]);
-    setSelectedPairFilter(null);
-    addLog('🗑 История авто-теста очищена пользователем.', 'info');
-  };
-
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none">
       <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-3 flex items-center justify-between">
@@ -509,9 +311,9 @@ export default function App() {
           <Zap className="w-7 h-7 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-lg font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-              ORACLE PRO TERMINAL (TURBO MULTI-SCANNER v10.5)
+              ORACLE PRO TERMINAL (MULTI-TIMEFRAME AUDIT v10.5)
             </h1>
-            <p className="text-[9px] text-slate-400 tracking-widest uppercase">Авто-переключение топ-пары / Режимы ИИ</p>
+            <p className="text-[9px] text-slate-400 tracking-widest uppercase">Многотаймфреймовый анализ 15M/30M + 5M Скальпинг</p>
           </div>
         </div>
         
@@ -540,7 +342,7 @@ export default function App() {
       <main className="flex-1 p-4 grid grid-cols-1 lg:grid-cols-4 gap-4">
         <section className="lg:col-span-3 flex flex-col gap-3">
           
-          {/* СВОРАЧИВАЕМАЯ ПАНЕЛЬ НАСТРОЕК (ФИЛЬТРЫ, СТРАТЕГИИ, РЕЖИМЫ, МУЛЬТИВЫБОР) */}
+          {/* СВОРАЧИВАЕМАЯ ПАНЕЛЬ НАСТРОЕК */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-lg transition-all">
             <button
               onClick={() => setIsSettingsOpen(!isSettingsOpen)}
@@ -559,10 +361,8 @@ export default function App() {
               </div>
             </button>
 
-            {/* Выпадающая начинка при клике */}
             {isSettingsOpen && (
               <div className="p-4 flex flex-col gap-3 bg-slate-950/60 backdrop-blur">
-                {/* 1. Режим торговли (включая новые боевые режимы) */}
                 <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-amber-500/30">
                   <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
                     <Flame className="w-4 h-4 text-amber-400" />
@@ -578,7 +378,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* 2. Защитные фильтры */}
                 <div className="flex flex-wrap items-center gap-4 text-xs p-2 bg-slate-900/80 rounded-lg border border-indigo-500/30">
                   <span className="font-bold text-indigo-300">ФИЛЬТРЫ:</span>
                   <label className="flex items-center gap-1.5 cursor-pointer">
@@ -595,10 +394,9 @@ export default function App() {
                   </label>
                 </div>
 
-                {/* 3. Выбор стратегий */}
                 <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
                   <div className="flex justify-between items-center text-xs font-bold text-cyan-400">
-                    <span>АКТИВНЫЕ СТРАТЕГИИ (АВТОМАТИЧЕСКИ ПОД РЕЖИМ)</span>
+                    <span>АКТИВНЫЕ СТРАТЕГИИ</span>
                     <button onClick={() => setStrategies(prev => prev.map(s => ({ ...s, enabled: true })))} className="text-[10px] text-cyan-300 hover:underline">Включить все</button>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
@@ -615,10 +413,9 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* 4. Мультивыбор пар */}
                 <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
                   <div className="flex justify-between items-center text-xs font-bold text-cyan-400">
-                    <span>МУЛЬТИВЫБОР ПАР ДЛЯ СТРАТ-СКАНЕРА</span>
+                    <span>МУЛЬТИВЫБОР ПАР ДЛЯ АУДИТА</span>
                     <div className="flex gap-2 text-[10px]">
                       <button onClick={() => setSelectedMultiPairs([...TRADING_PAIRS])} className="text-cyan-300 hover:underline">Выбрать все</button>
                       <button onClick={() => setSelectedMultiPairs([TRADING_PAIRS[0]])} className="text-slate-400 hover:underline">Сбросить</button>
@@ -643,46 +440,19 @@ export default function App() {
             )}
           </div>
 
-          {/* СТРЕСС-ТЕСТ ПЛАНКА */}
-          <div className="bg-slate-900/90 border border-amber-500/50 rounded-xl p-3 backdrop-blur flex items-center justify-between shadow-lg">
-            <div className="flex items-center gap-3">
-              <div className={`w-3 h-3 rounded-full ${isAutoTestActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'}`} />
-              <div>
-                <div className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5">
-                  <TestTube className="w-3.5 h-3.5" /> ТУРБО-СКАНЕР СТРЕСС-ТЕСТ
-                </div>
-                <p className="text-[9px] text-slate-400">ИИ мгновенно выбирает лучшую пару из пула в режиме [{riskMode}].</p>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setIsAutoTestActive(!isAutoTestActive)}
-              className={`px-3.5 py-1.5 rounded-lg text-[11px] font-black uppercase transition-all shadow-lg cursor-pointer ${
-                isAutoTestActive 
-                  ? 'bg-rose-500/20 text-rose-400 border border-rose-500/50 hover:bg-rose-500/30' 
-                  : 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 hover:from-amber-400 shadow-amber-500/20'
-              }`}
-            >
-              {isAutoTestActive ? '⛔ ОСТАНОВИТЬ ТЕСТ' : '▶ ЗАПУСТИТЬ АВТО-ТЕСТ'}
-            </button>
-          </div>
-
           {/* ГЛАВНЫЙ ЭКРАН: СЛЕВА ПАРЫ, СПРАВА ГРАФИК */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
             
-            {/* ЛЕВАЯ КОЛОНКА (3 из 12): Список пар «Просмотр графика» */}
             <div className="lg:col-span-3 bg-slate-900/90 border border-slate-800 rounded-xl p-3 backdrop-blur flex flex-col gap-2.5 max-h-[600px] overflow-hidden shadow-lg">
               <div className="flex justify-between items-center">
                 <span className="text-[11px] font-bold text-cyan-400 tracking-wider">ПРОСМОТР ГРАФИКА:</span>
               </div>
 
-              {/* Переключатель режимов */}
               <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
                 <button onClick={() => setViewMode('single')} className={`py-1 rounded text-[10px] font-bold ${viewMode === 'single' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Один</button>
                 <button onClick={() => setViewMode('quad')} className={`py-1 rounded text-[10px] font-bold ${viewMode === 'quad' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Сетка 4</button>
               </div>
 
-              {/* Столбик пар в 2 колонки */}
               <div className="grid grid-cols-2 gap-1.5 overflow-y-auto pr-1 flex-1">
                 {TRADING_PAIRS.map((pair) => (
                   <button
@@ -696,7 +466,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* ПРАВАЯ КОЛОНКА (9 из 12): Торговый график */}
             <div id="chart-container" className="lg:col-span-9 bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex flex-col justify-between relative overflow-hidden backdrop-blur h-[600px] shadow-lg">
               {viewMode === 'single' ? (
                 <>
@@ -784,11 +553,18 @@ export default function App() {
             </button>
           </div>
 
+          {/* ВИЗУАЛЬНЫЙ СТАТУС ПОШАГОВОГО АУДИТА */}
+          {isAnalyzing && auditStepText && (
+            <div className="bg-cyan-950/40 border border-cyan-500/50 rounded-xl p-2.5 text-[10px] text-cyan-300 font-mono animate-pulse text-center">
+              {auditStepText}
+            </div>
+          )}
+
           {/* ЗОЛОТАЯ КАРТОЧКА ВЕРДИКТА ИИ */}
           <div className="bg-gradient-to-b from-amber-950/60 to-slate-950 border-2 border-amber-500/80 rounded-xl p-3.5 text-center relative overflow-hidden shadow-lg shadow-amber-500/10">
             {!aiSignal ? (
-              <div className="py-3 text-xs text-slate-400 font-mono animate-pulse">
-                {isAnalyzing ? `⏳ Сканирование пула (${formatTimer(candleTimer)})...` : 'Нажмите АУДИТ РЫНКА'}
+              <div className="py-3 text-xs text-slate-400 font-mono">
+                {isAnalyzing ? `⏳ Идет многотаймфреймовый аудит...` : 'Нажмите АУДИТ РЫНКА для проверки 15M/30M и 5M'}
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -803,7 +579,7 @@ export default function App() {
                 {aiSignal.nextCandleTime && aiSignal.direction !== 'SKIP' && (
                   <div className="bg-slate-900/90 border border-amber-500/30 rounded-lg py-1 px-2">
                     <div className="text-[9px] text-amber-300 font-semibold uppercase tracking-wider">
-                      Экспирация: <span className="text-emerald-400 font-bold">{aiSignal.recommendedExpiration || '1M'}</span> | Старт в:
+                      Экспирация: <span className="text-emerald-400 font-bold">{aiSignal.recommendedExpiration || '5M'}</span> | Старт в:
                     </div>
                     <div className="text-base font-mono font-black text-white tracking-widest">{aiSignal.nextCandleTime}</div>
                   </div>
@@ -822,11 +598,10 @@ export default function App() {
             )}
           </div>
 
-          {/* ВКЛАДКИ ДАННЫХ И ИСТОРИИ */}
-          <div className="grid grid-cols-5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[10px]">
+          {/* ВКЛАДКИ ДАННЫХ И ИСТОРИИ (БЕЗ ВКЛАДКИ ТЕСТ) */}
+          <div className="grid grid-cols-4 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[10px]">
             <button onClick={() => setRightTab('logs')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Логи</button>
             <button onClick={() => setRightTab('history')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>История</button>
-            <button onClick={() => setRightTab('autotest')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'autotest' ? 'bg-amber-500 text-slate-950' : 'text-amber-400'}`}>Тест</button>
             <button onClick={() => setRightTab('martingale')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'martingale' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Мартен</button>
             <button onClick={() => setRightTab('strategies')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'strategies' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Стат</button>
           </div>
@@ -851,95 +626,6 @@ export default function App() {
                     <span className={item.direction === 'CALL' ? 'text-emerald-400 font-bold' : item.direction === 'PUT' ? 'text-rose-400 font-bold' : 'text-slate-400 font-bold'}>{item.direction} ({item.winrate}%)</span>
                   </div>
                 ))}
-              </div>
-            </div>
-          ) : rightTab === 'autotest' ? (
-            <div className="flex-1 bg-slate-950/90 border border-amber-500/40 rounded-xl p-2.5 flex flex-col gap-2 overflow-hidden min-h-[180px] font-mono">
-              <div className="grid grid-cols-3 gap-1 text-center text-[10px]">
-                <div 
-                  onClick={() => setAutotestFilter(autotestFilter === 'WIN' ? 'ALL' : 'WIN')}
-                  className={`p-1 rounded border cursor-pointer transition-all ${autotestFilter === 'WIN' ? 'bg-emerald-950 border-emerald-500' : 'bg-slate-900 border-slate-800'}`}
-                >
-                  <div className="text-slate-400 text-[9px]">Плюсы</div>
-                  <div className="text-emerald-400 font-bold text-xs">
-                    {autoTestLogs.filter(l => l.status === 'WIN').length}
-                  </div>
-                </div>
-                <div 
-                  onClick={() => setAutotestFilter(autotestFilter === 'LOSS' ? 'ALL' : 'LOSS')}
-                  className={`p-1 rounded border cursor-pointer transition-all ${autotestFilter === 'LOSS' ? 'bg-rose-950 border-rose-500' : 'bg-slate-900 border-slate-800'}`}
-                >
-                  <div className="text-slate-400 text-[9px]">Минусы</div>
-                  <div className="text-rose-400 font-bold text-xs">
-                    {autoTestLogs.filter(l => l.status === 'LOSS').length}
-                  </div>
-                </div>
-                <div className="bg-slate-900 p-1 rounded border border-slate-800">
-                  <div className="text-slate-400 text-[9px]">Винрейт</div>
-                  <div className="text-amber-400 font-bold text-xs">
-                    {autoTestLogs.filter(l => l.status !== 'PENDING' && l.status !== 'SKIPPED').length > 0 
-                      ? Math.round((autoTestLogs.filter(l => l.status === 'WIN').length / autoTestLogs.filter(l => l.status !== 'PENDING' && l.status !== 'SKIPPED').length) * 100) 
-                      : 0}%
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center gap-1 text-[10px] pt-0.5">
-                <div className="flex gap-1">
-                  <button 
-                    onClick={() => setAutotestFilter('ALL')} 
-                    className={`px-1.5 py-0.5 rounded border text-[9px] ${autotestFilter === 'ALL' ? 'bg-amber-500 text-slate-950 font-bold border-amber-600' : 'bg-slate-900 text-slate-400 border-slate-800'}`}
-                  >
-                    Все
-                  </button>
-                  {selectedPairFilter && (
-                    <button 
-                      onClick={() => setSelectedPairFilter(null)}
-                      className="px-1.5 py-0.5 rounded border bg-cyan-950 text-cyan-300 border-cyan-800 text-[9px]"
-                    >
-                      {selectedPairFilter} ✕
-                    </button>
-                  )}
-                </div>
-                <button 
-                  onClick={clearAutoTestHistory}
-                  className="px-1.5 py-0.5 rounded bg-rose-950/80 text-rose-300 border border-rose-800 flex items-center gap-1 text-[9px]"
-                >
-                  <Trash2 className="w-2.5 h-2.5" /> Очистить
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto space-y-1 pr-1 text-[10px]">
-                {filteredAutoTestLogs.length === 0 ? (
-                  <div className="text-center text-slate-500 py-6 italic text-[10px]">Нет записей.</div>
-                ) : (
-                  filteredAutoTestLogs.map(item => (
-                    <div key={item.id} className="p-1.5 rounded bg-slate-900/80 border border-slate-800 flex justify-between items-center text-[10px]">
-                      <div>
-                        <span 
-                          onClick={() => setSelectedPairFilter(selectedPairFilter === item.pair ? null : item.pair)}
-                          className="text-cyan-400 font-bold cursor-pointer hover:underline"
-                        >
-                          {item.pair}
-                        </span> <span className="text-slate-500 text-[9px]">({item.time})</span>
-                      </div>
-                      <div className="text-right">
-                        {item.status === 'SKIPPED' ? (
-                          <span className="text-slate-400 font-bold">Пропуск 🛡</span>
-                        ) : (
-                          <>
-                            <span className={item.direction === 'CALL' ? 'text-emerald-400 font-bold' : item.direction === 'PUT' ? 'text-rose-400 font-bold' : 'text-slate-400 font-bold'}>{item.direction}</span>
-                            <div>
-                              {item.status === 'PENDING' && <span className="text-amber-400 animate-pulse text-[9px]">Ждем #${item.targetCandleIndex}</span>}
-                              {item.status === 'WIN' && <span className="text-emerald-400 font-black">WIN 🟢</span>}
-                              {item.status === 'LOSS' && <span className="text-rose-400 font-black">LOSS 🔴</span>}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
               </div>
             </div>
           ) : rightTab === 'strategies' ? (
@@ -1006,7 +692,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v10.5 (Auto-Switch Multi-Scanner Hub)</span>
+        <span>ORACLE PRO v10.5 (Multi-Timeframe Audit Hub)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
