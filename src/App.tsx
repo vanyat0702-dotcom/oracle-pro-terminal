@@ -4,7 +4,6 @@ import { TRADING_PAIRS, TradingPair } from './config/pairs';
 import html2canvas from 'html2canvas';
 
 export default function App() {
-  // 1. Загружаем сохраненную пару или берем EUR/USD по умолчанию
   const [selectedPair, setSelectedPair] = useState<TradingPair>(() => {
     try {
       const saved = localStorage.getItem('oracle_selected_pair');
@@ -16,7 +15,6 @@ export default function App() {
     return TRADING_PAIRS[11];
   });
   
-  // 2. Загружаем сохраненный мультипул пар или дефолтный набор
   const [selectedMultiPairs, setSelectedMultiPairs] = useState<TradingPair[]>(() => {
     try {
       const saved = localStorage.getItem('oracle_multipairs_v105');
@@ -26,12 +24,7 @@ export default function App() {
         if (matched.length > 0) return matched;
       }
     } catch (e) {}
-    return [
-      TRADING_PAIRS[0],
-      TRADING_PAIRS[1],
-      TRADING_PAIRS[11],
-      TRADING_PAIRS[19]
-    ];
+    return [TRADING_PAIRS[0], TRADING_PAIRS[1], TRADING_PAIRS[11], TRADING_PAIRS[19]];
   });
 
   const [timeframe, setTimeframe] = useState<string>("5");
@@ -45,13 +38,11 @@ export default function App() {
   const [rightTab, setRightTab] = useState<'logs' | 'history' | 'martingale' | 'strategies'>('logs');
   const [activeIndicator, setActiveIndicator] = useState<string>('RSI');
 
-  // 3. Сохранение и загрузка боевого режима
   const [riskMode, setRiskMode] = useState<'SAFE' | 'BALANCED' | 'AGGRESSIVE' | 'BREAKOUT' | 'ANTITILT' | 'TRENDSURF'>(() => {
     return (localStorage.getItem('oracle_risk_mode') as any) || 'BALANCED';
   });
 
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
-
   const [newsFilterEnabled, setNewsFilterEnabled] = useState<boolean>(true);
   const [atrFilterEnabled, setAtrFilterEnabled] = useState<boolean>(true);
   const [riskCapEnabled, setRiskCapEnabled] = useState<boolean>(true);
@@ -68,11 +59,8 @@ export default function App() {
     { id: 'trend_rider_ema', name: 'Трендовый откат к EMA (20/50)', mode: 'trendsurf', enabled: false, wins: 16, losses: 4 }
   ]);
 
-  // Сохранение выбранных пар в localStorage при любом изменении
   useEffect(() => {
-    try {
-      localStorage.setItem('oracle_selected_pair', JSON.stringify(selectedPair));
-    } catch (e) {}
+    try { localStorage.setItem('oracle_selected_pair', JSON.stringify(selectedPair)); } catch (e) {}
   }, [selectedPair]);
 
   useEffect(() => {
@@ -83,27 +71,17 @@ export default function App() {
   }, [selectedMultiPairs]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('oracle_risk_mode', riskMode);
-    } catch (e) {}
+    try { localStorage.setItem('oracle_risk_mode', riskMode); } catch (e) {}
   }, [riskMode]);
 
-  // Авто-стратегии под боевой режим
   useEffect(() => {
     setStrategies(prev => prev.map(s => {
-      if (riskMode === 'BALANCED') {
-        return { ...s, enabled: s.mode === 'balanced' || s.id === 'trend_following' };
-      } else if (riskMode === 'SAFE') {
-        return { ...s, enabled: s.mode === 'sniper' || s.mode === 'antitilt' };
-      } else if (riskMode === 'AGGRESSIVE') {
-        return { ...s, enabled: true };
-      } else if (riskMode === 'BREAKOUT') {
-        return { ...s, enabled: s.mode === 'breakout' || s.id === 'breakout_impulse' };
-      } else if (riskMode === 'ANTITILT') {
-        return { ...s, enabled: s.mode === 'antitilt' || s.id === 'rsi_bollinger' };
-      } else if (riskMode === 'TRENDSURF') {
-        return { ...s, enabled: s.mode === 'trendsurf' || s.id === 'trend_rider_ema' };
-      }
+      if (riskMode === 'BALANCED') return { ...s, enabled: s.mode === 'balanced' || s.id === 'trend_following' };
+      if (riskMode === 'SAFE') return { ...s, enabled: s.mode === 'sniper' || s.mode === 'antitilt' };
+      if (riskMode === 'AGGRESSIVE') return { ...s, enabled: true };
+      if (riskMode === 'BREAKOUT') return { ...s, enabled: s.mode === 'breakout' || s.id === 'breakout_impulse' };
+      if (riskMode === 'ANTITILT') return { ...s, enabled: s.mode === 'antitilt' || s.id === 'rsi_bollinger' };
+      if (riskMode === 'TRENDSURF') return { ...s, enabled: s.mode === 'trendsurf' || s.id === 'trend_rider_ema' };
       return s;
     }));
   }, [riskMode]);
@@ -116,7 +94,7 @@ export default function App() {
   const [quadPair3, setQuadPair3] = useState<TradingPair>(TRADING_PAIRS[19]);
   const [quadPair4, setQuadPair4] = useState<TradingPair>(TRADING_PAIRS[20]);
 
-  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false); // Это флаг работы автопилота
   const [auditStepText, setAuditStepText] = useState<string>('');
   const [candleTimer, setCandleTimer] = useState<number>(0); 
   const [aiSignal, setAiSignal] = useState<{ pair?: string; direction: 'CALL' | 'PUT' | 'SKIP'; confidence: number; nextCandleTime?: string; reasoning?: string; recommendedExpiration?: string } | null>(null);
@@ -124,11 +102,17 @@ export default function App() {
   const riskModeRef = useRef(riskMode);
   riskModeRef.current = riskMode;
 
+  const isAnalyzingRef = useRef(isAnalyzing);
+  isAnalyzingRef.current = isAnalyzing;
+
+  const hasTriggeredCurrentCandleRef = useRef<boolean>(false);
+  const currentCandleIndexRef = useRef<number>(0);
+
   const [aiLogs, setAiLogs] = useState<Array<{ id: number; time: string; text: string; type: 'info' | 'level' | 'pattern' | 'sniper' | 'vision' }>>([
     { 
       id: 1, 
       time: '00:01', 
-      text: 'Vision AI Core v10.5: Память настроек и аудит 15M/30M/5M активны.', 
+      text: 'Vision AI Core v10.5: Автопилот снайперских входов готов к запуску.', 
       type: 'info' 
     }
   ]);
@@ -206,113 +190,103 @@ export default function App() {
     }
   };
 
+  // Главный таймер свечи и фоновый цикл автопилота
   useEffect(() => {
     const calculateCandleInfo = () => {
       const now = new Date();
       const tfMinutes = parseInt(timeframe, 10);
       const tfSecs = tfMinutes * 60;
       const epochSecs = Math.floor(now.getTime() / 1000);
+      const candleIndex = Math.floor(epochSecs / tfSecs);
       const secondsIntoCandle = epochSecs % tfSecs;
       const remaining = tfSecs - secondsIntoCandle;
-      return { remaining };
+      return { candleIndex, remaining };
     };
 
-    setCandleTimer(calculateCandleInfo().remaining);
+    const initial = calculateCandleInfo();
+    setCandleTimer(initial.remaining);
+    currentCandleIndexRef.current = initial.candleIndex;
 
-    const interval = setInterval(() => {
-      const { remaining } = calculateCandleInfo();
+    const interval = setInterval(async () => {
+      const { candleIndex, remaining } = calculateCandleInfo();
       setCandleTimer(remaining);
+
+      // Сброс флага срабатывания при переходе на новую свечу
+      if (candleIndex !== currentCandleIndexRef.current) {
+        currentCandleIndexRef.current = candleIndex;
+        hasTriggeredCurrentCandleRef.current = false;
+      }
+
+      // АВТОПИЛОТ: если автопилот включен и на таймере ровно 12 секунд до закрытия свечи
+      if (isAnalyzingRef.current && remaining === 12 && !hasTriggeredCurrentCandleRef.current) {
+        hasTriggeredCurrentCandleRef.current = true;
+        setAuditStepText('🎯 Снайперское окно! Авто-анализ рынка...');
+        addLog('🤖 Автопилот: сработка на 12 секундах до закрытия свечи.', 'sniper');
+
+        const aiResult = await fetchAiAnalysisFromBackend(timeframe, remaining);
+        const chosenPairSymbol = aiResult.bestPair || selectedPair.displaySymbol;
+
+        const foundPairObj = TRADING_PAIRS.find(p => p.displaySymbol === chosenPairSymbol);
+        if (foundPairObj) {
+          setSelectedPair(foundPairObj);
+        }
+
+        const currentTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+        if (aiResult.signal === 'SKIP') {
+          playBeep('alert');
+          addLog(`🛡 Автопилот [SKIP]: ${aiResult.reasoning}`, 'info');
+          setAiSignal({
+            pair: chosenPairSymbol,
+            direction: 'SKIP',
+            confidence: 0,
+            reasoning: aiResult.reasoning,
+            recommendedExpiration: '5M'
+          });
+          setAuditStepText('⏳ Автопилот активен. Ожидание следующей свечи...');
+          return;
+        }
+
+        playBeep('sniper');
+        const remSecs = parseInt(timeframe, 10) * 60;
+        const nextTime = new Date(Date.now() + remaining * 1000);
+        const nextTimeStr = `${nextTime.getHours().toString().padStart(2, '0')}:${nextTime.getMinutes().toString().padStart(2, '0')}`;
+
+        setAiSignal({
+          pair: chosenPairSymbol,
+          direction: aiResult.signal,
+          confidence: aiResult.confidence,
+          nextCandleTime: nextTimeStr,
+          reasoning: aiResult.reasoning,
+          recommendedExpiration: aiResult.recommendedExpiration || '5M'
+        });
+
+        setHistoryList(prev => [
+          { id: Date.now(), time: currentTimeStr, pair: chosenPairSymbol, direction: aiResult.signal, winrate: aiResult.confidence, strategy: `Auto-Pilot (${riskMode})` },
+          ...prev
+        ]);
+
+        addLog(`🧠 АВТОПИЛОТ [${chosenPairSymbol}]: Сигнал ${aiResult.signal} (${aiResult.confidence}%) | ${aiResult.reasoning}`, 'vision');
+        setAuditStepText('⏳ Сигнал выдан! Автопилот ждет следующую свечу...');
+      }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [timeframe]);
+  }, [timeframe, selectedPair, strategies, newsFilterEnabled, atrFilterEnabled]);
 
+  // Кнопка включения автопилота
   const handleStartAnalysis = async () => {
     setIsAnalyzing(true);
-    setAiSignal(null);
+    setAuditStepText('🤖 Автопилот запущен. Ожидание снайперского окна...');
     playBeep('alert');
-    
-    try {
-      setAuditStepText('🔍 Аналитик проверяет тренд на 15M...');
-      setDisplayTf('15');
-      addLog('🔍 Шаг 1/3: Аудит 15M...', 'vision');
-      await new Promise(r => setTimeout(r, 1200));
-
-      setAuditStepText('📊 Проверка структуры на 30M...');
-      setDisplayTf('60'); 
-      addLog('📊 Шаг 2/3: Аудит 30M...', 'vision');
-      await new Promise(r => setTimeout(r, 1200));
-
-      setAuditStepText('⏱️ Возврат на 5M. Синхронизация с закрытием свечи...');
-      setDisplayTf(timeframe);
-      addLog('⏱️ Шаг 3/3: Ожидание снайперского окна на 5M...', 'sniper');
-      await new Promise(r => setTimeout(r, 1000));
-
-      setAuditStepText('🤖 Запрос к ИИ-моделям...');
-      
-      const now = new Date();
-      const tfSecs = parseInt(timeframe, 10) * 60;
-      const currentRem = tfSecs - (Math.floor(now.getTime() / 1000) % tfSecs);
-      
-      const aiResult = await fetchAiAnalysisFromBackend(timeframe, currentRem);
-      const chosenPairSymbol = aiResult.bestPair || selectedPair.displaySymbol;
-
-      const foundPairObj = TRADING_PAIRS.find(p => p.displaySymbol === chosenPairSymbol);
-      if (foundPairObj) {
-        setSelectedPair(foundPairObj);
-      }
-
-      if (aiResult.signal === 'SKIP') {
-        setIsAnalyzing(false);
-        setAuditStepText('');
-        addLog(`🛡 ВЕРДИКТ ИИ: Сигнал пропущен. ${aiResult.reasoning}`, 'info');
-        setAiSignal({
-          pair: chosenPairSymbol,
-          direction: 'SKIP',
-          confidence: 0,
-          reasoning: aiResult.reasoning,
-          recommendedExpiration: '5M'
-        });
-        return;
-      }
-
-      const rem = tfSecs - (Math.floor(now.getTime() / 1000) % tfSecs);
-      const nextTime = new Date(Date.now() + rem * 1000);
-      const nextTimeStr = `${nextTime.getHours().toString().padStart(2, '0')}:${nextTime.getMinutes().toString().padStart(2, '0')}`;
-
-      setAiSignal({
-        pair: chosenPairSymbol,
-        direction: aiResult.signal,
-        confidence: aiResult.confidence,
-        nextCandleTime: nextTimeStr,
-        reasoning: aiResult.reasoning,
-        recommendedExpiration: aiResult.recommendedExpiration || '5M'
-      });
-
-      const currentTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      setHistoryList(prev => [
-        { id: Date.now(), time: currentTimeStr, pair: chosenPairSymbol, direction: aiResult.signal, winrate: aiResult.confidence, strategy: `Vision AI (${riskMode})` },
-        ...prev
-      ]);
-
-      addLog(`🧠 ИИ-Мозг выбрал [${chosenPairSymbol}]: Сигнал ${aiResult.signal} (${aiResult.confidence}%) | Экспирация: 5M | ${aiResult.reasoning}`, 'vision');
-      playBeep('sniper');
-
-    } catch (err) {
-      addLog('❌ Ошибка связи с ИИ-шлюзом бэкенда.', 'info');
-    } finally {
-      setIsAnalyzing(false);
-      setAuditStepText('');
-      setDisplayTf(timeframe);
-    }
+    addLog('🚀 Автопилот Vision AI активирован. Система сама будет брать сигналы на каждой свече.', 'vision');
   };
 
   const handleStopAnalysis = () => {
     setIsAnalyzing(false);
     setAuditStepText('');
-    setDisplayTf(timeframe);
     setAiSignal(null);
-    addLog('🛑 ИИ-анализ остановлен пользователем.', 'info');
+    addLog('🛑 Автопилот остановлен пользователем.', 'info');
   };
 
   const calculateMartingale = () => {
@@ -353,9 +327,9 @@ export default function App() {
           <Zap className="w-7 h-7 text-cyan-400 animate-pulse" />
           <div>
             <h1 className="text-lg font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
-              ORACLE PRO TERMINAL (PERSISTENT MEMORY v10.5)
+              ORACLE PRO TERMINAL (AUTO-PILOT SNIPER v10.5)
             </h1>
-            <p className="text-[9px] text-slate-400 tracking-widest uppercase">Автосохранение пула пар и стратегий</p>
+            <p className="text-[9px] text-slate-400 tracking-widest uppercase">Автономный режим снайперских входов</p>
           </div>
         </div>
         
@@ -391,7 +365,7 @@ export default function App() {
             >
               <div className="flex items-center gap-2">
                 <Sliders className="w-4 h-4 text-cyan-400" />
-                <span>НАСТРОЙКИ СКАНИРОВАНИЯ И ИИ-РЕЖИМОВ (СОХРАНЯЮТСЯ АВТОМАТИЧЕСКИ)</span>
+                <span>НАСТРОЙКИ СКАНИРОВАНИЯ И ИИ-РЕЖИМОВ</span>
                 <span className="text-[10px] text-slate-400 font-normal ml-2">
                   (Режим: <span className="text-amber-400 font-bold">{riskMode}</span> | Стратегий вкл: <span className="text-emerald-400 font-bold">{strategies.filter(s => s.enabled).length}</span> | Пар в пуле: <span className="text-cyan-400 font-bold">{selectedMultiPairs.length}</span>)
                 </span>
@@ -437,7 +411,7 @@ export default function App() {
 
                 <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
                   <div className="flex justify-between items-center text-xs font-bold text-cyan-400">
-                    <span>АКТИВНЫЕ СТРАТЕГИИ (АВТО ПОД РЕЖИМ)</span>
+                    <span>АКТИВНЫЕ СТРАТЕГИИ</span>
                     <button onClick={() => setStrategies(prev => prev.map(s => ({ ...s, enabled: true })))} className="text-[10px] text-cyan-300 hover:underline">Включить все</button>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
@@ -456,7 +430,7 @@ export default function App() {
 
                 <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
                   <div className="flex justify-between items-center text-xs font-bold text-cyan-400">
-                    <span>МУЛЬТИВЫБОР ПАР ДЛЯ АУДИТА (СОХРАНЯЕТСЯ)</span>
+                    <span>МУЛЬТИВЫБОР ПАР ДЛЯ АВТОПИЛОТА</span>
                     <div className="flex gap-2 text-[10px]">
                       <button onClick={() => setSelectedMultiPairs([...TRADING_PAIRS])} className="text-cyan-300 hover:underline">Выбрать все</button>
                       <button onClick={() => setSelectedMultiPairs([TRADING_PAIRS[0]])} className="text-slate-400 hover:underline">Сбросить</button>
@@ -514,14 +488,14 @@ export default function App() {
                       <LineChart className="w-5 h-5 text-cyan-400" />
                       <div>
                         <span className="font-bold text-base text-slate-100">{selectedPair.displaySymbol}</span>
-                        <span className="ml-2 text-xs text-cyan-400 font-mono">Таймфрейм: {displayTf}M {isAnalyzing && '(Аудит...)'}</span>
+                        <span className="ml-2 text-xs text-cyan-400 font-mono">Таймфрейм: {displayTf}M {isAnalyzing && '(Автопилот ВКЛ)'}</span>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2.5">
                       <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 px-2.5 py-1 rounded-lg text-xs font-mono">
                         <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                        <span className={`font-bold ${candleTimer <= 10 ? 'text-rose-400 animate-ping' : 'text-amber-400'}`}>{formatTimer(candleTimer)}</span>
+                        <span className={`font-bold ${candleTimer <= 12 ? 'text-rose-400 animate-ping' : 'text-amber-400'}`}>{formatTimer(candleTimer)}</span>
                       </div>
                       <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs gap-1">
                         {['1', '5', '15', '60', '240'].map((val) => (
@@ -571,7 +545,7 @@ export default function App() {
           <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
             <h2 className="font-bold text-slate-200 flex items-center gap-2 text-xs">
               <BrainCircuit className="w-4 h-4 text-cyan-400 animate-pulse" />
-              VISION AI АНАЛИТИК
+              VISION AI АНАЛИТИК (АВТОПИЛОТ)
             </h2>
           </div>
 
@@ -579,9 +553,11 @@ export default function App() {
             <button
               onClick={handleStartAnalysis}
               disabled={isAnalyzing}
-              className="bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-black py-2.5 px-3 rounded-xl text-xs uppercase cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1 shadow-lg"
+              className={`font-black py-2.5 px-3 rounded-xl text-xs uppercase cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1 shadow-lg transition-all ${
+                isAnalyzing ? 'bg-emerald-500 text-slate-950 animate-pulse' : 'bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950'
+              }`}
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} /> АУДИТ РЫНКА
+              <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`} /> {isAnalyzing ? 'АВТОПИЛОТ ВКЛ' : 'ЗАПУСТИТЬ АВТО'}
             </button>
             <button
               onClick={handleStopAnalysis}
@@ -601,7 +577,7 @@ export default function App() {
           <div className="bg-gradient-to-b from-amber-950/60 to-slate-950 border-2 border-amber-500/80 rounded-xl p-3.5 text-center relative overflow-hidden shadow-lg shadow-amber-500/10">
             {!aiSignal ? (
               <div className="py-3 text-xs text-slate-400 font-mono">
-                {isAnalyzing ? `⏳ Идет многотаймфреймовый аудит...` : 'Нажмите АУДИТ РЫНКА для проверки 15M/30M и 5M'}
+                {isAnalyzing ? `⏳ Автопилот ожидает отметку 12с до конца свечи...` : 'Нажмите ЗАПУСТИТЬ АВТО для автономной торговли'}
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -728,7 +704,7 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
-        <span>ORACLE PRO v10.5 (Persistent Memory Hub)</span>
+        <span>ORACLE PRO v10.5 (Auto-Pilot Sniper Hub)</span>
         <span>Environment: Production / Vercel Edge</span>
       </footer>
     </div>
