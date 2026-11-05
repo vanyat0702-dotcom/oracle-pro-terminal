@@ -27,8 +27,8 @@ export default function App() {
     return [TRADING_PAIRS[0], TRADING_PAIRS[1], TRADING_PAIRS[11], TRADING_PAIRS[19]];
   });
 
-  const [timeframe, setTimeframe] = useState<string>("5");
-  const [displayTf, setDisplayTf] = useState<string>("5");
+  const [timeframe, setTimeframe] = useState<string>("1");
+  const [displayTf, setDisplayTf] = useState<string>("1");
   const [wsStatus, setWsStatus] = useState<boolean>(true);
   
   const [viewMode, setViewMode] = useState<'single' | 'quad'>('single');
@@ -74,18 +74,6 @@ export default function App() {
     try { localStorage.setItem('oracle_risk_mode', riskMode); } catch (e) {}
   }, [riskMode]);
 
-  useEffect(() => {
-    setStrategies(prev => prev.map(s => {
-      if (riskMode === 'BALANCED') return { ...s, enabled: s.mode === 'balanced' || s.id === 'trend_following' };
-      if (riskMode === 'SAFE') return { ...s, enabled: s.mode === 'sniper' || s.mode === 'antitilt' };
-      if (riskMode === 'AGGRESSIVE') return { ...s, enabled: true };
-      if (riskMode === 'BREAKOUT') return { ...s, enabled: s.mode === 'breakout' || s.id === 'breakout_impulse' };
-      if (riskMode === 'ANTITILT') return { ...s, enabled: s.mode === 'antitilt' || s.id === 'rsi_bollinger' };
-      if (riskMode === 'TRENDSURF') return { ...s, enabled: s.mode === 'trendsurf' || s.id === 'trend_rider_ema' };
-      return s;
-    }));
-  }, [riskMode]);
-
   const [startAmount, setStartAmount] = useState<string>("100");
   const [payoutPercent, setPayoutPercent] = useState<string>("85");
 
@@ -105,9 +93,12 @@ export default function App() {
   const isAnalyzingRef = useRef(isAnalyzing);
   isAnalyzingRef.current = isAnalyzing;
 
+  const timeframeRef = useRef(timeframe);
+  timeframeRef.current = timeframe;
+
   const hasTriggeredCurrentCandleRef = useRef<boolean>(false);
   const currentCandleIndexRef = useRef<number>(0);
-  const activeTradeRef = useRef<{ pair: string; direction: string; candleOpenTime: string } | null>(null);
+  const activeTradeRef = useRef<{ pair: string; direction: string; candleOpenTime: string; tradeId: number; closeTimestamp: number } | null>(null);
 
   const [aiLogs, setAiLogs] = useState<Array<{ id: number; time: string; text: string; type: 'info' | 'level' | 'pattern' | 'sniper' | 'vision' }>>([
     { 
@@ -185,10 +176,10 @@ export default function App() {
       if (data.success && data.result) {
         return data.result;
       } else {
-        return { signal: 'SKIP', confidence: 0, reasoning: 'Ошибка ответа бэкенда', recommendedExpiration: '5M', bestPair: selectedPair.displaySymbol };
+        return { signal: 'SKIP', confidence: 0, tradeId: 0, reasoning: 'Ошибка ответа бэкенда', recommendedExpiration: '1M', bestPair: selectedPair.displaySymbol };
       }
     } catch (err) {
-      return { signal: 'SKIP', confidence: 0, reasoning: 'Сетевой сбой шлюза', recommendedExpiration: '5M', bestPair: selectedPair.displaySymbol };
+      return { signal: 'SKIP', confidence: 0, tradeId: 0, reasoning: 'Сетевой сбой шлюза', recommendedExpiration: '1M', bestPair: selectedPair.displaySymbol };
     }
   };
 
@@ -218,7 +209,7 @@ export default function App() {
         hasTriggeredCurrentCandleRef.current = false;
       }
 
-      // Снайперское окно на 12 секундах
+      // 1. Снайперское окно на 12 секундах до закрытия свечи
       if (isAnalyzingRef.current && remaining === 12 && !hasTriggeredCurrentCandleRef.current) {
         hasTriggeredCurrentCandleRef.current = true;
         setAuditStepText('🎯 Снайперское окно! Авто-анализ рынка...');
@@ -227,7 +218,7 @@ export default function App() {
         const nextTime = new Date(Date.now() + remaining * 1000);
         const candleOpenTimeStr = `${nextTime.getHours().toString().padStart(2, '0')}:${nextTime.getMinutes().toString().padStart(2, '0')}`;
 
-        const aiResult = await fetchAiAnalysisFromBackend(timeframe, remaining, candleOpenTimeStr);
+        const aiResult = await fetchAiAnalysisFromBackend(timeframeRef.current, remaining, candleOpenTimeStr);
         const chosenPairSymbol = aiResult.bestPair || selectedPair.displaySymbol;
 
         const foundPairObj = TRADING_PAIRS.find(p => p.displaySymbol === chosenPairSymbol);
@@ -245,7 +236,7 @@ export default function App() {
             direction: 'SKIP',
             confidence: 0,
             reasoning: aiResult.reasoning,
-            recommendedExpiration: '5M'
+            recommendedExpiration: `${timeframeRef.current}M`
           });
           setAuditStepText('⏳ Автопилот активен. Ожидание следующей свечи...');
           return;
@@ -259,7 +250,7 @@ export default function App() {
           confidence: aiResult.confidence,
           nextCandleTime: candleOpenTimeStr,
           reasoning: aiResult.reasoning,
-          recommendedExpiration: aiResult.recommendedExpiration || '5M'
+          recommendedExpiration: aiResult.recommendedExpiration || `${timeframeRef.current}M`
         });
 
         setHistoryList(prev => [
@@ -267,21 +258,26 @@ export default function App() {
           ...prev
         ]);
 
-        addLog(`🧠 АВТОПИЛОТ [${chosenPairSymbol}]: Сигнал ${aiResult.signal} (${aiResult.confidence}%) | Старт свечи: ${candleOpenTimeStr}`, 'vision');
-        setAuditStepText('⏳ Сигнал выдан! Ожидание закрытия свечи...');
+        addLog(`🧠 АВТОПИЛОТ [${chosenPairSymbol}]: Сигнал ${aiResult.signal} (#${aiResult.tradeId}) | Старт: ${candleOpenTimeStr}`, 'vision');
+        setAuditStepText('⏳ Сигнал выдан! Ожидание экспирации...');
 
-        // Сохраняем сделку для отправки итога ровно в момент закрытия свечи
+        // Рассчитываем точное время закрытия сделки (текущее время + таймфрейм в миллисекундах)
+        const tfMins = parseInt(timeframeRef.current, 10) || 1;
+        const closeTimeMs = Date.now() + (tfMins * 60 * 1000);
+
         activeTradeRef.current = {
           pair: chosenPairSymbol,
           direction: aiResult.signal,
-          candleOpenTime: candleOpenTimeStr
+          candleOpenTime: candleOpenTimeStr,
+          tradeId: aiResult.tradeId || Math.floor(1000 + Math.random() * 9000),
+          closeTimestamp: closeTimeMs
         };
       }
 
-      // ЖЕСТКАЯ ПРИВЯЗКА К ЗАКРЫТИЮ СВЕЧИ (remaining <= 1)
-      if (activeTradeRef.current && remaining <= 1) {
+      // 2. ЖЕСТКАЯ ПРОВЕРКА ВРЕМЕНИ ЭКСПИРАЦИИ ПО МИЛЛИСЕКУНДАМ
+      if (activeTradeRef.current && Date.now() >= activeTradeRef.current.closeTimestamp) {
         const trade = activeTradeRef.current;
-        activeTradeRef.current = null; // Сбрасываем, чтобы отправить ровно 1 раз
+        activeTradeRef.current = null; // Сбрасываем сделку, чтобы отправить итог ровно 1 раз
 
         try {
           const outcome = Math.random() > 0.38 ? 'WIN' : 'LOSS';
@@ -295,11 +291,12 @@ export default function App() {
               pair: trade.pair,
               direction: trade.direction,
               candleOpenTime: trade.candleOpenTime,
+              tradeId: trade.tradeId,
               outcome: outcome,
               pips: pips
             }),
           });
-          addLog(`📊 Итог свечи (${trade.candleOpenTime}) по ${trade.pair}: ${outcome} (${pips} п.)`, 'info');
+          addLog(`📊 Итог сделки #${trade.tradeId} (${trade.pair}): ${outcome} (${pips} п.)`, 'info');
         } catch (e) {
           console.error("Error sending candle result:", e);
         }
@@ -626,7 +623,7 @@ export default function App() {
                 {aiSignal.nextCandleTime && aiSignal.direction !== 'SKIP' && (
                   <div className="bg-slate-900/90 border border-amber-500/30 rounded-lg py-1 px-2">
                     <div className="text-[9px] text-amber-300 font-semibold uppercase tracking-wider">
-                      Экспирация: <span className="text-emerald-400 font-bold">{aiSignal.recommendedExpiration || '5M'}</span> | Старт свечи:
+                      Экспирация: <span className="text-emerald-400 font-bold">{aiSignal.recommendedExpiration || '1M'}</span> | Старт:
                     </div>
                     <div className="text-base font-mono font-black text-white tracking-widest">{aiSignal.nextCandleTime}</div>
                   </div>
