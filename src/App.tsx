@@ -261,7 +261,7 @@ export default function App() {
         addLog(`🧠 АВТОПИЛОТ [${chosenPairSymbol}]: Сигнал ${aiResult.signal} (#${aiResult.tradeId}) | Старт: ${candleOpenTimeStr}`, 'vision');
         setAuditStepText('⏳ Сигнал выдан! Ожидание экспирации...');
 
-        // Рассчитываем точное время закрытия сделки (текущее время + таймфрейм в миллисекундах)
+        // Рассчитываем точное время закрытия сделки (через 1 минуту / таймфрейм)
         const tfMins = parseInt(timeframeRef.current, 10) || 1;
         const closeTimeMs = Date.now() + (tfMins * 60 * 1000);
 
@@ -274,10 +274,10 @@ export default function App() {
         };
       }
 
-      // 2. ЖЕСТКАЯ ПРОВЕРКА ВРЕМЕНИ ЭКСПИРАЦИИ ПО МИЛЛИСЕКУНДАМ
+      // 2. ОТПРАВКА ИТОГА ПО ИСТЕЧЕНИИ ВРЕМЕНИ ЭКСПИРАЦИИ
       if (activeTradeRef.current && Date.now() >= activeTradeRef.current.closeTimestamp) {
         const trade = activeTradeRef.current;
-        activeTradeRef.current = null; // Сбрасываем сделку, чтобы отправить итог ровно 1 раз
+        activeTradeRef.current = null; // Сбрасываем, чтобы отправить ровно 1 раз
 
         try {
           const outcome = Math.random() > 0.38 ? 'WIN' : 'LOSS';
@@ -298,7 +298,7 @@ export default function App() {
           });
           addLog(`📊 Итог сделки #${trade.tradeId} (${trade.pair}): ${outcome} (${pips} п.)`, 'info');
         } catch (e) {
-          console.error("Error sending candle result:", e);
+          console.error("Error sending trade result:", e);
         }
       }
     }, 1000);
