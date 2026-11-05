@@ -94,7 +94,7 @@ export default function App() {
   const timeframeRef = useRef(timeframe);
   timeframeRef.current = timeframe;
 
-  const hasTriggeredCurrentCandleRef.current = false;
+  const hasTriggeredCurrentCandleRef = useRef<boolean>(false);
   const currentCandleIndexRef = useRef<number>(0);
 
   const [aiLogs, setAiLogs] = useState<Array<{ id: number; time: string; text: string; type: 'info' | 'level' | 'pattern' | 'sniper' | 'vision' }>>([
@@ -145,6 +145,12 @@ export default function App() {
     setStrategies(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
   };
 
+  const getFxcmSymbol = (symbol: string) => {
+    const clean = symbol.replace('/', '').toUpperCase();
+    if (clean === 'BTCUSD' || clean === 'BTCUSDT') return 'BITSTAMP:BTCUSD';
+    return `FXCM:${clean}`;
+  };
+
   useEffect(() => {
     setWsStatus(true);
   }, [selectedPair]);
@@ -180,7 +186,6 @@ export default function App() {
     }
   };
 
-  // Главный таймер свечи
   useEffect(() => {
     const calculateCandleInfo = () => {
       const now = new Date();
@@ -206,7 +211,6 @@ export default function App() {
         hasTriggeredCurrentCandleRef.current = false;
       }
 
-      // Снайперское окно на 12 секундах до закрытия свечи
       if (isAnalyzingRef.current && remaining === 12 && !hasTriggeredCurrentCandleRef.current) {
         hasTriggeredCurrentCandleRef.current = true;
         setAuditStepText('🎯 Снайперское окно! Авто-анализ рынка...');
@@ -307,13 +311,6 @@ export default function App() {
     const mins = Math.floor(totalSec / 60);
     const secs = totalSec % 60;
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-  };
-
-  // Вспомогательная функция для получения FXCM тикера
-  const getFxcmSymbol = (symbol: string) => {
-    const clean = symbol.replace('/', '').toUpperCase();
-    if (clean === 'BTCUSD' || clean === 'BTCUSDT') return 'BITSTAMP:BTCUSD';
-    return `FXCM:${clean}`;
   };
 
   return (
