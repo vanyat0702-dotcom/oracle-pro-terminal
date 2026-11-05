@@ -39,24 +39,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const body = req.body || {};
 
-    // ЕСЛИ ЭТО ЗАПРОС НА ОТПРАВКУ ИТОГА СВЕЧИ (WIN/LOSS)
+    // 1. ОТПРАВКА ТОЧНОГО ИТОГА СВЕЧИ (WIN / LOSS)
     if (body.action === 'send_result') {
-      const { pair, direction, outcome, pips } = body;
-      const icon = outcome === 'WIN' ? '🟢 WIN' : '🔴 LOSS';
+      const { pair, direction, outcome, pips, candleOpenTime } = body;
+      
+      const isWin = outcome === 'WIN';
+      const icon = isWin ? '🟢 WIN' : '🔴 LOSS';
+      const pipsFormatted = pips > 0 ? `+${pips}` : `${pips}`;
+
       const text = `📊 <b>ИТОГ СВЕЧИ (${pair})</b>\n\n` +
-        `🎯 <b>Прогноз:</b> ${direction}\n` +
-        `📈 <b>Результат:</b> ${icon}\n` +
-        `📉 <b>Движение:</b> ${pips > 0 ? '+' : ''}${pips} пунктов`;
+        `⏰ <b>Старт свечи:</b> ${candleOpenTime || 'Н/Д'}\n` +
+        `🎯 <b>Прогноз ИИ:</b> ${direction === 'CALL' ? '🟢 CALL' : '🔴 PUT'}\n` +
+        `📈 <b>Честный результат:</b> ${icon}\n` +
+        `📉 <b>Изменение:</b> ${pipsFormatted} п.`;
 
       await sendTelegramMessage(text);
       return res.status(200).json({ success: true, status: 'result_sent' });
     }
 
-    // ОБЫЧНЫЙ АНАЛИЗ И СНАЙПЕРСКИЙ СИГНАЛ
-    const { pairs, timeframe, secondsRemaining = 60 } = body;
+    // 2. СНАЙПЕРСКИЙ АНАЛИЗ (GPT-4o-mini + Gemini 1.5)
+    const { pairs, timeframe, secondsRemaining = 60, candleOpenTime = '' } = body;
     const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : ["EUR/USD"];
+    
+    // Выбираем пару строго из массива мультивубора
     const selectedPair = targetPairs[Math.floor(Math.random() * targetPairs.length)];
-
     const remSecs = Number(secondsRemaining);
 
     if (remSecs > 15) {
@@ -154,12 +160,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       confidence = 88;
     }
 
-    const reasoningText = `🤖 [GPT-4o & Gemini Консенсус | 15M:${trend15m} | 30M:${trend30m}] RSI:${rsi5m} | Тайминг: ${remSecs}с`;
+    const reasoningText = `🤖 [GPT-4o & Gemini | 15M:${trend15m} | 30M:${trend30m}] RSI:${rsi5m}`;
 
     if (finalVerdict !== 'SKIP') {
       const tgText = `🎯 <b>ORACLE PRO SNIPER ALERT (GPT + Gemini)</b>\n\n` +
         `💱 <b>Актив:</b> ${selectedPair}\n` +
         `📊 <b>Сигнал:</b> ${finalVerdict === 'CALL' ? '🟢 CALL' : '🔴 PUT'}\n` +
+        `⏰ <b>Старт свечи:</b> ${candleOpenTime || 'Текущая'}\n` +
         `🧠 <b>Уверенность:</b> ${confidence}%\n` +
         `⏳ <b>Экспирация:</b> ${timeframe || '5'}M\n\n` +
         `📝 <i>${reasoningText}</i>`;
