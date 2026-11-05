@@ -11,16 +11,8 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || (geminiPart1 + geminiPart2)
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "8687514873:AAF4i8WUidBwf83H6WucsyQP25fEHDfTXtQ";
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "1726551516";
 
-async function sendTelegramAlert(pair: string, signal: string, confidence: number, reasoning: string, timeframe: string) {
+async function sendTelegramMessage(text: string) {
   try {
-    const icon = signal === 'CALL' ? '🟢' : '🔴';
-    const text = `🎯 <b>ORACLE PRO SNIPER ALERT (GPT + Gemini)</b>\n\n` +
-      `💱 <b>Актив (из мультивубора):</b> ${pair}\n` +
-      `📊 <b>Сигнал:</b> ${icon} <b>${signal}</b>\n` +
-      `🧠 <b>ИИ-Консенсус:</b> GPT-4o-mini & Gemini 1.5 (${confidence}%)\n` +
-      `⏳ <b>Экспирация:</b> ${timeframe}M\n\n` +
-      `📝 <i>${reasoning}</i>`;
-
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
     await fetch(url, {
       method: 'POST',
@@ -45,9 +37,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Method not allowed' });
 
   try {
-    const { pairs, timeframe, secondsRemaining = 60 } = req.body || {};
-    
-    // СТРОГО БЕРЕМ АКТИВ ИЗ МУЛЬТИВЫБОРА ФРОНТЕНДА
+    const body = req.body || {};
+
+    // ЕСЛИ ЭТО ЗАПРОС НА ОТПРАВКУ ИТОГА СВЕЧИ (WIN/LOSS)
+    if (body.action === 'send_result') {
+      const { pair, direction, outcome, pips } = body;
+      const icon = outcome === 'WIN' ? '🟢 WIN' : '🔴 LOSS';
+      const text = `📊 <b>ИТОГ СВЕЧИ (${pair})</b>\n\n` +
+        `🎯 <b>Прогноз:</b> ${direction}\n` +
+        `📈 <b>Результат:</b> ${icon}\n` +
+        `📉 <b>Движение:</b> ${pips > 0 ? '+' : ''}${pips} пунктов`;
+
+      await sendTelegramMessage(text);
+      return res.status(200).json({ success: true, status: 'result_sent' });
+    }
+
+    // ОБЫЧНЫЙ АНАЛИЗ И СНАЙПЕРСКИЙ СИГНАЛ
+    const { pairs, timeframe, secondsRemaining = 60 } = body;
     const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : ["EUR/USD"];
     const selectedPair = targetPairs[Math.floor(Math.random() * targetPairs.length)];
 
@@ -148,10 +154,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       confidence = 88;
     }
 
-    const reasoningText = `🤖 [GPT-4o & Gemini Консенсус | 15M:${trend15m} | 30M:${trend30m}] RSI:${rsi5m} | Снайперский тайминг: ${remSecs}с`;
+    const reasoningText = `🤖 [GPT-4o & Gemini Консенсус | 15M:${trend15m} | 30M:${trend30m}] RSI:${rsi5m} | Тайминг: ${remSecs}с`;
 
     if (finalVerdict !== 'SKIP') {
-      await sendTelegramAlert(selectedPair, finalVerdict, confidence, reasoningText, timeframe || '5');
+      const tgText = `🎯 <b>ORACLE PRO SNIPER ALERT (GPT + Gemini)</b>\n\n` +
+        `💱 <b>Актив:</b> ${selectedPair}\n` +
+        `📊 <b>Сигнал:</b> ${finalVerdict === 'CALL' ? '🟢 CALL' : '🔴 PUT'}\n` +
+        `🧠 <b>Уверенность:</b> ${confidence}%\n` +
+        `⏳ <b>Экспирация:</b> ${timeframe || '5'}M\n\n` +
+        `📝 <i>${reasoningText}</i>`;
+      
+      await sendTelegramMessage(tgText);
     }
 
     return res.status(200).json({
@@ -171,7 +184,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       result: {
         signal: "CALL",
         confidence: 85,
-        reasoning: "🤖 [GPT & Gemini Резерв] 15M:BULLISH | Снайперский тайминг",
+        reasoning: "🤖 [GPT & Gemini Резерв] 15M:BULLISH",
         recommendedExpiration: "5M",
         bestPair: "EUR/USD"
       }
