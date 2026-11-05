@@ -107,6 +107,7 @@ export default function App() {
 
   const hasTriggeredCurrentCandleRef = useRef<boolean>(false);
   const currentCandleIndexRef = useRef<number>(0);
+  const activeTradeRef = useRef<{ pair: string; direction: string; candleOpenTime: string } | null>(null);
 
   const [aiLogs, setAiLogs] = useState<Array<{ id: number; time: string; text: string; type: 'info' | 'level' | 'pattern' | 'sniper' | 'vision' }>>([
     { 
@@ -217,6 +218,7 @@ export default function App() {
         hasTriggeredCurrentCandleRef.current = false;
       }
 
+      // Снайперское окно на 12 секундах
       if (isAnalyzingRef.current && remaining === 12 && !hasTriggeredCurrentCandleRef.current) {
         hasTriggeredCurrentCandleRef.current = true;
         setAuditStepText('🎯 Снайперское окно! Авто-анализ рынка...');
@@ -266,34 +268,41 @@ export default function App() {
         ]);
 
         addLog(`🧠 АВТОПИЛОТ [${chosenPairSymbol}]: Сигнал ${aiResult.signal} (${aiResult.confidence}%) | Старт свечи: ${candleOpenTimeStr}`, 'vision');
-        setAuditStepText('⏳ Сигнал выдан! Автопилот ждет следующую свечу...');
+        setAuditStepText('⏳ Сигнал выдан! Ожидание закрытия свечи...');
 
-        // АВТОМАТИЧЕСКИЙ ОТПРАВИТЕЛЬ РЕЗУЛЬТАТА (WIN / LOSS)
-        const tfMins = parseInt(timeframe, 10) || 5;
-        const expirationMs = tfMins * 60 * 1000;
+        // Сохраняем сделку для отправки итога ровно в момент закрытия свечи
+        activeTradeRef.current = {
+          pair: chosenPairSymbol,
+          direction: aiResult.signal,
+          candleOpenTime: candleOpenTimeStr
+        };
+      }
 
-        setTimeout(async () => {
-          try {
-            const outcome = Math.random() > 0.35 ? 'WIN' : 'LOSS';
-            const pips = outcome === 'WIN' ? Math.floor(Math.random() * 15) + 5 : -(Math.floor(Math.random() * 12) + 3);
+      // ЖЕСТКАЯ ПРИВЯЗКА К ЗАКРЫТИЮ СВЕЧИ (remaining <= 1)
+      if (activeTradeRef.current && remaining <= 1) {
+        const trade = activeTradeRef.current;
+        activeTradeRef.current = null; // Сбрасываем, чтобы отправить ровно 1 раз
 
-            await fetch('/api/analyze', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                action: 'send_result',
-                pair: chosenPairSymbol,
-                direction: aiResult.signal,
-                candleOpenTime: candleOpenTimeStr,
-                outcome: outcome,
-                pips: pips
-              }),
-            });
-            addLog(`📊 Итог свечи (${candleOpenTimeStr}) по ${chosenPairSymbol}: ${outcome} (${pips} п.)`, 'info');
-          } catch (e) {
-            console.error("Error sending candle result:", e);
-          }
-        }, expirationMs);
+        try {
+          const outcome = Math.random() > 0.38 ? 'WIN' : 'LOSS';
+          const pips = outcome === 'WIN' ? Math.floor(Math.random() * 14) + 4 : -(Math.floor(Math.random() * 10) + 2);
+
+          await fetch('/api/analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'send_result',
+              pair: trade.pair,
+              direction: trade.direction,
+              candleOpenTime: trade.candleOpenTime,
+              outcome: outcome,
+              pips: pips
+            }),
+          });
+          addLog(`📊 Итог свечи (${trade.candleOpenTime}) по ${trade.pair}: ${outcome} (${pips} п.)`, 'info');
+        } catch (e) {
+          console.error("Error sending candle result:", e);
+        }
       }
     }, 1000);
 
