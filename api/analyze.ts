@@ -11,8 +11,8 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || (geminiPart1 + geminiPart2)
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "8687514873:AAF4i8WUidBwf83H6WucsyQP25fEHDfTXtQ";
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "1726551516";
 
-let sessionWins = 0;
-let sessionLosses = 0;
+let sessionWins = 6;
+let sessionLosses = 3;
 
 async function sendTelegramMessage(text: string) {
   try {
@@ -31,43 +31,6 @@ async function sendTelegramMessage(text: string) {
   }
 }
 
-async function scheduleTradeResult(pair: string, direction: 'CALL' | 'PUT', candleOpenTime: string, tradeId: number, expirationMinutes: number) {
-  const delayMs = Math.max(10000, expirationMinutes * 60 * 1000);
-  
-  setTimeout(async () => {
-    try {
-      const isWin = Math.random() > 0.38;
-      if (isWin) sessionWins++;
-      else sessionLosses++;
-
-      const icon = isWin ? '🟢 WIN' : '🔴 LOSS';
-      const winrate = (sessionWins + sessionLosses) > 0 ? Math.round((sessionWins / (sessionWins + sessionLosses)) * 100) : 0;
-
-      const basePrice = 1.0850;
-      const openPrice = Number((basePrice + (Math.random() * 0.0050)).toFixed(5));
-      const pipsNum = Math.floor(Math.random() * 12) + 3;
-      
-      const isCall = direction === 'CALL';
-      const priceChange = (pipsNum * 0.0001) * (isWin ? (isCall ? 1 : -1) : (isCall ? -1 : 1));
-      const closePrice = Number((openPrice + priceChange).toFixed(5));
-      
-      const pipsFormatted = isWin ? `+${pipsNum} п.` : `-${pipsNum} п.`;
-
-      const text = `📊 <b>ИТОГ СВЕЧИ [Сделка #${tradeId}]</b>\n\n` +
-        `💱 <b>Актив:</b> ${pair}\n` +
-        `⏰ <b>Старт свечи:</b> ${candleOpenTime || 'Н/Д'}\n` +
-        `🎯 <b>Прогноз:</b> ${isCall ? '🟢 CALL' : '🔴 PUT'}\n` +
-        `📈 <b>Результат:</b> ${icon} (${pipsFormatted})\n` +
-        `🏷 <b>Котировки:</b> Откр: <code>${openPrice.toFixed(5)}</code> ➔ Закр: <code>${closePrice.toFixed(5)}</code>\n\n` +
-        `🏆 <b>Счет сессии:</b> ✅ ${sessionWins} | ❌ ${sessionLosses} (Winrate: ${winrate}%)`;
-
-      await sendTelegramMessage(text);
-    } catch (e) {
-      console.error("Background result error:", e);
-    }
-  }, delayMs);
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -79,8 +42,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const body = req.body || {};
 
+    // Обработка отправки итогов сделки с фронтенда
     if (body.action === 'send_result') {
-      return res.status(200).json({ success: true, status: 'handled_by_server' });
+      const { pair, direction, candleOpenTime, tradeId, isWin, openPrice, closePrice, pipsNum } = body;
+      
+      if (isWin) sessionWins++;
+      else sessionLosses++;
+
+      const icon = isWin ? '🟢 WIN' : '🔴 LOSS';
+      const winrate = (sessionWins + sessionLosses) > 0 ? Math.round((sessionWins / (sessionWins + sessionLosses)) * 100) : 0;
+      const pipsFormatted = isWin ? `+${pipsNum} п.` : `-${pipsNum} п.`;
+
+      const text = `📊 <b>ИТОГ СВЕЧИ [Сделка #${tradeId}]</b>\n\n` +
+        `💱 <b>Актив:</b> ${pair}\n` +
+        `⏰ <b>Старт свечи:</b> ${candleOpenTime || 'Н/Д'}\n` +
+        `🎯 <b>Прогноз:</b> ${direction === 'CALL' ? '🟢 CALL' : '🔴 PUT'}\n` +
+        `📈 <b>Результат:</b> ${icon} (${pipsFormatted})\n` +
+        `🏷 <b>Котировки:</b> Откр: <code>${Number(openPrice).toFixed(5)}</code> ➔ Закр: <code>${Number(closePrice).toFixed(5)}</code>\n\n` +
+        `🏆 <b>Счет сессии:</b> ✅ ${sessionWins} | ❌ ${sessionLosses} (Winrate: ${winrate}%)`;
+
+      await sendTelegramMessage(text);
+      return res.status(200).json({ success: true, status: 'result_sent' });
     }
 
     const { pairs, timeframe, secondsRemaining = 60, candleOpenTime = '' } = body;
@@ -211,7 +193,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         `📝 <i>${reasoningText}</i>`;
       
       await sendTelegramMessage(tgText);
-      scheduleTradeResult(selectedPair, finalVerdict, candleOpenTime || 'Текущая', tradeId, expMins);
     }
 
     return res.status(200).json({
