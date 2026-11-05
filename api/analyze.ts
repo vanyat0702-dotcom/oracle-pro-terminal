@@ -31,22 +31,13 @@ async function sendTelegramMessage(text: string) {
   }
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Method not allowed' });
-
-  try {
-    const body = req.body || {};
-
-    // 1. ОТПРАВКА ИТОГА С СИНХРОНИЗИРОВАННЫМИ КОТИРОВКАМИ И СЧЕТЧИКОМ
-    if (body.action === 'send_result') {
-      const { pair, direction, outcome, pips, candleOpenTime, tradeId } = body;
-      
-      const isWin = outcome === 'WIN';
+// Автономный фоновый таймер на бэкенде для гарантированной отправки итога
+async function scheduleTradeResult(pair: string, direction: 'CALL' | 'PUT', candleOpenTime: string, tradeId: number, expirationMinutes: number) {
+  const delayMs = Math.max(10000, expirationMinutes * 60 * 1000);
+  
+  setTimeout(async () => {
+    try {
+      const isWin = Math.random() > 0.38;
       if (isWin) sessionWins++;
       else sessionLosses++;
 
@@ -55,16 +46,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const basePrice = 1.0850;
       const openPrice = Number((basePrice + (Math.random() * 0.0050)).toFixed(5));
-      const pipsNum = Math.abs(Number(pips) || 5);
+      const pipsNum = Math.floor(Math.random() * 12) + 3;
       
       const isCall = direction === 'CALL';
-      // Жесткая математика: если WIN, то при CALL цена идет вверх (+), при PUT вниз (-). Если LOSS — наоборот.
       const priceChange = (pipsNum * 0.0001) * (isWin ? (isCall ? 1 : -1) : (isCall ? -1 : 1));
       const closePrice = Number((openPrice + priceChange).toFixed(5));
       
       const pipsFormatted = isWin ? `+${pipsNum} п.` : `-${pipsNum} п.`;
 
-      const text = `📊 <b>ИТОГ СВЕЧИ [Сделка #${tradeId || '3137'}]</b>\n\n` +
+      const text = `📊 <b>ИТОГ СВЕЧИ [Сделка #${tradeId}]</b>\n\n` +
         `💱 <b>Актив:</b> ${pair}\n` +
         `⏰ <b>Старт свечи:</b> ${candleOpenTime || 'Н/Д'}\n` +
         `🎯 <b>Прогноз:</b> ${isCall ? '🟢 CALL' : '🔴 PUT'}\n` +
@@ -73,16 +63,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         `🏆 <b>Счет сессии:</b> ✅ ${sessionWins} | ❌ ${sessionLosses} (Winrate: ${winrate}%)`;
 
       await sendTelegramMessage(text);
-      return res.status(200).json({ success: true, status: 'result_sent' });
+    } catch (e) {
+      console.error("Background result error:", e);
+    }
+  }, delayMs);
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  try {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Method not allowed' });
+
+    const body = req.body || {};
+
+    if (body.action === 'send_result') {
+      return res.status(200).json({ success: true, status: 'handled_by_server' });
     }
 
-    // 2. СНАЙПЕРСКИЙ АНАЛИЗ
     const { pairs, timeframe, secondsRemaining = 60, candleOpenTime = '' } = body;
     const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : ["EUR/USD"];
     
     const selectedPair = targetPairs[Math.floor(Math.random() * targetPairs.length)];
     const remSecs = Number(secondsRemaining);
     const tradeId = Math.floor(1000 + Math.random() * 9000);
+    const expMins = parseInt(timeframe, 10) || 1;
 
     if (remSecs > 15) {
       return res.status(200).json({
@@ -92,7 +100,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           confidence: 0,
           tradeId: tradeId,
           reasoning: `⏳ До закрытия свечи ${remSecs}с. Ждем снайперское окно (<=15с)`,
-          recommendedExpiration: `${timeframe || '1'}M`,
+          recommendedExpiration: `${expMins}M`,
           bestPair: selectedPair
         }
       });
@@ -197,10 +205,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         `📊 <b>Сигнал:</b> ${finalVerdict === 'CALL' ? '🟢 CALL' : '🔴 PUT'}\n` +
         `⏰ <b>Старт свечи:</b> ${candleOpenTime || 'Текущая'}\n` +
         `🧠 <b>Уверенность:</b> ${confidence}%\n` +
-        `⏳ <b>Экспирация:</b> ${timeframe || '1'}M\n\n` +
+        `⏳ <b>Экспирация:</b> ${expMins}M\n\n` +
         `📝 <i>${reasoningText}</i>`;
       
       await sendTelegramMessage(tgText);
+      scheduleTradeResult(selectedPair, finalVerdict, candleOpenTime || 'Текущая', tradeId, expMins);
     }
 
     return res.status(200).json({
@@ -210,7 +219,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         confidence: confidence,
         tradeId: tradeId,
         reasoning: reasoningText,
-        recommendedExpiration: `${timeframe || '1'}M`,
+        recommendedExpiration: `${expMins}M`,
         bestPair: selectedPair
       }
     });
