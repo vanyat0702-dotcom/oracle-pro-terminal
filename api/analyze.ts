@@ -8,6 +8,34 @@ const geminiPart1 = "AQ.Ab8RN6LWfextpfs7Cy36tE3h86a7vA";
 const geminiPart2 = "OAERiiDAJTy9xKK3iS_w";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || (geminiPart1 + geminiPart2);
 
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "8687514873:AAF4i8WUidBwf83H6WucsyQP25fEHDfTXtQ";
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "1726551516";
+
+async function sendTelegramAlert(pair: string, signal: string, confidence: number, reasoning: string, timeframe: string) {
+  try {
+    const icon = signal === 'CALL' ? '🟢' : '🔴';
+    const text = `🎯 <b>ORACLE PRO SNIPER ALERT</b>\n\n` +
+      `💱 <b>Актив:</b> ${pair}\n` +
+      `📊 <b>Сигнал:</b> ${icon} <b>${signal}</b>\n` +
+      `🧠 <b>Уверенность ИИ:</b> ${confidence}%\n` +
+      `⏳ <b>Экспирация:</b> ${timeframe}M\n\n` +
+      `📝 <i>${reasoning}</i>`;
+
+    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: TELEGRAM_CHAT_ID,
+        text: text,
+        parse_mode: 'HTML'
+      })
+    });
+  } catch (e) {
+    console.error("TG Send Error:", e);
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -23,7 +51,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const remSecs = Number(secondsRemaining);
 
-    // СТРОГОЕ СНАЙПЕРСКОЕ ОКНО: если до конца свечи больше 15 секунд — отклоняем запрос
     if (remSecs > 15) {
       return res.status(200).json({
         success: true,
@@ -37,7 +64,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Если мы попали в заветные 10-15 секунд, проводим полноценный аудит
     const rsi5m = Math.floor(Math.random() * (75 - 25 + 1)) + 25;
     const trend15m = Math.random() > 0.45 ? "BULLISH" : "BEARISH";
     const trend30m = Math.random() > 0.4 ? trend15m : (Math.random() > 0.5 ? "BULLISH" : "BEARISH");
@@ -120,7 +146,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       confidence = 88;
     }
 
-    const reasoningText = `🎯 [Снайперский срез: 15M:${trend15m} | 30M:${trend30m}] RSI:${rsi5m} | Тайминг: ${remSecs}с до закрытия`;
+    const reasoningText = `🎯 [Снайперский срез: 15M:${trend15m} | 30M:${trend30m}] RSI:${rsi5m} | Тайминг: ${remSecs}с`;
+
+    if (finalVerdict !== 'SKIP') {
+      await sendTelegramAlert(selectedPair, finalVerdict, confidence, reasoningText, timeframe || '5');
+    }
 
     return res.status(200).json({
       success: true,
