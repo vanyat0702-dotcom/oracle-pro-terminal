@@ -35,7 +35,6 @@ export default function App() {
   const [lang, setLang] = useState<'ru' | 'en'>('ru');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
   const [rightTab, setRightTab] = useState<'logs' | 'history' | 'martingale' | 'strategies'>('logs');
-  const [activeIndicator, setActiveIndicator] = useState<string>('RSI');
 
   const [riskMode, setRiskMode] = useState<'SAFE' | 'BALANCED' | 'AGGRESSIVE' | 'BREAKOUT' | 'ANTITILT' | 'TRENDSURF'>(() => {
     return (localStorage.getItem('oracle_risk_mode') as any) || 'BALANCED';
@@ -95,7 +94,7 @@ export default function App() {
   const timeframeRef = useRef(timeframe);
   timeframeRef.current = timeframe;
 
-  const hasTriggeredCurrentCandleRef = useRef<boolean>(false);
+  const hasTriggeredCurrentCandleRef.current = false;
   const currentCandleIndexRef = useRef<number>(0);
 
   const [aiLogs, setAiLogs] = useState<Array<{ id: number; time: string; text: string; type: 'info' | 'level' | 'pattern' | 'sniper' | 'vision' }>>([
@@ -310,6 +309,13 @@ export default function App() {
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
+  // Вспомогательная функция для получения FXCM тикера
+  const getFxcmSymbol = (symbol: string) => {
+    const clean = symbol.replace('/', '').toUpperCase();
+    if (clean === 'BTCUSD' || clean === 'BTCUSDT') return 'BITSTAMP:BTCUSD';
+    return `FXCM:${clean}`;
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none">
       <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-3 flex items-center justify-between">
@@ -500,7 +506,7 @@ export default function App() {
                   <div className="flex-1 w-full h-full border border-slate-800 bg-slate-950 rounded-xl overflow-hidden relative">
                     <iframe
                       key={`${selectedPair.symbol}-${displayTf}-${timezone}-${lang}`}
-                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${selectedPair.symbol}&interval=${displayTf}&hidetoptoolbar=0&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=RSI@tv-basicstudies&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}&allow_symbol_change=true`}
+                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${getFxcmSymbol(selectedPair.displaySymbol)}&interval=${displayTf}&hidetoptoolbar=0&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=RSI@tv-basicstudies&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
                       className="w-full h-full border-0 absolute inset-0"
                       title="TradingView Chart"
                     ></iframe>
@@ -517,7 +523,7 @@ export default function App() {
                       <div className="flex-1 relative rounded-lg overflow-hidden border border-slate-900 min-h-[220px]">
                         <iframe
                           key={`quad-${qp.symbol}-${timeframe}-${timezone}`}
-                          src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_${idx}&symbol=${qp.symbol}&interval=${timeframe}&theme=dark&style=1&timezone=${timezone}&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}`}
+                          src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_${idx}&symbol=${getFxcmSymbol(qp.displaySymbol)}&interval=${timeframe}&theme=dark&style=1&timezone=${timezone}&studies[]=RSI@tv-basicstudies&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}`}
                           className="w-full h-full border-0 absolute inset-0"
                           title={`Chart ${idx}`}
                         ></iframe>
