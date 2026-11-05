@@ -470,10 +470,10 @@ export default function App() {
               </div>
             </div>
 
-            <div id="chart-container" className="lg:col-span-9 bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex flex-col justify-between relative overflow-hidden backdrop-blur h-[600px] shadow-lg">
+            <div id="chart-container" className="lg:col-span-9 bg-slate-900/40 border border-slate-800 rounded-xl p-3 flex flex-col relative overflow-hidden backdrop-blur h-[620px] shadow-lg">
               {viewMode === 'single' ? (
                 <>
-                  <div className="flex justify-between items-center mb-3">
+                  <div className="flex justify-between items-center mb-2 px-1">
                     <div className="flex items-center gap-2.5">
                       <LineChart className="w-5 h-5 text-cyan-400" />
                       <div>
@@ -497,11 +497,11 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="flex-1 border border-slate-800 bg-slate-950/90 rounded-xl overflow-hidden relative">
+                  <div className="flex-1 w-full h-full border border-slate-800 bg-slate-950 rounded-xl overflow-hidden relative">
                     <iframe
-                      key={`${selectedPair.symbol}-${displayTf}-${timezone}-${lang}-${activeIndicator}`}
-                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${selectedPair.symbol}&interval=${displayTf}&symboledit=1&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=${activeIndicator === 'RSI' ? 'RSI@tv-basicstudies' : 'MACD@tv-basicstudies'}&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}&auto_size=true`}
-                      className="w-full h-full border-0 absolute inset-0 pointer-events-auto"
+                      key={`${selectedPair.symbol}-${displayTf}-${timezone}-${lang}`}
+                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${selectedPair.symbol}&interval=${displayTf}&hidetoptoolbar=0&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=RSI@tv-basicstudies&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}&allow_symbol_change=true`}
+                      className="w-full h-full border-0 absolute inset-0"
                       title="TradingView Chart"
                     ></iframe>
                   </div>
@@ -517,7 +517,7 @@ export default function App() {
                       <div className="flex-1 relative rounded-lg overflow-hidden border border-slate-900 min-h-[220px]">
                         <iframe
                           key={`quad-${qp.symbol}-${timeframe}-${timezone}`}
-                          src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_${idx}&symbol=${qp.symbol}&interval=${timeframe}&theme=dark&style=1&timezone=${timezone}&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}&auto_size=true`}
+                          src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_${idx}&symbol=${qp.symbol}&interval=${timeframe}&theme=dark&style=1&timezone=${timezone}&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}`}
                           className="w-full h-full border-0 absolute inset-0"
                           title={`Chart ${idx}`}
                         ></iframe>
