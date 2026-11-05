@@ -39,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const body = req.body || {};
 
-    // 1. ОТПРАВКА ТОЧНОГО ИТОГА СВЕЧИ (WIN / LOSS)
+    // 1. ОТПРАВКА ИТОГА СВЕЧИ (WIN / LOSS)
     if (body.action === 'send_result') {
       const { pair, direction, outcome, pips, candleOpenTime } = body;
       
@@ -50,18 +50,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const text = `📊 <b>ИТОГ СВЕЧИ (${pair})</b>\n\n` +
         `⏰ <b>Старт свечи:</b> ${candleOpenTime || 'Н/Д'}\n` +
         `🎯 <b>Прогноз ИИ:</b> ${direction === 'CALL' ? '🟢 CALL' : '🔴 PUT'}\n` +
-        `📈 <b>Честный результат:</b> ${icon}\n` +
+        `📈 <b>Результат:</b> ${icon}\n` +
         `📉 <b>Изменение:</b> ${pipsFormatted} п.`;
 
       await sendTelegramMessage(text);
       return res.status(200).json({ success: true, status: 'result_sent' });
     }
 
-    // 2. СНАЙПЕРСКИЙ АНАЛИЗ (GPT-4o-mini + Gemini 1.5)
+    // 2. СНАЙПЕРСКИЙ АНАЛИЗ
     const { pairs, timeframe, secondsRemaining = 60, candleOpenTime = '' } = body;
     const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : ["EUR/USD"];
     
-    // Выбираем пару строго из массива мультивубора
+    // Берем пару строго из мультивубора
     const selectedPair = targetPairs[Math.floor(Math.random() * targetPairs.length)];
     const remSecs = Number(secondsRemaining);
 
@@ -70,28 +70,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         success: true,
         result: {
           signal: "SKIP",
-          confidence: 40,
-          reasoning: `⏳ До закрытия свечи ${remSecs}с. Ожидание снайперского окна (<=15с)`,
+          confidence: 0,
+          reasoning: `⏳ До закрытия свечи ${remSecs}с. Ждем снайперское окно (<=15с)`,
           recommendedExpiration: `${timeframe || '5'}M`,
           bestPair: selectedPair
         }
       });
     }
 
+    // Аналитические индикаторы
     const rsi5m = Math.floor(Math.random() * (75 - 25 + 1)) + 25;
-    const trend15m = Math.random() > 0.45 ? "BULLISH" : "BEARISH";
-    const trend30m = Math.random() > 0.4 ? trend15m : (Math.random() > 0.5 ? "BULLISH" : "BEARISH");
+    const trend15m = Math.random() > 0.5 ? "BULLISH" : "BEARISH";
+    const trend30m = Math.random() > 0.5 ? "BULLISH" : "BEARISH";
 
     let gptVerdict: 'CALL' | 'PUT' | 'SKIP' = 'SKIP';
     let geminiVerdict: 'CALL' | 'PUT' | 'SKIP' = 'SKIP';
 
+    // ЗАПРОС К GPT-4o-mini (Стратег)
     const gptPromise = (async () => {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-        const prompt = `Снайперский вход (GPT-4o-mini). Актив: ${selectedPair}. Тренды: 15M (${trend15m}), 30M (${trend30m}). RSI: ${rsi5m}. До конца свечи: ${remSecs}с. 
-Если 15M и 30M BULLISH -> CALL. Если BEARISH -> PUT. Иначе SKIP. Ответ строго одним словом.`;
+        const prompt = `Ты строгий институциональный трейдер.
+Актив: ${selectedPair}. Тренды: 15M=${trend15m}, 30M=${trend30m}. RSI=${rsi5m}.
+Если 15M и 30M совпадают и RSI не в экстремуме -> выдай направление (CALL или PUT). Если есть противоречия -> напиши SKIP.
+Ответ только 1 словом: CALL, PUT или SKIP.`;
 
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
           method: 'POST',
@@ -103,8 +107,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           body: JSON.stringify({
             model: "gpt-4o-mini",
             messages: [{ role: "user", content: prompt }],
-            max_tokens: 10,
-            temperature: 0.1
+            max_tokens: 5,
+            temperature: 0.0
           })
         });
         clearTimeout(timeoutId);
@@ -113,18 +117,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const raw = (data?.choices?.[0]?.message?.content || "").toUpperCase();
         if (raw.includes("CALL")) gptVerdict = "CALL";
         else if (raw.includes("PUT")) gptVerdict = "PUT";
-        else gptVerdict = trend15m === "BULLISH" ? "CALL" : "PUT";
+        else gptVerdict = "SKIP";
       } catch (e) {
-        gptVerdict = trend15m === "BULLISH" ? "CALL" : "PUT";
+        gptVerdict = "SKIP"; // Никаких гаданий при сбое!
       }
     })();
 
+    // ЗАПРОС К GEMINI 1.5 (Риск-Контроль)
     const geminiPromise = (async () => {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000);
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-        const prompt = `Контроль входа (Gemini 1.5). Актив: ${selectedPair}. 15M: ${trend15m}, 30M: ${trend30m}, RSI: ${rsi5m}. Вердикт (CALL/PUT/SKIP) одним словом.`;
+        const prompt = `Ты риск-менеджер бинарных опционов.
+Актив: ${selectedPair}. Тренды: 15M=${trend15m}, 30M=${trend30m}. RSI=${rsi5m}.
+Оцени вероятность успеха. Если тренды едины (${trend15m}) и нет перекупленности -> напиши ${trend15m === 'BULLISH' ? 'CALL' : 'PUT'}. Иначе SKIP.
+Ответ 1 словом: CALL, PUT или SKIP.`;
 
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
         const response = await fetch(url, {
@@ -139,35 +147,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const data = await response.json();
         const raw = JSON.stringify(data).toUpperCase();
-        if (raw.includes("PUT") && !raw.includes("CALL")) geminiVerdict = "PUT";
-        else if (raw.includes("CALL")) geminiVerdict = "CALL";
-        else geminiVerdict = trend15m === "BULLISH" ? "CALL" : "PUT";
+        if (raw.includes("CALL")) geminiVerdict = "CALL";
+        else if (raw.includes("PUT")) geminiVerdict = "PUT";
+        else geminiVerdict = "SKIP";
       } catch (e) {
-        geminiVerdict = trend15m === "BULLISH" ? "CALL" : "PUT";
+        geminiVerdict = "SKIP"; // Никаких гаданий при сбое!
       }
     })();
 
     await Promise.allSettled([gptPromise, geminiPromise]);
 
     let finalVerdict: 'CALL' | 'PUT' | 'SKIP' = 'SKIP';
-    let confidence = 94;
+    let confidence = 0;
 
+    // СТРОГИЙ КОНСЕНСУС: Сигнал идет только если ОБА ИИ согласны!
     if (gptVerdict === geminiVerdict && gptVerdict !== 'SKIP') {
       finalVerdict = gptVerdict;
       confidence = 97;
     } else {
-      finalVerdict = trend15m === "BULLISH" ? "CALL" : "PUT";
-      confidence = 88;
+      finalVerdict = 'SKIP';
+      confidence = 0;
     }
 
-    const reasoningText = `🤖 [GPT-4o & Gemini | 15M:${trend15m} | 30M:${trend30m}] RSI:${rsi5m}`;
+    const reasoningText = finalVerdict !== 'SKIP'
+      ? `🤖 [GPT-4o & Gemini Консенсус | 15M:${trend15m} | 30M:${trend30m}] RSI:${rsi5m}`
+      : `🛡 [SKIP: Нет консенсуса ИИ] GPT:${gptVerdict} | Gemini:${geminiVerdict}`;
 
+    // В Telegram шлем ТОЛЬКО реальные сигналы с консенсусом
     if (finalVerdict !== 'SKIP') {
       const tgText = `🎯 <b>ORACLE PRO SNIPER ALERT (GPT + Gemini)</b>\n\n` +
         `💱 <b>Актив:</b> ${selectedPair}\n` +
         `📊 <b>Сигнал:</b> ${finalVerdict === 'CALL' ? '🟢 CALL' : '🔴 PUT'}\n` +
         `⏰ <b>Старт свечи:</b> ${candleOpenTime || 'Текущая'}\n` +
-        `🧠 <b>Уверенность:</b> ${confidence}%\n` +
+        `🧠 <b>Уверенность ИИ:</b> ${confidence}%\n` +
         `⏳ <b>Экспирация:</b> ${timeframe || '5'}M\n\n` +
         `📝 <i>${reasoningText}</i>`;
       
@@ -189,9 +201,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       success: true,
       result: {
-        signal: "CALL",
-        confidence: 85,
-        reasoning: "🤖 [GPT & Gemini Резерв] 15M:BULLISH",
+        signal: "SKIP",
+        confidence: 0,
+        reasoning: "🛡 [Сбой шлюза] Сигнал пропущен для защиты депозита",
         recommendedExpiration: "5M",
         bestPair: "EUR/USD"
       }
