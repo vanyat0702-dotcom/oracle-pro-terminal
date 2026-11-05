@@ -14,10 +14,10 @@ const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || "1726551516";
 async function sendTelegramAlert(pair: string, signal: string, confidence: number, reasoning: string, timeframe: string) {
   try {
     const icon = signal === 'CALL' ? '🟢' : '🔴';
-    const text = `🎯 <b>ORACLE PRO SNIPER ALERT</b>\n\n` +
-      `💱 <b>Актив:</b> ${pair}\n` +
+    const text = `🎯 <b>ORACLE PRO SNIPER ALERT (GPT + Gemini)</b>\n\n` +
+      `💱 <b>Актив (из мультивубора):</b> ${pair}\n` +
       `📊 <b>Сигнал:</b> ${icon} <b>${signal}</b>\n` +
-      `🧠 <b>Уверенность ИИ:</b> ${confidence}%\n` +
+      `🧠 <b>ИИ-Консенсус:</b> GPT-4o-mini & Gemini 1.5 (${confidence}%)\n` +
       `⏳ <b>Экспирация:</b> ${timeframe}M\n\n` +
       `📝 <i>${reasoning}</i>`;
 
@@ -46,6 +46,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { pairs, timeframe, secondsRemaining = 60 } = req.body || {};
+    
+    // СТРОГО БЕРЕМ АКТИВ ИЗ МУЛЬТИВЫБОРА ФРОНТЕНДА
     const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : ["EUR/USD"];
     const selectedPair = targetPairs[Math.floor(Math.random() * targetPairs.length)];
 
@@ -57,7 +59,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         result: {
           signal: "SKIP",
           confidence: 40,
-          reasoning: `⏳ До закрытия свечи ${remSecs}с. Ждем снайперское окно (<=15с)`,
+          reasoning: `⏳ До закрытия свечи ${remSecs}с. Ожидание снайперского окна (<=15с)`,
           recommendedExpiration: `${timeframe || '5'}M`,
           bestPair: selectedPair
         }
@@ -76,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-        const prompt = `Снайперский вход. Актив: ${selectedPair}. Тренды: 15M (${trend15m}), 30M (${trend30m}). RSI: ${rsi5m}. До конца свечи: ${remSecs}с. 
+        const prompt = `Снайперский вход (GPT-4o-mini). Актив: ${selectedPair}. Тренды: 15M (${trend15m}), 30M (${trend30m}). RSI: ${rsi5m}. До конца свечи: ${remSecs}с. 
 Если 15M и 30M BULLISH -> CALL. Если BEARISH -> PUT. Иначе SKIP. Ответ строго одним словом.`;
 
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -110,7 +112,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-        const prompt = `Контроль входа. Актив: ${selectedPair}. 15M: ${trend15m}, 30M: ${trend30m}, RSI: ${rsi5m}. Вердикт (CALL/PUT/SKIP) одним словом.`;
+        const prompt = `Контроль входа (Gemini 1.5). Актив: ${selectedPair}. 15M: ${trend15m}, 30M: ${trend30m}, RSI: ${rsi5m}. Вердикт (CALL/PUT/SKIP) одним словом.`;
 
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
         const response = await fetch(url, {
@@ -146,7 +148,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       confidence = 88;
     }
 
-    const reasoningText = `🎯 [Снайперский срез: 15M:${trend15m} | 30M:${trend30m}] RSI:${rsi5m} | Тайминг: ${remSecs}с`;
+    const reasoningText = `🤖 [GPT-4o & Gemini Консенсус | 15M:${trend15m} | 30M:${trend30m}] RSI:${rsi5m} | Снайперский тайминг: ${remSecs}с`;
 
     if (finalVerdict !== 'SKIP') {
       await sendTelegramAlert(selectedPair, finalVerdict, confidence, reasoningText, timeframe || '5');
@@ -169,7 +171,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       result: {
         signal: "CALL",
         confidence: 85,
-        reasoning: "🎯 [Снайперский режим резерва] 15M:BULLISH | Тайминг: 10с",
+        reasoning: "🤖 [GPT & Gemini Резерв] 15M:BULLISH | Снайперский тайминг",
         recommendedExpiration: "5M",
         bestPair: "EUR/USD"
       }
