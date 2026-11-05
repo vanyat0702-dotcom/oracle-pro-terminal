@@ -145,10 +145,10 @@ export default function App() {
     setStrategies(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
   };
 
-  const getFxcmSymbol = (symbol: string) => {
+  const getCleanSymbol = (symbol: string) => {
     const clean = symbol.replace('/', '').toUpperCase();
     if (clean === 'BTCUSD' || clean === 'BTCUSDT') return 'BITSTAMP:BTCUSD';
-    return `FXCM:${clean}`;
+    return clean;
   };
 
   useEffect(() => {
@@ -503,7 +503,7 @@ export default function App() {
                   <div className="flex-1 w-full h-full border border-slate-800 bg-slate-950 rounded-xl overflow-hidden relative">
                     <iframe
                       key={`${selectedPair.symbol}-${displayTf}-${timezone}-${lang}`}
-                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${getFxcmSymbol(selectedPair.displaySymbol)}&interval=${displayTf}&hidetoptoolbar=0&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=RSI@tv-basicstudies&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
+                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${getCleanSymbol(selectedPair.displaySymbol)}&interval=${displayTf}&hidetoptoolbar=0&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=RSI@tv-basicstudies&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
                       className="w-full h-full border-0 absolute inset-0"
                       title="TradingView Chart"
                     ></iframe>
@@ -520,7 +520,7 @@ export default function App() {
                       <div className="flex-1 relative rounded-lg overflow-hidden border border-slate-900 min-h-[220px]">
                         <iframe
                           key={`quad-${qp.symbol}-${timeframe}-${timezone}`}
-                          src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_${idx}&symbol=${getFxcmSymbol(qp.displaySymbol)}&interval=${timeframe}&theme=dark&style=1&timezone=${timezone}&studies[]=RSI@tv-basicstudies&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}`}
+                          src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_${idx}&symbol=${getCleanSymbol(qp.displaySymbol)}&interval=${timeframe}&theme=dark&style=1&timezone=${timezone}&studies[]=RSI@tv-basicstudies&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}`}
                           className="w-full h-full border-0 absolute inset-0"
                           title={`Chart ${idx}`}
                         ></iframe>
