@@ -105,7 +105,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: 'Vision AI Core v10.5: Исправлена математика расчетов. Хаос устранен.', 
+      text: 'Vision AI Core v10.5: Диапазоны котировок (включая BTC и JPY) полностью адаптированы.', 
       type: 'info' 
     }
   ]);
@@ -201,7 +201,7 @@ export default function App() {
     }
   };
 
-  // Главный таймер с ЖЕЛЕЗОБЕТОННОЙ логикой вычисления WIN/LOSS
+  // Главный таймер с точной генерацией цен под рынок и железобетонным расчетом WIN/LOSS
   useEffect(() => {
     const calculateCandleInfo = () => {
       const now = new Date();
@@ -227,41 +227,37 @@ export default function App() {
         const remainingTrades = [];
         for (const trade of activeTradesRef.current) {
           if (nowMs >= trade.expireAt) {
-            // 1. ОПРЕДЕЛЯЕМ БАЗОВЫЙ ДИАПАЗОН ПОД АКТИВ
+            // 1. ПОДБИРАЕМ ДИАПАЗОН И ЗНАКИ ПОД АКТИВ
             const isJpy = trade.pair.includes('JPY');
             const isBtc = trade.pair.includes('BTC');
             const decimals = isBtc ? 2 : (isJpy ? 3 : 5);
 
             let basePrice = 1.08500;
             if (isJpy) basePrice = 108.730;
-            if (isBtc) basePrice = 67500.00;
+            if (isBtc) basePrice = 75530.00; // Точный диапазон Биткоина под график TradingView
 
-            const openPrice = Number((basePrice + ((Math.random() - 0.5) * (isBtc ? 50 : (isJpy ? 0.2 : 0.002)))).toFixed(decimals));
-            const pipsNum = Math.floor(Math.random() * 8) + 3; // от 3 до 10 пунктов
+            const openPrice = Number((basePrice + ((Math.random() - 0.5) * (isBtc ? 60 : (isJpy ? 0.2 : 0.002)))).toFixed(decimals));
+            const pipsNum = Math.floor(Math.random() * 12) + 4; 
             const step = isBtc ? 10 : (isJpy ? 0.001 : 0.0001);
 
-            // 2. СТРОГОЕ ОПРЕДЕЛЕНИЕ ИСХОДА (60% побед, 40% поражений)
+            // 2. ЖЕСТКОЕ ОПРЕДЕЛЕНИЕ ИСХОДА (60% побед, 40% поражений)
             const finalWin = Math.random() < 0.60;
             const isCall = trade.direction === 'CALL';
 
             let closePrice = openPrice;
 
             if (finalWin) {
-              // ПЛЮСОВАЯ СДЕЛКА:
-              // Если CALL — закрытие строго выше открытия
-              // Если PUT — закрытие строго ниже открытия
+              // ПЛЮСОВАЯ СДЕЛКА
               closePrice = isCall ? (openPrice + (pipsNum * step)) : (openPrice - (pipsNum * step));
             } else {
-              // МИНУСОВАЯ СДЕЛКА (Исключает баг с путаницей):
-              // Если CALL — закрытие СТРОГО НИЖЕ открытия
-              // Если PUT — закрытие СТРОГО ВЫШЕ открытия
+              // МИНУСОВАЯ СДЕЛКА
               closePrice = isCall ? (openPrice - (pipsNum * step)) : (openPrice + (pipsNum * step));
             }
 
             closePrice = Number(closePrice.toFixed(decimals));
             const pipsFormatted = `${finalWin ? '+' : '-'}${pipsNum} п.`;
 
-            // 3. ОБНОВЛЯЕМ ИСТОРИЮ
+            // 3. ОБНОВЛЯЕМ ИСТОРИЮ НА ФРОНТЕНДЕ
             setHistoryList(prev => prev.map(item => 
               item.tradeId === trade.tradeId 
                 ? { ...item, result: finalWin ? 'WIN' : 'LOSS', pips: pipsFormatted, status: 'FINISHED', openPrice, closePrice } 
