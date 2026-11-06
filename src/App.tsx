@@ -105,7 +105,7 @@ export default function App() {
     { 
       id: 1, 
       time: '00:01', 
-      text: 'Vision AI Core v10.5: Синхронизация котировок с графиком активна.', 
+      text: 'Vision AI Core v10.5: Исправлена математика расчетов. Хаос устранен.', 
       type: 'info' 
     }
   ]);
@@ -201,7 +201,7 @@ export default function App() {
     }
   };
 
-  // Главный таймер и СТРОГАЯПРОВЕРКА КОТИРОВОК ПО ФАКТУ С АКТУАЛЬНЫМИ ДИАПАЗОНАМИ ПАР
+  // Главный таймер с ЖЕЛЕЗОБЕТОННОЙ логикой вычисления WIN/LOSS
   useEffect(() => {
     const calculateCandleInfo = () => {
       const now = new Date();
@@ -227,35 +227,41 @@ export default function App() {
         const remainingTrades = [];
         for (const trade of activeTradesRef.current) {
           if (nowMs >= trade.expireAt) {
-            // ТОЧНАЯ ПРИВЯЗКА БАЗОВОЙ ЦЕНЫ ПОД АКТИВ
+            // 1. ОПРЕДЕЛЯЕМ БАЗОВЫЙ ДИАПАЗОН ПОД АКТИВ
             const isJpy = trade.pair.includes('JPY');
             const isBtc = trade.pair.includes('BTC');
-            
-            let basePrice = 1.0850;
-            if (isJpy) basePrice = 108.730; 
-            if (isBtc) basePrice = 67500.0;
+            const decimals = isBtc ? 2 : (isJpy ? 3 : 5);
 
-            const openPrice = Number((basePrice + ((Math.random() - 0.5) * (isBtc ? 100 : (isJpy ? 0.5 : 0.005)))).toFixed(isBtc ? 2 : (isJpy ? 3 : 5)));
-            const pipsNum = Math.floor(Math.random() * 8) + 2;
+            let basePrice = 1.08500;
+            if (isJpy) basePrice = 108.730;
+            if (isBtc) basePrice = 67500.00;
 
-            const isWinProbability = Math.random() < 0.60;
-            const isCall = trade.direction === 'CALL';
-
-            let closePrice = 0;
+            const openPrice = Number((basePrice + ((Math.random() - 0.5) * (isBtc ? 50 : (isJpy ? 0.2 : 0.002)))).toFixed(decimals));
+            const pipsNum = Math.floor(Math.random() * 8) + 3; // от 3 до 10 пунктов
             const step = isBtc ? 10 : (isJpy ? 0.001 : 0.0001);
 
-            if (isCall) {
-              closePrice = isWinProbability ? openPrice + (pipsNum * step) : openPrice - (pipsNum * step);
+            // 2. СТРОГОЕ ОПРЕДЕЛЕНИЕ ИСХОДА (60% побед, 40% поражений)
+            const finalWin = Math.random() < 0.60;
+            const isCall = trade.direction === 'CALL';
+
+            let closePrice = openPrice;
+
+            if (finalWin) {
+              // ПЛЮСОВАЯ СДЕЛКА:
+              // Если CALL — закрытие строго выше открытия
+              // Если PUT — закрытие строго ниже открытия
+              closePrice = isCall ? (openPrice + (pipsNum * step)) : (openPrice - (pipsNum * step));
             } else {
-              closePrice = isWinProbability ? openPrice - (pipsNum * step) : openPrice + (pipsNum * step);
+              // МИНУСОВАЯ СДЕЛКА (Исключает баг с путаницей):
+              // Если CALL — закрытие СТРОГО НИЖЕ открытия
+              // Если PUT — закрытие СТРОГО ВЫШЕ открытия
+              closePrice = isCall ? (openPrice - (pipsNum * step)) : (openPrice + (pipsNum * step));
             }
 
-            closePrice = Number(closePrice.toFixed(isBtc ? 2 : (isJpy ? 3 : 5)));
-
-            // ЖЕСТКАЯ ПРОВЕРКА ПО ФАКТУ (CALL: close > open, PUT: close < open)
-            const finalWin = isCall ? (closePrice > openPrice) : (closePrice < openPrice);
+            closePrice = Number(closePrice.toFixed(decimals));
             const pipsFormatted = `${finalWin ? '+' : '-'}${pipsNum} п.`;
 
+            // 3. ОБНОВЛЯЕМ ИСТОРИЮ
             setHistoryList(prev => prev.map(item => 
               item.tradeId === trade.tradeId 
                 ? { ...item, result: finalWin ? 'WIN' : 'LOSS', pips: pipsFormatted, status: 'FINISHED', openPrice, closePrice } 
@@ -264,6 +270,7 @@ export default function App() {
 
             addLog(`🎯 ИТОГ СДЕЛКИ #${trade.tradeId} [${trade.pair}]: ${finalWin ? '🟢 WIN' : '🔴 LOSS'} (${pipsFormatted}) [Откр: ${openPrice} -> Закр: ${closePrice}]`, finalWin ? 'sniper' : 'info');
 
+            // 4. ОТПРАВЛЯЕМ ИТОГ В БЭКЕНД И TELEGRAM
             try {
               await fetch('/api/analyze', {
                 method: 'POST',
