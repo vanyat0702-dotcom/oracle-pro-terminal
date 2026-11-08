@@ -1,7 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
-const { getJointPrediction } = require('./ai-consensus');
+const { getJointPrediction } = require('./ai-consensus-1');
+const aiDebugger = require('./ai-debugger'); // 👈 Изолированный модуль диагностики
 
 const app = express();
 
@@ -13,6 +14,9 @@ app.post('/api/analyze', async (req, res) => {
   try {
     const marketData = req.body;
     
+    // 🔍 Сквозной аудит входящих данных и скриншота через отладчик
+    aiDebugger.auditIncomingPayload(marketData);
+
     // Если пришел запрос на сохранение результата завершенной сделки
     if (marketData.action === 'send_result') {
       console.log(`📊 [РЕЗУЛЬТАТ СДЕЛКИ] #${marketData.tradeId} | ${marketData.pair} | ${marketData.direction} | ${marketData.isWin ? 'WIN' : 'LOSS'} (${marketData.pipsNum} п.)`);
