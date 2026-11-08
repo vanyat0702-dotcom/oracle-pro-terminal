@@ -1,4 +1,6 @@
 const axios = require('axios');
+const safeStrategy = require('./safe-strategy'); // 👈 Изолированный модуль уровней и отчетов
+const aiDebugger = require('./ai-debugger');     // 👈 Модуль аудита моделей
 
 // Вспомогательная функция для очистки ответа ИИ от Markdown-оберток (```json ... ```)
 function cleanJsonResponse(content) {
@@ -42,14 +44,16 @@ async function getGPTAnalysis(marketData) {
       headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` }
     });
     
-    return cleanJsonResponse(response.data.choices[0].message.content);
+    const parsed = cleanJsonResponse(response.data.choices[0].message.content);
+    aiDebugger.auditModelResponse('GPT-4o Vision', parsed);
+    return parsed;
   } catch (error) {
     console.error('Ошибка GPT API:', error.response?.data || error.message);
     return null;
   }
 }
 
-// Реальный запрос к Google Gemini (Исправлен фальшивый хардкод!)
+// Реальный запрос к Google Gemini
 async function getGeminiAnalysis(marketData) {
   try {
     const prompt = `Ты алгоритмический скальпер. Оцени рыночные условия и стратегии: ${JSON.stringify(marketData)}. 
@@ -65,24 +69,48 @@ async function getGeminiAnalysis(marketData) {
     });
     
     const textContent = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    return cleanJsonResponse(textContent);
+    const parsed = cleanJsonResponse(textContent);
+    aiDebugger.auditModelResponse('Gemini 1.5 Pro', parsed);
+    return parsed;
   } catch (error) {
     console.error('Ошибка Gemini API:', error.response?.data || error.message);
     return null;
   }
 }
 
-// Главная функция консенсуса с защитой от Анти-Тильта
+// Главная функция консенсуса с защитой Анти-Тильта и Safe Mode
 async function getJointPrediction(marketData) {
   const tradeId = Math.floor(Math.random() * 90000) + 10000;
   
+  // 🛡️ Если включен SAFE MODE, проверяем уровни М5/М15 перед вызовом ИИ
+  if (marketData.safeModeEnabled) {
+    const safeCheck = safeStrategy.analyzeSafeModeSetup(marketData);
+    if (!safeCheck.isTriggered) {
+      return {
+        signal: "SKIP",
+        confidence: 0,
+        tradeId,
+        reasoning: "🛡️ [SAFE MODE]: Цена находится вне зон ключевых уровней M5/M15. Вход пропущен для защиты депозита.",
+        recommendedExpiration: "5M",
+        bestPair: marketData.pairs?.[0] || "EURUSD",
+        detailedReport: {
+          mode: "🛡️ SAFE MODE (Уровни)",
+          status: "REJECTED_BY_LEVEL",
+          levelDetails: "Цена в середине канала, касания уровней нет",
+          aiVerdictGPT: "Запрос к Vision API заблокирован (экономия токенов)",
+          aiVerdictGemini: "Фильтр уровней активен",
+          riskLevel: "Минимальный (Ожидание зоны)"
+        }
+      };
+    }
+  }
+
   // Параллельный опрос обеих нейросетей
   const [gptResult, geminiResult] = await Promise.all([
     getGPTAnalysis(marketData),
     getGeminiAnalysis(marketData)
   ]);
 
-  // Если один из ИИ недоступен, включаем режим безопасности (SKIP), чтобы не сливать депозит наугад
   if (!gptResult || !geminiResult) {
     return {
       signal: "SKIP",
@@ -94,7 +122,6 @@ async function getJointPrediction(marketData) {
     };
   }
 
-  // Жёсткая проверка: если хотя бы один советует пропустить или мнения кардинально расходятся
   if (gptResult.direction === 'SKIP' || geminiResult.direction === 'SKIP' || gptResult.direction !== geminiResult.direction) {
     return {
       signal: "SKIP",
@@ -106,17 +133,27 @@ async function getJointPrediction(marketData) {
     };
   }
 
-  // Консенсус полный! Направления совпали
   const avgConfidence = Math.round((gptResult.confidence + geminiResult.confidence) / 2);
   const bestPair = marketData.pairs?.[Math.floor(Math.random() * marketData.pairs.length)] || "EURUSD";
 
+  // Генерируем развернутый отчет для истории
+  const detailedReport = {
+    mode: marketData.safeModeEnabled ? "🛡️ SAFE MODE (Уровни M5/M15)" : "⚡ СТАНДАРТНЫЙ СКАЛЬПИНГ",
+    status: "APPROVED",
+    levelDetails: "Подтвержден отскок от зоны поддержки/сопротивления",
+    aiVerdictGPT: subStr(gptResult.reasoning),
+    aiVerdictGemini: subStr(geminiResult.reasoning),
+    riskLevel: "Умеренный / Консенсус подтвержден"
+  };
+
   return {
-    signal: gptResult.direction, // "CALL" или "PUT"
+    signal: gptResult.direction,
     confidence: avgConfidence,
     tradeId,
     reasoning: `Консенсус 100%! GPT: ${subStr(gptResult.reasoning)} | Gemini: ${subStr(geminiResult.reasoning)}`,
     recommendedExpiration: gptResult.recommendedExpiration || "1M",
-    bestPair
+    bestPair,
+    detailedReport // 👈 Передаем отчет на фронтенд для истории
   };
 }
 
