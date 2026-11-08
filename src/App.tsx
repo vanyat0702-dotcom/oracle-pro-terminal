@@ -38,6 +38,9 @@ export default function App() {
 
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<any | null>(null);
 
+  // 🛡️ Состояние тумблера SAFE MODE
+  const [safeModeEnabled, setSafeModeEnabled] = useState<boolean>(true);
+
   const [riskMode, setRiskMode] = useState<'SAFE' | 'BALANCED' | 'AGGRESSIVE' | 'BREAKOUT' | 'ANTITILT' | 'TRENDSURF'>(() => {
     return (localStorage.getItem('oracle_risk_mode') as any) || 'BALANCED';
   });
@@ -121,6 +124,7 @@ export default function App() {
     status: 'ACTIVE' | 'FINISHED';
     openPrice?: number;
     closePrice?: number;
+    detailedReport?: any; // 👈 Поддержка развернутого отчета
   }>>([
     { id: 1, tradeId: 1001, time: '01:30', pair: 'EUR/USD', direction: 'CALL', result: 'WIN', pips: '+8 п.', status: 'FINISHED', openPrice: 1.08520, closePrice: 1.08600 }
   ]);
@@ -182,6 +186,7 @@ export default function App() {
           pairs: activePairsSymbols,
           timeframe: tf,
           mode: riskModeRef.current,
+          safeModeEnabled: safeModeEnabled, // 👈 Передаем тумблер SAFE MODE
           secondsRemaining: currentRemSec,
           candleOpenTime: openTimeStr,
           activeStrategies: activeStratNames,
@@ -201,7 +206,6 @@ export default function App() {
     }
   };
 
-  // Главный таймер с точным микро-шагом цен под Интрейд Бар и железной логикой WIN/LOSS
   useEffect(() => {
     const calculateCandleInfo = () => {
       const now = new Date();
@@ -227,7 +231,6 @@ export default function App() {
         const remainingTrades = [];
         for (const trade of activeTradesRef.current) {
           if (nowMs >= trade.expireAt) {
-            // 1. ПОДБИРАЕМ АКТУАЛЬНЫЙ МИКРО-ДИАПАЗОН БРОКЕРА
             const isJpy = trade.pair.includes('JPY');
             const isBtc = trade.pair.includes('BTC');
             const decimals = isBtc ? 2 : (isJpy ? 3 : 5);
@@ -237,36 +240,30 @@ export default function App() {
             if (isBtc) basePrice = 75530.00;
 
             const openPrice = Number((basePrice + ((Math.random() - 0.5) * (isBtc ? 20 : (isJpy ? 0.1 : 0.001)))).toFixed(decimals));
-            const pipsNum = Math.floor(Math.random() * 6) + 2; // Реальные 2-7 пунктов разбега Интрейд Бара
+            const pipsNum = Math.floor(Math.random() * 6) + 2; 
             const step = isBtc ? 10 : (isJpy ? 0.001 : 0.0001);
 
-            // 2. ЖЕСТКОЕ ОПРЕДЕЛЕНИЕ ИСХОДА (60% побед, 40% поражений)
             const finalWin = Math.random() < 0.60;
             const isCall = trade.direction === 'CALL';
 
             let closePrice = openPrice;
-
             if (finalWin) {
-              // ПЛЮСОВАЯ СДЕЛКА
               closePrice = isCall ? (openPrice + (pipsNum * step)) : (openPrice - (pipsNum * step));
             } else {
-              // МИНУСОВАЯ СДЕЛКА
               closePrice = isCall ? (openPrice - (pipsNum * step)) : (openPrice + (pipsNum * step));
             }
 
             closePrice = Number(closePrice.toFixed(decimals));
             const pipsFormatted = `${finalWin ? '+' : '-'}${pipsNum} п.`;
 
-            // 3. ОБНОВЛЯЕМ ИСТОРИЮ
             setHistoryList(prev => prev.map(item => 
               item.tradeId === trade.tradeId 
                 ? { ...item, result: finalWin ? 'WIN' : 'LOSS', pips: pipsFormatted, status: 'FINISHED', openPrice, closePrice } 
                 : item
             ));
 
-            addLog(`🎯 ИТОГ СДЕЛКИ #${trade.tradeId} [${trade.pair}]: ${finalWin ? '🟢 WIN' : '🔴 LOSS'} (${pipsFormatted}) [Откр: ${openPrice} -> Закр: ${closePrice}]`, finalWin ? 'sniper' : 'info');
+            addLog(`🎯 ИТОГ СДЕЛКИ #${trade.tradeId} [${trade.pair}]: ${finalWin ? '🟢 WIN' : '🔴 LOSS'} (${pipsFormatted})`, finalWin ? 'sniper' : 'info');
 
-            // 4. ОТПРАВЛЯЕМ ИТОГ В БЭКЕНД И TELEGRAM
             try {
               await fetch('/api/analyze', {
                 method: 'POST',
@@ -358,7 +355,8 @@ export default function App() {
             time: currentTimeStr, 
             pair: chosenPairSymbol, 
             direction: aiResult.signal, 
-            status: 'ACTIVE' 
+            status: 'ACTIVE',
+            detailedReport: aiResult.detailedReport // 👈 Сохраняем развернутый отчет в историю
           },
           ...prev
         ]);
@@ -369,7 +367,7 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [timeframe, selectedPair, strategies, newsFilterEnabled, atrFilterEnabled]);
+  }, [timeframe, selectedPair, strategies, newsFilterEnabled, atrFilterEnabled, safeModeEnabled]);
 
   const handleStartAnalysis = async () => {
     setIsAnalyzing(true);
@@ -463,7 +461,7 @@ export default function App() {
                 <Sliders className="w-4 h-4 text-cyan-400" />
                 <span>НАСТРОЙКИ СКАНИРОВАНИЯ И ИИ-РЕЖИМОВ</span>
                 <span className="text-[10px] text-slate-400 font-normal ml-2">
-                  (Режим: <span className="text-amber-400 font-bold">{riskMode}</span> | Стратегий вкл: <span className="text-emerald-400 font-bold">{strategies.filter(s => s.enabled).length}</span> | Пар в пуле: <span className="text-cyan-400 font-bold">{selectedMultiPairs.length}</span>)
+                  (Safe Mode: <span className="text-emerald-400 font-bold">{safeModeEnabled ? 'ВКЛ' : 'ВЫКЛ'}</span> | Режим: <span className="text-amber-400 font-bold">{riskMode}</span>)
                 </span>
               </div>
               <div className="flex items-center gap-1 text-[11px] text-slate-400">
@@ -474,6 +472,28 @@ export default function App() {
 
             {isSettingsOpen && (
               <div className="p-4 flex flex-col gap-3 bg-slate-950/60 backdrop-blur">
+                
+                {/* 🛡️ Тумблер SAFE MODE в настройках */}
+                <div className="flex items-center justify-between p-3 bg-slate-900/90 rounded-lg border border-emerald-500/40">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🛡️</span>
+                    <div>
+                      <div className="text-xs font-bold text-emerald-400">SAFE MODE (Торговля от уровней M5/M15)</div>
+                      <div className="text-[10px] text-slate-400">Фильтрация шума, проверка уровней и развернутые отчеты в истории</div>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setSafeModeEnabled(!safeModeEnabled)}
+                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      safeModeEnabled 
+                        ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20' 
+                        : 'bg-slate-800 text-slate-400 border border-slate-700'
+                    }`}
+                  >
+                    {safeModeEnabled ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}
+                  </button>
+                </div>
+
                 <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-amber-500/30">
                   <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
                     <Flame className="w-4 h-4 text-amber-400" />
@@ -727,7 +747,7 @@ export default function App() {
             </div>
           ) : rightTab === 'history' ? (
             <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-2 overflow-hidden min-h-[180px] relative">
-              <div className="text-[10px] text-slate-400 mb-1">💡 Нажмите на сделку для деталей:</div>
+              <div className="text-[10px] text-slate-400 mb-1">💡 Нажмите на сделку для деталей и отчета ИИ:</div>
               <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 text-[10px] font-mono">
                 {historyList.map(item => (
                   <div 
@@ -753,9 +773,9 @@ export default function App() {
                 ))}
               </div>
 
-              {/* Модальное окно детализации сделки */}
+              {/* Модальное окно детализации сделки + Развернутый отчет ИИ */}
               {selectedHistoryItem && (
-                <div className="absolute inset-0 bg-slate-950/95 backdrop-blur p-3 flex flex-col justify-between z-20 border border-cyan-500/40 rounded-xl animate-fadeIn">
+                <div className="absolute inset-0 bg-slate-950/95 backdrop-blur p-3 flex flex-col justify-between z-20 border border-cyan-500/40 rounded-xl animate-fadeIn overflow-y-auto">
                   <div className="space-y-2">
                     <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
                       <span className="font-bold text-cyan-400 text-xs">ДЕТАЛИ СДЕЛКИ #{selectedHistoryItem.tradeId}</span>
@@ -775,9 +795,21 @@ export default function App() {
                       {selectedHistoryItem.pips && (
                         <div className="flex justify-between"><span className="text-slate-400">Результат:</span><span className={`font-bold ${selectedHistoryItem.result === 'WIN' ? 'text-emerald-400' : 'text-rose-400'}`}>{selectedHistoryItem.result === 'WIN' ? '🟢 WIN' : '🔴 LOSS'} ({selectedHistoryItem.pips})</span></div>
                       )}
+
+                      {/* 📊 Развернутый отчет ИИ / Уровней */}
+                      {selectedHistoryItem.detailedReport && (
+                        <div className="mt-2 p-2 bg-slate-900/90 rounded border border-emerald-500/40 space-y-1 text-slate-300">
+                          <div className="font-bold text-emerald-400">{selectedHistoryItem.detailedReport.mode}</div>
+                          <div>• <b>Статус:</b> {selectedHistoryItem.detailedReport.status}</div>
+                          <div>• <b>Уровни:</b> {selectedHistoryItem.detailedReport.levelDetails}</div>
+                          <div>• <b>GPT-4o:</b> {selectedHistoryItem.detailedReport.aiVerdictGPT}</div>
+                          <div>• <b>Gemini:</b> {selectedHistoryItem.detailedReport.aiVerdictGemini}</div>
+                          <div className="text-amber-400">• <b>Риск:</b> {selectedHistoryItem.detailedReport.riskLevel}</div>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <button onClick={() => setSelectedHistoryItem(null)} className="w-full py-1.5 bg-cyan-500 text-slate-950 font-bold rounded-lg text-xs">Закрыть</button>
+                  <button onClick={() => setSelectedHistoryItem(null)} className="w-full py-1.5 mt-2 bg-cyan-500 text-slate-950 font-bold rounded-lg text-xs">Закрыть</button>
                 </div>
               )}
             </div>
