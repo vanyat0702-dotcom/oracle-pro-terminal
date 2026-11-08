@@ -162,7 +162,6 @@ export default function App() {
     setStrategies(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
   };
 
-  // 🎯 Жесткая привязка ВСЕХ пар к единому форекс-потоку Capital.com без случайных бирж типа ICE
   const getCleanSymbol = (symbol: string) => {
     const clean = symbol.replace('/', '').toUpperCase();
     if (clean.includes('BTC')) return 'BINANCE:BTCUSDT';
@@ -638,7 +637,7 @@ export default function App() {
                   <div className="flex-1 w-full h-full border border-slate-800 bg-slate-950 rounded-xl overflow-hidden relative min-h-[500px]">
                     <iframe
                       key={`${selectedPair.symbol}-${displayTf}-${timezone}-${lang}`}
-                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${getCleanSymbol(selectedPair.displaySymbol)}&interval=${displayTf}&hidetoptoolbar=0&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=RSI@tv-basicstudies&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
+                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${getCleanSymbol(selectedPair.displaySymbol)}&interval=${displayTf}&hidetoptoolbar=0&saveimage=0&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&withdateranges=0&hideideas=1&studies[]=RSI@tv-basicstudies&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
                       title="TradingView Chart"
                     ></iframe>
                   </div>
@@ -654,7 +653,7 @@ export default function App() {
                       <div className="flex-1 relative rounded-lg overflow-hidden border border-slate-900 min-h-[220px]">
                         <iframe
                           key={`quad-${qp.symbol}-${timeframe}-${timezone}`}
-                          src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_${idx}&symbol=${getCleanSymbol(qp.displaySymbol)}&interval=${timeframe}&theme=dark&style=1&timezone=${timezone}&studies[]=RSI@tv-basicstudies&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}`}
+                          src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_${idx}&symbol=${getCleanSymbol(qp.displaySymbol)}&interval=${timeframe}&theme=dark&style=1&timezone=${timezone}&withdateranges=0&hideideas=1&studies[]=RSI@tv-basicstudies&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}`}
                           title={`Chart ${idx}`}
                         ></iframe>
                       </div>
