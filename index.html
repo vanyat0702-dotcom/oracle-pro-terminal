@@ -6,6 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ORACLE PRO — Trading Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- 👇 Исправление графических артефактов и ряби на свечах TradingView -->
+    <style>
+      iframe, canvas, div[class*="tradingview"] {
+        image-rendering: -webkit-optimize-contrast;
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+        transform: translateZ(0);
+      }
+    </style>
   </head>
   <body class="bg-slate-950 text-slate-100 antialiased overflow-x-hidden">
     <div id="root"></div>
