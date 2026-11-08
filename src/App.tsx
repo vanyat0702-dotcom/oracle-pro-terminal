@@ -37,8 +37,6 @@ export default function App() {
   const [rightTab, setRightTab] = useState<'logs' | 'history' | 'martingale' | 'strategies'>('history');
 
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<any | null>(null);
-
-  // 🛡️ Состояние тумблера SAFE MODE
   const [safeModeEnabled, setSafeModeEnabled] = useState<boolean>(true);
 
   const [riskMode, setRiskMode] = useState<'SAFE' | 'BALANCED' | 'AGGRESSIVE' | 'BREAKOUT' | 'ANTITILT' | 'TRENDSURF'>(() => {
@@ -164,10 +162,13 @@ export default function App() {
     setStrategies(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
   };
 
-  // 🎯 Исправленный чистый формат тикеров для стабильной работы виджета TradingView без ошибок
+  // 🎯 Используем Capital.com или FXCM через безопасный формат тикера без падений
   const getCleanSymbol = (symbol: string) => {
     const clean = symbol.replace('/', '').toUpperCase();
     if (clean === 'BTCUSD' || clean === 'BTCUSDT') return 'BINANCE:BTCUSDT';
+    if (clean === 'EURUSD') return 'CAPITALCOM:EURUSD';
+    if (clean === 'GBPUSD') return 'CAPITALCOM:GBPUSD';
+    if (clean === 'USDJPY') return 'CAPITALCOM:USDJPY';
     return clean;
   };
 
