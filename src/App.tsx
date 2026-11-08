@@ -164,9 +164,13 @@ export default function App() {
     setStrategies(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
   };
 
+  // 🎯 Принудительный эталонный провайдер FXCM для точного совпадения котировок с Интрейд Бар
   const getCleanSymbol = (symbol: string) => {
     const clean = symbol.replace('/', '').toUpperCase();
     if (clean === 'BTCUSD' || clean === 'BTCUSDT') return 'BITSTAMP:BTCUSD';
+    if (clean === 'EURUSD') return 'FXCM:EURUSD';
+    if (clean === 'GBPUSD') return 'FXCM:GBPUSD';
+    if (clean === 'USDJPY') return 'FXCM:USDJPY';
     return clean;
   };
 
@@ -202,7 +206,7 @@ export default function App() {
         return { signal: 'SKIP', confidence: 0, tradeId: 0, reasoning: 'Ошибка ответа бэкенда', recommendedExpiration: '1M', bestPair: selectedPair.displaySymbol };
       }
     } catch (err) {
-      return { signal: 'SKIP', confidence: 0, tradeId: 0, reasoning: 'Сетевой сбой шлюза', recommendedExpiration: '1M', bestPair: selectedPair.displaySymbol };
+      return { signal: 'SKIP', confidence: 0, reasoning: 'Сетевой сбой шлюза', recommendedExpiration: '1M', bestPair: selectedPair.displaySymbol };
     }
   };
 
@@ -416,7 +420,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none">
-      {/* 🛡️ Принудительные стили для изоляции и устранения разрывов фреймов */}
       <style>{`
         iframe, canvas {
           display: block !important;
@@ -426,6 +429,9 @@ export default function App() {
           width: 100% !important;
           height: 100% !important;
           border: 0 !important;
+          -webkit-backface-visibility: hidden;
+          backface-visibility: hidden;
+          transform: translateZ(0);
         }
       `}</style>
 
@@ -634,7 +640,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* 🛡️ Фиксированный контейнер графиков с жестким абсолютным позиционированием */}
                   <div className="flex-1 w-full h-full border border-slate-800 bg-slate-950 rounded-xl overflow-hidden relative min-h-[500px]">
                     <iframe
                       key={`${selectedPair.symbol}-${displayTf}-${timezone}-${lang}`}
