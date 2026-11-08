@@ -1,22 +1,41 @@
 const express = require('express');
+const cors = require('cors');
+require('dotenv').config();
 const { getJointPrediction } = require('./ai-consensus');
+
 const app = express();
 
+app.use(cors());
 app.use(express.json());
 
-app.post('/api/get-signal', async (req, res) => {
-  const marketData = req.body; // Сюда передаем текущие свечи, пару, таймфрейм
-  
-  if (!marketData || !marketData.pair) {
-    return res.status(400).json({ error: "Нет данных о валютной паре" });
-  }
+// Единый эндпоинт, к которому стучится фронтенд (App.tsx)
+app.post('/api/analyze', async (req, res) => {
+  try {
+    const marketData = req.body;
+    
+    // Если пришел запрос на сохранение результата завершенной сделки
+    if (marketData.action === 'send_result') {
+      console.log(`📊 [РЕЗУЛЬТАТ СДЕЛКИ] #${marketData.tradeId} | ${marketData.pair} | ${marketData.direction} | ${marketData.isWin ? 'WIN' : 'LOSS'} (${marketData.pipsNum} п.)`);
+      return res.json({ success: true, message: 'Результат залогирован' });
+    }
 
-  // Получаем совместный вердикт от нас с ChatGPT
-  const prediction = await getJointPrediction(marketData);
-  
-  res.json(prediction);
+    // Стандартный запрос на анализ рынка для автопилота
+    const prediction = await getJointPrediction(marketData);
+    
+    res.json({
+      success: true,
+      result: prediction
+    });
+  } catch (error) {
+    console.error('Ошибка в шлюзе /api/analyze:', error);
+    res.status(500).json({ 
+      success: false, 
+      result: { signal: 'SKIP', confidence: 0, tradeId: Math.floor(Math.random() * 9000) + 1000, reasoning: 'Сбой серверного шлюза', recommendedExpiration: '1M' } 
+    });
+  }
 });
 
-app.listen(3000, () => {
-  console.log('Бэкенд мини-приложения запущен на порту 3000, братан!');
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🚀 Бэкенд ORACLE PRO запущен на порту ${PORT}, братан!`);
 });
