@@ -162,14 +162,11 @@ export default function App() {
     setStrategies(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
   };
 
-  // 🎯 Используем Capital.com или FXCM через безопасный формат тикера без падений
+  // 🎯 Жесткая привязка ВСЕХ пар к единому форекс-потоку Capital.com без случайных бирж типа ICE
   const getCleanSymbol = (symbol: string) => {
     const clean = symbol.replace('/', '').toUpperCase();
-    if (clean === 'BTCUSD' || clean === 'BTCUSDT') return 'BINANCE:BTCUSDT';
-    if (clean === 'EURUSD') return 'CAPITALCOM:EURUSD';
-    if (clean === 'GBPUSD') return 'CAPITALCOM:GBPUSD';
-    if (clean === 'USDJPY') return 'CAPITALCOM:USDJPY';
-    return clean;
+    if (clean.includes('BTC')) return 'BINANCE:BTCUSDT';
+    return `CAPITALCOM:${clean}`;
   };
 
   useEffect(() => {
