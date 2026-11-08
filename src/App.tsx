@@ -127,6 +127,7 @@ export default function App() {
     { id: 1, tradeId: 1001, time: '01:30', pair: 'EUR/USD', direction: 'CALL', result: 'WIN', pips: '+8 п.', status: 'FINISHED', openPrice: 1.08520, closePrice: 1.08600 }
   ]);
 
+  // 🛑 Жестко глушим звук, если переключатель в шапке выключен
   const playBeep = (type: 'alert' | 'sniper') => {
     if (!soundEnabled) return;
     try {
