@@ -7,13 +7,25 @@
     <title>ORACLE PRO — Trading Terminal</title>
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- 👇 Исправление графических артефактов и ряби на свечах TradingView -->
+    <!-- 👇 Исправление разрывов/смещения свечей и аппаратное сглаживание -->
     <style>
-      iframe, canvas, div[class*="tradingview"] {
+      /* Жесткая фиксация координат Canvas и фреймов, убирающая вертикальный гэп свечей */
+      iframe, canvas {
+        display: block !important;
+        vertical-align: top !important;
         image-rendering: -webkit-optimize-contrast;
+        image-rendering: crisp-edges;
         -webkit-backface-visibility: hidden;
         backface-visibility: hidden;
         transform: translateZ(0);
+      }
+
+      /* Точная привязка виджета TradingView к размерам контейнера */
+      div[class*="tradingview"], #chart-container iframe {
+        height: 100% !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
       }
     </style>
   </head>
