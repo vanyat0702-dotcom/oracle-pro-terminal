@@ -164,13 +164,10 @@ export default function App() {
     setStrategies(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
   };
 
-  // 🎯 Принудительный эталонный провайдер FXCM для точного совпадения котировок с Интрейд Бар
+  // 🎯 Исправленный чистый формат тикеров для стабильной работы виджета TradingView без ошибок
   const getCleanSymbol = (symbol: string) => {
     const clean = symbol.replace('/', '').toUpperCase();
-    if (clean === 'BTCUSD' || clean === 'BTCUSDT') return 'BITSTAMP:BTCUSD';
-    if (clean === 'EURUSD') return 'FXCM:EURUSD';
-    if (clean === 'GBPUSD') return 'FXCM:GBPUSD';
-    if (clean === 'USDJPY') return 'FXCM:USDJPY';
+    if (clean === 'BTCUSD' || clean === 'BTCUSDT') return 'BINANCE:BTCUSDT';
     return clean;
   };
 
