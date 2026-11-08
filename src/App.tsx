@@ -124,7 +124,7 @@ export default function App() {
     status: 'ACTIVE' | 'FINISHED';
     openPrice?: number;
     closePrice?: number;
-    detailedReport?: any; // 👈 Поддержка развернутого отчета
+    detailedReport?: any;
   }>>([
     { id: 1, tradeId: 1001, time: '01:30', pair: 'EUR/USD', direction: 'CALL', result: 'WIN', pips: '+8 п.', status: 'FINISHED', openPrice: 1.08520, closePrice: 1.08600 }
   ]);
@@ -186,7 +186,7 @@ export default function App() {
           pairs: activePairsSymbols,
           timeframe: tf,
           mode: riskModeRef.current,
-          safeModeEnabled: safeModeEnabled, // 👈 Передаем тумблер SAFE MODE
+          safeModeEnabled: safeModeEnabled,
           secondsRemaining: currentRemSec,
           candleOpenTime: openTimeStr,
           activeStrategies: activeStratNames,
@@ -356,7 +356,7 @@ export default function App() {
             pair: chosenPairSymbol, 
             direction: aiResult.signal, 
             status: 'ACTIVE',
-            detailedReport: aiResult.detailedReport // 👈 Сохраняем развернутый отчет в историю
+            detailedReport: aiResult.detailedReport
           },
           ...prev
         ]);
@@ -416,6 +416,19 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none">
+      {/* 🛡️ Принудительные стили для изоляции и устранения разрывов фреймов */}
+      <style>{`
+        iframe, canvas {
+          display: block !important;
+          vertical-align: top !important;
+          position: absolute !important;
+          inset: 0 !important;
+          width: 100% !important;
+          height: 100% !important;
+          border: 0 !important;
+        }
+      `}</style>
+
       <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Zap className="w-7 h-7 text-cyan-400 animate-pulse" />
@@ -472,8 +485,6 @@ export default function App() {
 
             {isSettingsOpen && (
               <div className="p-4 flex flex-col gap-3 bg-slate-950/60 backdrop-blur">
-                
-                {/* 🛡️ Тумблер SAFE MODE в настройках */}
                 <div className="flex items-center justify-between p-3 bg-slate-900/90 rounded-lg border border-emerald-500/40">
                   <div className="flex items-center gap-2">
                     <span className="text-xl">🛡️</span>
@@ -599,7 +610,7 @@ export default function App() {
             <div id="chart-container" className="lg:col-span-9 bg-slate-900/40 border border-slate-800 rounded-xl p-3 flex flex-col relative overflow-hidden backdrop-blur h-[620px] shadow-lg">
               {viewMode === 'single' ? (
                 <>
-                  <div className="flex justify-between items-center mb-2 px-1">
+                  <div className="flex justify-between items-center mb-2 px-1 z-10 relative">
                     <div className="flex items-center gap-2.5">
                       <LineChart className="w-5 h-5 text-cyan-400" />
                       <div>
@@ -623,11 +634,11 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="flex-1 w-full h-full border border-slate-800 bg-slate-950 rounded-xl overflow-hidden relative">
+                  {/* 🛡️ Фиксированный контейнер графиков с жестким абсолютным позиционированием */}
+                  <div className="flex-1 w-full h-full border border-slate-800 bg-slate-950 rounded-xl overflow-hidden relative min-h-[500px]">
                     <iframe
                       key={`${selectedPair.symbol}-${displayTf}-${timezone}-${lang}`}
                       src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${getCleanSymbol(selectedPair.displaySymbol)}&interval=${displayTf}&hidetoptoolbar=0&saveimage=1&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&studies[]=RSI@tv-basicstudies&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
-                      className="w-full h-full border-0 absolute inset-0"
                       title="TradingView Chart"
                     ></iframe>
                   </div>
@@ -635,8 +646,8 @@ export default function App() {
               ) : (
                 <div className="grid grid-cols-2 gap-3 flex-1 h-full min-h-[500px]">
                   {[quadPair1, quadPair2, quadPair3, quadPair4].map((qp, idx) => (
-                    <div key={idx} className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex flex-col">
-                      <div className="flex justify-between items-center mb-1.5">
+                    <div key={idx} className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex flex-col relative">
+                      <div className="flex justify-between items-center mb-1.5 z-10 relative">
                         <span className="font-bold text-xs text-cyan-400">{qp.displaySymbol}</span>
                         <span className="text-[10px] font-mono text-slate-400">{timeframe}M</span>
                       </div>
@@ -644,7 +655,6 @@ export default function App() {
                         <iframe
                           key={`quad-${qp.symbol}-${timeframe}-${timezone}`}
                           src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_${idx}&symbol=${getCleanSymbol(qp.displaySymbol)}&interval=${timeframe}&theme=dark&style=1&timezone=${timezone}&studies[]=RSI@tv-basicstudies&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}`}
-                          className="w-full h-full border-0 absolute inset-0"
                           title={`Chart ${idx}`}
                         ></iframe>
                       </div>
@@ -773,7 +783,6 @@ export default function App() {
                 ))}
               </div>
 
-              {/* Модальное окно детализации сделки + Развернутый отчет ИИ */}
               {selectedHistoryItem && (
                 <div className="absolute inset-0 bg-slate-950/95 backdrop-blur p-3 flex flex-col justify-between z-20 border border-cyan-500/40 rounded-xl animate-fadeIn overflow-y-auto">
                   <div className="space-y-2">
@@ -796,7 +805,6 @@ export default function App() {
                         <div className="flex justify-between"><span className="text-slate-400">Результат:</span><span className={`font-bold ${selectedHistoryItem.result === 'WIN' ? 'text-emerald-400' : 'text-rose-400'}`}>{selectedHistoryItem.result === 'WIN' ? '🟢 WIN' : '🔴 LOSS'} ({selectedHistoryItem.pips})</span></div>
                       )}
 
-                      {/* 📊 Развернутый отчет ИИ / Уровней */}
                       {selectedHistoryItem.detailedReport && (
                         <div className="mt-2 p-2 bg-slate-900/90 rounded border border-emerald-500/40 space-y-1 text-slate-300">
                           <div className="font-bold text-emerald-400">{selectedHistoryItem.detailedReport.mode}</div>
