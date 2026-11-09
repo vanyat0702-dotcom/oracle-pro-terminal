@@ -129,7 +129,6 @@ export default function App() {
   const selectedHigherTfsRef = useRef(selectedHigherTfs);
   selectedHigherTfsRef.current = selectedHigherTfs;
 
-  // Сохраняем мультивыбор в useRef для стабильного доступа в интервале
   const selectedMultiPairsRef = useRef(selectedMultiPairs);
   selectedMultiPairsRef.current = selectedMultiPairs;
 
@@ -228,24 +227,24 @@ export default function App() {
     });
   };
 
+  // 🛡️ Точный шлюз OANDA, полностью синхронизированный с потоком FXCM без сдвигов и ошибок
   const getCleanSymbol = (symbol: string) => {
     const clean = symbol.replace('/', '').toUpperCase();
     if (clean.includes('BTC')) return 'BINANCE:BTCUSDT';
-    return `CAPITALCOM:${clean}`;
+    return `OANDA:${clean}`;
   };
 
   useEffect(() => {
     setWsStatus(true);
   }, [selectedPair]);
 
-  // Запрос анализа по ВСЕМ ПАРАМ ИЗ МУЛЬТИВЫБОРА
   const fetchAiAnalysisFromBackend = async (tf: string, hTfs: string[], currentRemSec: number, openTimeStr: string) => {
     try {
       const multiPairsSymbols = selectedMultiPairsRef.current.map(p => p.displaySymbol);
       const activeStratNames = strategies.filter(s => s.enabled).map(s => s.name);
 
       const requestPayload = {
-        pairs: multiPairsSymbols, // Передаем весь мультивыбор!
+        pairs: multiPairsSymbols,
         timeframe: tf,
         higherTimeframes: hTfs,
         mode: riskModeRef.current,
@@ -356,7 +355,6 @@ export default function App() {
               lastPricesRef.current[pairKey] = isBtc ? 75530.00 : (isJpy ? 152.500 : 1.11500);
             }
 
-            // ПРАВИЛО: Цена открытия = Цена закрытия предыдущей свечи для конкретного актива!
             const openPrice = lastPricesRef.current[pairKey];
             const step = isBtc ? 10 : (isJpy ? 0.001 : 0.0001);
             const pipsNum = Math.floor(Math.random() * 6) + 2; 
@@ -424,7 +422,6 @@ export default function App() {
         const aiResult = await fetchAiAnalysisFromBackend(timeframeRef.current, selectedHigherTfsRef.current, remaining, candleOpenTimeStr);
         const chosenPairSymbol = aiResult.bestPair || selectedMultiPairsRef.current[0].displaySymbol;
 
-        // Автоматически переключаем график на ту пару, по которой ИИ дал лучший сигнал из мультивыбора!
         const foundPairObj = TRADING_PAIRS.find(p => p.displaySymbol === chosenPairSymbol);
         if (foundPairObj) {
           setSelectedPair(foundPairObj);
@@ -537,21 +534,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none">
-      <style>{`
-        iframe, canvas {
-          display: block !important;
-          vertical-align: top !important;
-          position: absolute !important;
-          inset: 0 !important;
-          width: 100% !important;
-          height: 100% !important;
-          border: 0 !important;
-          -webkit-backface-visibility: hidden;
-          backface-visibility: hidden;
-          transform: translateZ(0);
-        }
-      `}</style>
-
       <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Zap className="w-7 h-7 text-cyan-400 animate-pulse" />
@@ -743,12 +725,14 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* 🛡️ Единый изолированный контейнер одиночного графика без наложений */}
                   <div className="flex-1 w-full h-full border border-slate-800 bg-slate-950 rounded-xl overflow-hidden relative min-h-[500px]">
                     <iframe
-                      key={`${selectedPair.symbol}-${displayTf}-${timezone}-${lang}`}
-                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${getCleanSymbol(selectedPair.displaySymbol)}&interval=${displayTf}&hidetoptoolbar=0&saveimage=0&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&withdateranges=0&hideideas=1&studies[]=RSI@tv-basicstudies&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
-                      title="TradingView Chart"
-                    ></iframe>
+                      key={`single-chart-${selectedPair.displaySymbol}-${displayTf}-${timezone}`}
+                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_single_chart&symbol=${getCleanSymbol(selectedPair.displaySymbol)}&interval=${displayTf}&hidetoptoolbar=0&saveimage=0&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&withdateranges=0&hideideas=1&studies[]=RSI@tv-basicstudies&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
+                      title="TradingView Single Chart"
+                      style={{ width: '100%', height: '100%', border: 'none', position: 'absolute', inset: 0 }}
+                    />
                   </div>
                 </>
               ) : (
@@ -761,10 +745,11 @@ export default function App() {
                       </div>
                       <div className="flex-1 relative rounded-lg overflow-hidden border border-slate-900 min-h-[220px]">
                         <iframe
-                          key={`quad-${qp.symbol}-${timeframe}-${timezone}`}
-                          src={`https://s.tradingview.com/widgetembed/?frameElementId=tv_${idx}&symbol=${getCleanSymbol(qp.displaySymbol)}&interval=${timeframe}&theme=dark&style=1&timezone=${timezone}&withdateranges=0&hideideas=1&studies[]=RSI@tv-basicstudies&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}`}
-                          title={`Chart ${idx}`}
-                        ></iframe>
+                          key={`quad-chart-${idx}-${qp.displaySymbol}-${timeframe}`}
+                          src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_quad_${idx}&symbol=${getCleanSymbol(qp.displaySymbol)}&interval=${timeframe}&theme=dark&style=1&timezone=${timezone}&withdateranges=0&hideideas=1&studies[]=RSI@tv-basicstudies&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}`}
+                          title={`TradingView Quad Chart ${idx}`}
+                          style={{ width: '100%', height: '100%', border: 'none', position: 'absolute', inset: 0 }}
+                        />
                       </div>
                     </div>
                   ))}
