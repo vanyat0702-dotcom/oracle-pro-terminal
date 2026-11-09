@@ -87,9 +87,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { pairs, timeframe, secondsRemaining = 60 } = body;
     const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : ["EUR/USD", "BTC/USDT"];
     
-    // Выбираем случайную активную пару из твоего мультивыбора
     const selectedPair = targetPairs[Math.floor(Math.random() * targetPairs.length)];
-
     const remSecs = Number(secondsRemaining);
     const tradeId = Math.floor(1000 + Math.random() * 9000);
     const expMins = parseInt(timeframe, 10) || 1;
@@ -236,6 +234,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
   } catch (err) {
+    // Исправлено: безопасный fallback без падения по области видимости переменных
+    const fallbackPair = "EUR/USD";
     return res.status(200).json({
       success: true,
       result: {
@@ -244,7 +244,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         tradeId: Math.floor(1000 + Math.random() * 9000),
         reasoning: "🤖 [Резервный режим шлюза]",
         recommendedExpiration: "1M",
-        bestPair: targetPairs?.[0] || "EUR/USD",
+        bestPair: fallbackPair,
         candleOpenTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       }
     });
