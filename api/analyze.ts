@@ -42,9 +42,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const body = req.body || {};
 
-    // Жесткая проверка результата сделки по ценам терминала/свечи
+    // 1. Фиксация и проверка результата сделки по ценам терминала
     if (body.action === 'send_result') {
-      const { pair, direction, candleOpenTime, tradeId, openPrice, closePrice } = body;
+      const { pair, direction, tradeId, openPrice, closePrice } = body;
       
       const op = Number(openPrice) || 0;
       const cp = Number(closePrice) || 0;
@@ -60,7 +60,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         isWin = Math.random() > 0.4;
       }
 
-      const pipsNum = Math.abs(Math.round((cp - op) * 10000)) || Math.floor(3 + Math.random() * 12);
+      const isBtc = pair.includes('BTC');
+      const isJpy = pair.includes('JPY');
+      const pipsMultiplier = isBtc ? 1 : (isJpy ? 1000 : 10000);
+      const pipsNum = Math.abs(Math.round((cp - op) * pipsMultiplier)) || Math.floor(3 + Math.random() * 12);
 
       if (isWin) sessionWins++;
       else sessionLosses++;
@@ -71,23 +74,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const text = `📊 <b>ИТОГ СВЕЧИ [Сделка #${tradeId}]</b>\n\n` +
         `💱 <b>Актив:</b> ${pair}\n` +
-        `⏰ <b>Старт свечи:</b> ${candleOpenTime || 'Н/Д'}\n` +
         `🎯 <b>Прогноз:</b> ${direction === 'CALL' ? '🟢 CALL' : '🔴 PUT'}\n` +
         `📈 <b>Результат:</b> ${icon} (${pipsFormatted})\n` +
-        `🏷 <b>Котировки:</b> Откр: <code>${op.toFixed(5)}</code> ➔ Закр: <code>${cp.toFixed(5)}</code>\n\n` +
+        `🏷 <b>Котировки:</b> Откр: <code>${op.toFixed(isBtc ? 2 : 5)}</code> ➔ Закр: <code>${cp.toFixed(isBtc ? 2 : 5)}</code>\n\n` +
         `🏆 <b>Счет сессии:</b> ✅ ${sessionWins} | ❌ ${sessionLosses} (Winrate: ${winrate}%)`;
 
       await sendTelegramMessage(text);
       return res.status(200).json({ success: true, status: 'result_sent', isWin, pipsNum });
     }
 
-    const { pairs, timeframe, secondsRemaining = 60, candleOpenTime = '' } = body;
+    // 2. Логика генерации сигнала и синхронизации времени свечи
+    const { pairs, timeframe, secondsRemaining = 60 } = body;
     const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : ["EUR/USD", "BTC/USDT"];
     
     const selectedPair = targetPairs[Math.floor(Math.random() * targetPairs.length)];
     const remSecs = Number(secondsRemaining);
     const tradeId = Math.floor(1000 + Math.random() * 9000);
     const expMins = parseInt(timeframe, 10) || 1;
+
+    // Четкое выравнивание времени старта свечи по серверу (без хаоса)
+    const now = new Date();
+    const tfMins = parseInt(timeframe, 10) || 1;
+    const currentEpochSecs = Math.floor(now.getTime() / 1000);
+    const candleStartEpoch = currentEpochSecs - (currentEpochSecs % (tfMins * 60));
+    const normalizedCandleTime = new Date(candleStartEpoch * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     if (remSecs > 15) {
       return res.status(200).json({
@@ -98,7 +108,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           tradeId: tradeId,
           reasoning: `⏳ До закрытия свечи ${remSecs}с. Ожидание снайперского окна (<=15с).`,
           recommendedExpiration: `${expMins}M`,
-          bestPair: selectedPair
+          bestPair: selectedPair,
+          candleOpenTime: normalizedCandleTime
         }
       });
     }
@@ -218,7 +229,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         tradeId: tradeId,
         reasoning: combinedReasoning,
         recommendedExpiration: `${expMins}M`,
-        bestPair: selectedPair
+        bestPair: selectedPair,
+        candleOpenTime: normalizedCandleTime
       }
     });
 
@@ -231,7 +243,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         tradeId: Math.floor(1000 + Math.random() * 9000),
         reasoning: "🤖 [Резервный режим шлюза]",
         recommendedExpiration: "1M",
-        bestPair: "EUR/USD"
+        bestPair: "EUR/USD",
+        candleOpenTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       }
     });
   }
