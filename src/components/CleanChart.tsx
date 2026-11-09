@@ -14,10 +14,14 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
+    // Инициализация профессионального биржевого графика на Canvas
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: '#090d16' },
         textColor: '#94a3b8',
+      },
+      watermark: {
+        visible: false, // 👈 Полностью убираем любые водяные знаки
       },
       grid: {
         vertLines: { color: '#1e293b' },
@@ -47,6 +51,7 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
 
     candleSeriesRef.current = candlestickSeries;
 
+    // Генерация начальных биржевых данных свечей
     const isBtc = symbol.includes('BTC') || symbol.includes('Crypto');
     const basePrice = isBtc ? 75500 : 1.11900;
     const now = Math.floor(Date.now() / 1000);
@@ -76,6 +81,7 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
     let ws: WebSocket | null = null;
     let timer: any = null;
 
+    // Реальный поток котировок Binance для крипты или тиковый симулятор для форекса
     if (isBtc) {
       ws = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@kline_1m');
       ws.onmessage = (event) => {
