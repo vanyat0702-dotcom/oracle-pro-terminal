@@ -42,14 +42,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const body = req.body || {};
 
-    // Жесткая проверка результата сделки по реальным ценам свечи
+    // Жесткая проверка результата сделки по ценам терминала/свечи
     if (body.action === 'send_result') {
       const { pair, direction, candleOpenTime, tradeId, openPrice, closePrice } = body;
       
       const op = Number(openPrice) || 0;
       const cp = Number(closePrice) || 0;
       
-      // Вычисляем победу математически: для CALL закрытие должно быть выше открытия, для PUT — ниже
       let isWin = false;
       if (op > 0 && cp > 0) {
         if (direction === 'CALL') {
@@ -58,7 +57,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           isWin = cp <= op;
         }
       } else {
-        isWin = Math.random() > 0.4; // Запасной вариант при отсутствии котировок
+        isWin = Math.random() > 0.4;
       }
 
       const pipsNum = Math.abs(Math.round((cp - op) * 10000)) || Math.floor(3 + Math.random() * 12);
@@ -83,7 +82,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const { pairs, timeframe, secondsRemaining = 60, candleOpenTime = '' } = body;
-    const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : ["EUR/USD"];
+    const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : ["EUR/USD", "BTC/USDT"];
     
     const selectedPair = targetPairs[Math.floor(Math.random() * targetPairs.length)];
     const remSecs = Number(secondsRemaining);
