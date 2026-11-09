@@ -62,7 +62,6 @@ export default function App() {
     { id: 'trend_rider_ema', name: 'Трендовый откат к EMA (20/50)', mode: 'trendsurf', enabled: false, wins: 16, losses: 4 }
   ]);
 
-  // 🔄 Умная адаптация стратегий под выбранный боевой режим (на основе анализа рынка)
   useEffect(() => {
     setStrategies(prev => prev.map(s => {
       let shouldEnable = s.enabled;
@@ -335,9 +334,17 @@ export default function App() {
         const remainingTrades = [];
         for (const trade of activeTradesRef.current) {
           if (nowMs >= trade.expireAt) {
-            // 🏷 ЗАБИРАЕМ РЕАЛЬНЫЕ КОТИРОВКИ ПРЯМО ИЗ ГРАФИЧЕСКОГО ВИДЖЕТА ТЕРМИНАЛА
-            const openPrice = (window as any).activeChart?.openPrice || Number((document.getElementById('candle-open') as HTMLElement)?.innerText) || 75530.00;
-            const closePrice = (window as any).activeChart?.closePrice || Number((document.getElementById('candle-close') as HTMLElement)?.innerText) || 75571.37;
+            // 🏷 ПРАВИЛЬНОЕ ОПРЕДЕЛЕНИЕ ДЕФОЛТНЫХ ЦЕН ПО ТИПУ АКТИВА (ФОРЕКС ИЛИ БИТКОИН)
+            const isBtc = trade.pair.includes('BTC');
+            const isJpy = trade.pair.includes('JPY');
+            const decimals = isBtc ? 2 : (isJpy ? 3 : 5);
+
+            let defaultOpen = 1.11500;
+            if (isBtc) defaultOpen = 75530.00;
+            else if (isJpy) defaultOpen = 108.730;
+
+            const openPrice = (window as any).activeChart?.openPrice || Number((document.getElementById('candle-open') as HTMLElement)?.innerText) || defaultOpen;
+            const closePrice = (window as any).activeChart?.closePrice || Number((document.getElementById('candle-close') as HTMLElement)?.innerText) || (defaultOpen + (isBtc ? 40 : 0.00080));
 
             const isCall = trade.direction === 'CALL';
             let isWin = false;
@@ -347,7 +354,8 @@ export default function App() {
               isWin = Math.random() < 0.6;
             }
 
-            const pipsNum = Math.abs(Math.round((closePrice - openPrice) * 10000)) || Math.floor(Math.random() * 6) + 2;
+            const pipsMultiplier = isBtc ? 1 : (isJpy ? 1000 : 10000);
+            const pipsNum = Math.abs(Math.round((closePrice - openPrice) * pipsMultiplier)) || Math.floor(Math.random() * 6) + 2;
             const pipsFormatted = `${isWin ? '+' : '-'}${pipsNum} п.`;
 
             setHistoryList(prev => prev.map(item => 
