@@ -59,7 +59,8 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
     const loadChartData = async () => {
       if (isBtc) {
         try {
-          const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=${interval}m&limit=100`);
+          // Загружаем 300 свечей для полноценной глубокой истории на биткоине
+          const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=${interval}m&limit=300`);
           const data = await res.json();
           
           if (!isMounted) return;
@@ -93,17 +94,22 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
           console.error('Ошибка загрузки Binance:', e);
         }
       } else {
-        // Форекс-пары: честное случайное блуждание (Random Walk) без всяких синусоид
+        // Форекс: генерируем 300 свечей назад, чтобы график заполнял всю сессию
         const isJpy = symbol.includes('JPY');
         const basePrice = isJpy ? 152.500 : 1.11500;
         const stepSize = isJpy ? 0.03 : 0.0003;
-        const now = Math.floor(Date.now() / 1000);
         const stepSec = parseInt(interval, 10) * 60;
+        
+        const nowSec = Math.floor(Date.now() / 1000);
+        const totalBars = 300; // 300 баров истории для полной сессии
         const initialData = [];
         
         let currOpen = basePrice;
-        for (let i = 80; i >= 0; i--) {
-          const time = (now - i * stepSec) as any;
+        // Стартуем из прошлого, чтобы график шел до самого текущего момента
+        const startTime = nowSec - (totalBars * stepSec);
+
+        for (let i = 0; i < totalBars; i++) {
+          const time = (startTime + (i * stepSec)) as any;
           const change = (Math.random() - 0.49) * stepSize;
           const close = currOpen + change;
           const high = Math.max(currOpen, close) + Math.random() * (stepSize * 0.5);
