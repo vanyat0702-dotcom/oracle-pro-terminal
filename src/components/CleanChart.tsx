@@ -20,7 +20,7 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
         textColor: '#94a3b8',
       },
       watermark: {
-        visible: false,
+        visible: false, // Убираем водяной знак
       },
       grid: {
         vertLines: { color: '#1e293b' },
@@ -61,7 +61,9 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
     const loadChartData = async () => {
       if (isBtc) {
         try {
-          const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=${interval}m&limit=200`);
+          // Убираем слэш из символа для Binance API (BTC/USDT -> BTCUSDT)
+          const cleanSymbol = symbol.replace('/', '').toUpperCase();
+          const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}m&limit=200`);
           const data = await res.json();
           
           if (!isMounted) return;
@@ -77,7 +79,7 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
           candlestickSeries.setData(formattedData);
           chart.timeScale().fitContent();
 
-          ws = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@kline_1m');
+          ws = new WebSocket(`wss://stream.binance.com:9443/ws/${cleanSymbol.toLowerCase()}@kline_1m`);
           ws.onmessage = (event) => {
             const message = JSON.parse(event.data);
             if (message.k && isMounted) {
