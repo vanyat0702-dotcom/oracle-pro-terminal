@@ -42,7 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const body = req.body || {};
 
-    // 1. Фиксация и проверка результата сделки по ценам терминала
+    // 1. Проверка результата сделки по ценам терминала
     if (body.action === 'send_result') {
       const { pair, direction, tradeId, openPrice, closePrice } = body;
       
@@ -83,16 +83,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true, status: 'result_sent', isWin, pipsNum });
     }
 
-    // 2. Логика генерации сигнала и синхронизации времени свечи
+    // 2. Сканирование по массиву мультивыбора
     const { pairs, timeframe, secondsRemaining = 60 } = body;
     const targetPairs = Array.isArray(pairs) && pairs.length > 0 ? pairs : ["EUR/USD", "BTC/USDT"];
     
+    // Выбираем случайную активную пару из твоего мультивыбора
     const selectedPair = targetPairs[Math.floor(Math.random() * targetPairs.length)];
+
     const remSecs = Number(secondsRemaining);
     const tradeId = Math.floor(1000 + Math.random() * 9000);
     const expMins = parseInt(timeframe, 10) || 1;
 
-    // Четкое выравнивание времени старта свечи по серверу
     const now = new Date();
     const tfMins = parseInt(timeframe, 10) || 1;
     const currentEpochSecs = Math.floor(now.getTime() / 1000);
@@ -106,7 +107,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           signal: "SKIP",
           confidence: 0,
           tradeId: tradeId,
-          reasoning: `⏳ До закрытия свечи ${remSecs}с. Ожидание снайперского окна (<=15с).`,
+          reasoning: `⏳ До закрытия свечи ${remSecs}с. Сканирование мультивыбора (${targetPairs.length} пар).`,
           recommendedExpiration: `${expMins}M`,
           bestPair: selectedPair,
           candleOpenTime: normalizedCandleTime
@@ -207,7 +208,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await Promise.allSettled([gptPromise, geminiPromise]);
 
-    // ИСПРАВЛЕНИЕ ТИПА: явно разрешаем типы 'CALL' | 'PUT' | 'SKIP'
     let finalVerdict: 'CALL' | 'PUT' | 'SKIP' = 'CALL';
     let confidence = 85;
     let combinedReasoning = '';
@@ -244,7 +244,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         tradeId: Math.floor(1000 + Math.random() * 9000),
         reasoning: "🤖 [Резервный режим шлюза]",
         recommendedExpiration: "1M",
-        bestPair: "EUR/USD",
+        bestPair: targetPairs?.[0] || "EUR/USD",
         candleOpenTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       }
     });
