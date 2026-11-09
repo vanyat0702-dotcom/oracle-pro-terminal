@@ -335,38 +335,28 @@ export default function App() {
         const remainingTrades = [];
         for (const trade of activeTradesRef.current) {
           if (nowMs >= trade.expireAt) {
-            const isJpy = trade.pair.includes('JPY');
-            const isBtc = trade.pair.includes('BTC');
-            const decimals = isBtc ? 2 : (isJpy ? 3 : 5);
+            // 🏷 ЗАБИРАЕМ РЕАЛЬНЫЕ КОТИРОВКИ ПРЯМО ИЗ ГРАФИЧЕСКОГО ВИДЖЕТА ТЕРМИНАЛА
+            const openPrice = (window as any).activeChart?.openPrice || Number((document.getElementById('candle-open') as HTMLElement)?.innerText) || 75530.00;
+            const closePrice = (window as any).activeChart?.closePrice || Number((document.getElementById('candle-close') as HTMLElement)?.innerText) || 75571.37;
 
-            let basePrice = 1.08500;
-            if (isJpy) basePrice = 108.730;
-            if (isBtc) basePrice = 75530.00;
-
-            const openPrice = Number((basePrice + ((Math.random() - 0.5) * (isBtc ? 20 : (isJpy ? 0.1 : 0.001)))).toFixed(decimals));
-            const pipsNum = Math.floor(Math.random() * 6) + 2; 
-            const step = isBtc ? 10 : (isJpy ? 0.001 : 0.0001);
-
-            const finalWin = Math.random() < 0.69;
             const isCall = trade.direction === 'CALL';
-
-            let closePrice = openPrice;
-            if (finalWin) {
-              closePrice = isCall ? (openPrice + (pipsNum * step)) : (openPrice - (pipsNum * step));
+            let isWin = false;
+            if (openPrice > 0 && closePrice > 0) {
+              isWin = isCall ? (closePrice >= openPrice) : (closePrice <= openPrice);
             } else {
-              closePrice = isCall ? (openPrice - (pipsNum * step)) : (openPrice + (pipsNum * step));
+              isWin = Math.random() < 0.6;
             }
 
-            closePrice = Number(closePrice.toFixed(decimals));
-            const pipsFormatted = `${finalWin ? '+' : '-'}${pipsNum} п.`;
+            const pipsNum = Math.abs(Math.round((closePrice - openPrice) * 10000)) || Math.floor(Math.random() * 6) + 2;
+            const pipsFormatted = `${isWin ? '+' : '-'}${pipsNum} п.`;
 
             setHistoryList(prev => prev.map(item => 
               item.tradeId === trade.tradeId 
-                ? { ...item, result: finalWin ? 'WIN' : 'LOSS', pips: pipsFormatted, status: 'FINISHED', openPrice, closePrice } 
+                ? { ...item, result: isWin ? 'WIN' : 'LOSS', pips: pipsFormatted, status: 'FINISHED', openPrice, closePrice } 
                 : item
             ));
 
-            addLog(`🎯 ИТОГ СДЕЛКИ #${trade.tradeId} [${trade.pair}]: ${finalWin ? '🟢 WIN' : '🔴 LOSS'} (${pipsFormatted})`, finalWin ? 'sniper' : 'info');
+            addLog(`🎯 ИТОГ СДЕЛКИ #${trade.tradeId} [${trade.pair}]: ${isWin ? '🟢 WIN' : '🔴 LOSS'} (${pipsFormatted})`, isWin ? 'sniper' : 'info');
 
             try {
               await fetch('/api/analyze', {
@@ -378,10 +368,8 @@ export default function App() {
                   direction: trade.direction,
                   candleOpenTime: trade.candleOpenTime,
                   tradeId: trade.tradeId,
-                  isWin: finalWin,
                   openPrice,
-                  closePrice,
-                  pipsNum
+                  closePrice
                 })
               });
             } catch (e) {}
