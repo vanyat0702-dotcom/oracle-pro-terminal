@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ShieldCheck, Zap, LineChart, TrendingUp, TrendingDown, RefreshCw, Layers, BrainCircuit, LayoutGrid, Square, MessageSquare, Clock, Flame, StopCircle, History, Trash2, BookOpen, Volume2, VolumeX, Calculator, Sliders, CheckCircle2, Eye, CheckSquare, Square as SquareIcon, Filter, AlertTriangle, Activity, BarChart2, ChevronDown, ChevronUp, ChevronRight } from 'lucide-react';
+import { Zap, LineChart, RefreshCw, BrainCircuit, Clock, Flame, Sliders, ChevronDown, ChevronUp, ChevronRight, Volume2, VolumeX } from 'lucide-react';
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
+import { CleanChart } from './components/CleanChart';
 
 export default function App() {
   const [selectedPair, setSelectedPair] = useState<TradingPair>(() => {
@@ -30,7 +31,6 @@ export default function App() {
   const [displayTf, setDisplayTf] = useState<string>("1");
   const [selectedHigherTfs, setSelectedHigherTfs] = useState<string[]>(["15", "60"]);
   
-  const [wsStatus, setWsStatus] = useState<boolean>(true);
   const [viewMode, setViewMode] = useState<'single' | 'quad'>('single');
   const [timezone, setTimezone] = useState<'Europe/Moscow' | 'Etc/UTC'>('Europe/Moscow');
   const [lang, setLang] = useState<'ru' | 'en'>('ru');
@@ -50,7 +50,6 @@ export default function App() {
   const [riskCapEnabled, setRiskCapEnabled] = useState<boolean>(true);
   const [maxMartingaleStep, setMaxMartingaleStep] = useState<number>(3);
 
-  // 🧠 Трекер непрерывных цен (Open[N] = Close[N-1]) для каждой пары из мультивыбора
   const lastPricesRef = useRef<{ [key: string]: number }>({
     'EUR/USD': 1.11500,
     'GBP/USD': 1.28500,
@@ -59,35 +58,15 @@ export default function App() {
   });
 
   const [strategies, setStrategies] = useState([
-    { id: 'trend_following', name: 'Трендовый фильтр (Trend Master)', mode: 'balanced', enabled: true, wins: 14, losses: 3 },
-    { id: 'price_action', name: 'Price Action & Пин-бар', mode: 'sniper', enabled: true, wins: 19, losses: 5 },
-    { id: 'body_breakout', name: 'Защита тела свечи (Body Breakout)', mode: 'balanced', enabled: true, wins: 11, losses: 4 },
-    { id: 'rsi_bollinger', name: 'RSI + Bollinger Reversal', mode: 'antitilt', enabled: false, wins: 8, losses: 6 },
-    { id: 'vsa_volume', name: 'VSA Analysis (Объемы)', mode: 'balanced', enabled: true, wins: 15, losses: 4 },
-    { id: 'volume_scalping', name: 'Импульсный Скальпинг (1M)', mode: 'scalping', enabled: false, wins: 12, losses: 2 },
-    { id: 'breakout_impulse', name: 'Импульсный пробой уровня', mode: 'breakout', enabled: false, wins: 10, losses: 3 },
-    { id: 'trend_rider_ema', name: 'Трендовый откат к EMA (20/50)', mode: 'trendsurf', enabled: false, wins: 16, losses: 4 }
+    { id: 'trend_following', name: 'Трендовый фильтр (Trend Master)', enabled: true, wins: 14, losses: 3 },
+    { id: 'price_action', name: 'Price Action & Пин-бар', enabled: true, wins: 19, losses: 5 },
+    { id: 'body_breakout', name: 'Защита тела свечи (Body Breakout)', enabled: true, wins: 11, losses: 4 },
+    { id: 'rsi_bollinger', name: 'RSI + Bollinger Reversal', enabled: false, wins: 8, losses: 6 },
+    { id: 'vsa_volume', name: 'VSA Analysis (Объемы)', enabled: true, wins: 15, losses: 4 },
+    { id: 'volume_scalping', name: 'Импульсный Скальпинг (1M)', enabled: false, wins: 12, losses: 2 },
+    { id: 'breakout_impulse', name: 'Импульсный пробой уровня', enabled: false, wins: 10, losses: 3 },
+    { id: 'trend_rider_ema', name: 'Трендовый откат к EMA (20/50)', enabled: false, wins: 16, losses: 4 }
   ]);
-
-  useEffect(() => {
-    setStrategies(prev => prev.map(s => {
-      let shouldEnable = s.enabled;
-      if (riskMode === 'BALANCED') {
-        shouldEnable = ['trend_following', 'body_breakout', 'vsa_volume'].includes(s.id);
-      } else if (riskMode === 'SAFE') {
-        shouldEnable = ['price_action', 'vsa_volume', 'trend_following'].includes(s.id);
-      } else if (riskMode === 'AGGRESSIVE') {
-        shouldEnable = ['volume_scalping', 'breakout_impulse'].includes(s.id);
-      } else if (riskMode === 'BREAKOUT') {
-        shouldEnable = ['breakout_impulse', 'body_breakout'].includes(s.id);
-      } else if (riskMode === 'ANTITILT') {
-        shouldEnable = ['rsi_bollinger', 'trend_following'].includes(s.id);
-      } else if (riskMode === 'TRENDSURF') {
-        shouldEnable = ['trend_rider_ema', 'trend_following'].includes(s.id);
-      }
-      return { ...s, enabled: shouldEnable };
-    }));
-  }, [riskMode]);
 
   useEffect(() => {
     try { localStorage.setItem('oracle_selected_pair', JSON.stringify(selectedPair)); } catch (e) {}
@@ -107,10 +86,10 @@ export default function App() {
   const [startAmount, setStartAmount] = useState<string>("100");
   const [payoutPercent, setPayoutPercent] = useState<string>("85");
 
-  const [quadPair1, setQuadPair1] = useState<TradingPair>(TRADING_PAIRS[11]);
-  const [quadPair2, setQuadPair2] = useState<TradingPair>(TRADING_PAIRS[14]);
-  const [quadPair3, setQuadPair3] = useState<TradingPair>(TRADING_PAIRS[19]);
-  const [quadPair4, setQuadPair4] = useState<TradingPair>(TRADING_PAIRS[20]);
+  const [quadPair1] = useState<TradingPair>(TRADING_PAIRS[11]);
+  const [quadPair2] = useState<TradingPair>(TRADING_PAIRS[14]);
+  const [quadPair3] = useState<TradingPair>(TRADING_PAIRS[19]);
+  const [quadPair4] = useState<TradingPair>(TRADING_PAIRS[20]);
 
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [auditStepText, setAuditStepText] = useState<string>('');
@@ -138,12 +117,7 @@ export default function App() {
   const activeTradesRef = useRef<Array<{ tradeId: number; pair: string; direction: 'CALL' | 'PUT'; candleOpenTime: string; expireAt: number; expMins: number }>>([]);
 
   const [aiLogs, setAiLogs] = useState<Array<{ id: number; time: string; text: string; type: 'info' | 'level' | 'pattern' | 'sniper' | 'vision' }>>([
-    { 
-      id: 1, 
-      time: '00:01', 
-      text: 'Vision AI Core v10.5: Адаптивные боевые профили активированы.', 
-      type: 'info' 
-    }
+    { id: 1, time: '00:01', text: 'Vision AI Core v10.5: Адаптивные боевые профили активированы.', type: 'info' }
   ]);
 
   const [historyList, setHistoryList] = useState<Array<{ 
@@ -226,17 +200,6 @@ export default function App() {
       }
     });
   };
-
-  // 🛡️ Точный шлюз OANDA, полностью синхронизированный с потоком FXCM без сдвигов и ошибок
-  const getCleanSymbol = (symbol: string) => {
-    const clean = symbol.replace('/', '').toUpperCase();
-    if (clean.includes('BTC')) return 'BINANCE:BTCUSDT';
-    return `OANDA:${clean}`;
-  };
-
-  useEffect(() => {
-    setWsStatus(true);
-  }, [selectedPair]);
 
   const fetchAiAnalysisFromBackend = async (tf: string, hTfs: string[], currentRemSec: number, openTimeStr: string) => {
     try {
@@ -725,13 +688,12 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* 🛡️ Единый изолированный контейнер одиночного графика без наложений */}
                   <div className="flex-1 w-full h-full border border-slate-800 bg-slate-950 rounded-xl overflow-hidden relative min-h-[500px]">
-                    <iframe
-                      key={`single-chart-${selectedPair.displaySymbol}-${displayTf}-${timezone}`}
-                      src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_single_chart&symbol=${getCleanSymbol(selectedPair.displaySymbol)}&interval=${displayTf}&hidetoptoolbar=0&saveimage=0&toolbarbg=0f172a&theme=dark&style=1&timezone=${timezone}&withdateranges=0&hideideas=1&studies[]=RSI@tv-basicstudies&hide_top_toolbar=0&hide_side_toolbar=0&locale=${lang}`}
-                      title="TradingView Single Chart"
-                      style={{ width: '100%', height: '100%', border: 'none', position: 'absolute', inset: 0 }}
+                    <CleanChart 
+                      symbol={selectedPair.displaySymbol} 
+                      interval={displayTf} 
+                      timezone={timezone} 
+                      lang={lang} 
                     />
                   </div>
                 </>
@@ -744,11 +706,11 @@ export default function App() {
                         <span className="text-[10px] font-mono text-slate-400">{timeframe}M ({riskMode})</span>
                       </div>
                       <div className="flex-1 relative rounded-lg overflow-hidden border border-slate-900 min-h-[220px]">
-                        <iframe
-                          key={`quad-chart-${idx}-${qp.displaySymbol}-${timeframe}`}
-                          src={`https://s.tradingview.com/widgetembed/?frameElementId=tradingview_quad_${idx}&symbol=${getCleanSymbol(qp.displaySymbol)}&interval=${timeframe}&theme=dark&style=1&timezone=${timezone}&withdateranges=0&hideideas=1&studies[]=RSI@tv-basicstudies&hide_top_toolbar=1&hide_side_toolbar=1&locale=${lang}`}
-                          title={`TradingView Quad Chart ${idx}`}
-                          style={{ width: '100%', height: '100%', border: 'none', position: 'absolute', inset: 0 }}
+                        <CleanChart 
+                          symbol={qp.displaySymbol} 
+                          interval={timeframe} 
+                          timezone={timezone} 
+                          lang={lang} 
                         />
                       </div>
                     </div>
