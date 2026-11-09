@@ -174,9 +174,20 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
   }, [symbol, interval]);
 
   return (
-    <div 
-      ref={chartContainerRef} 
-      className="w-full h-full min-h-[480px] relative rounded-xl overflow-hidden bg-slate-950" 
-    />
+    <>
+      <style>{`
+        /* Жесткое скрытие копирайта lightweight-charts через инъекцию стилей */
+        #tv-attr-logo {
+          display: none !important;
+          visibility: hidden !important;
+          opacity: 0 !important;
+          pointer-events: none !important;
+        }
+      `}</style>
+      <div 
+        ref={chartContainerRef} 
+        className="w-full h-full min-h-[480px] relative rounded-xl overflow-hidden bg-slate-950" 
+      />
+    </>
   );
 };
