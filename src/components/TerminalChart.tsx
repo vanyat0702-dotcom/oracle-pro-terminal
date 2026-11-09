@@ -1,12 +1,12 @@
 import React, { useEffect, useRef } from 'react';
 import { createChart, ColorType, IChartApi, ISeriesApi } from 'lightweight-charts';
 
-interface CleanChartProps {
+interface TerminalChartProps {
   symbol: string;
   interval: string;
 }
 
-export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
+export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
@@ -20,7 +20,7 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
         textColor: '#94a3b8',
       },
       watermark: {
-        visible: false, // Убираем водяной знак
+        visible: false,
       },
       grid: {
         vertLines: { color: '#1e293b' },
@@ -61,7 +61,6 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
     const loadChartData = async () => {
       if (isBtc) {
         try {
-          // Убираем слэш из символа для Binance API (BTC/USDT -> BTCUSDT)
           const cleanSymbol = symbol.replace('/', '').toUpperCase();
           const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}m&limit=200`);
           const data = await res.json();
