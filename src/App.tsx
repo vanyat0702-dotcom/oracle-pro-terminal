@@ -960,3 +960,4 @@ export default function App() {
     </div>
   );
 }
+// v10.6-canvas-fix
