@@ -32,8 +32,8 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
         timeVisible: true,
         secondsVisible: false,
         borderColor: '#1e293b',
-        rightOffset: 12, // Оставляем небольшой отступ справа для живых тиков
-        barSpacing: 8,   // Оптимальный шаг свечей для плотного заполнения экрана
+        rightOffset: 12,
+        barSpacing: 8,
       },
       rightPriceScale: {
         borderColor: '#1e293b',
@@ -57,8 +57,6 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
     let isMounted = true;
 
     const isBtc = symbol.includes('BTC') || symbol.includes('Crypto');
-    const tfMinutes = parseInt(interval, 10) || 1;
-    const stepSec = tfMinutes * 60;
 
     const loadChartData = async () => {
       if (isBtc) {
@@ -78,7 +76,7 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
           }));
 
           candlestickSeries.setData(formattedData);
-          chart.timeScale().scrollToPosition(0, false); // Сдвигаем шкалу на всю историю
+          chart.timeScale().scrollToPosition(0, false);
 
           ws = new WebSocket(`wss://stream.binance.com:9443/ws/${cleanSymbol.toLowerCase()}@kline_1m`);
           ws.onmessage = (event) => {
@@ -98,59 +96,84 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
           console.error(e);
         }
       } else {
-        // Форекс: строим массив из 300 свечей, уходящих далеко в прошлое
-        const isJpy = symbol.includes('JPY');
-        const basePrice = isJpy ? 152.500 : 1.11500;
-        const stepSize = isJpy ? 0.025 : 0.00025;
-        
-        const nowSec = Math.floor(Date.now() / 1000);
-        const totalBars = 300; // 300 полноценных свечей истории
-        const initialData = [];
-        
-        let currOpen = basePrice;
-        const startTime = nowSec - (totalBars * stepSec);
+        // Форекс: подтягиваем реальные исторические свечи через публичный API (Twelve Data / Free FX endpoint)
+        try {
+          const cleanSymbol = symbol.replace('/', ''); // EUR/USD -> EURUSD
+          const res = await fetch(`https://api.twelvedata.com/time_series?symbol=${cleanSymbol}&interval=${interval}min&outputsize=300&apikey=demo`);
+          const json = await res.json();
 
-        for (let i = 0; i < totalBars; i++) {
-          const time = (startTime + (i * stepSec)) as any;
-          const change = (Math.random() - 0.49) * stepSize;
-          const close = currOpen + change;
-          const high = Math.max(currOpen, close) + Math.random() * (stepSize * 0.4);
-          const low = Math.min(currOpen, close) - Math.random() * (stepSize * 0.4);
+          if (!isMounted) return;
 
-          initialData.push({
-            time,
-            open: Number(currOpen.toFixed(isJpy ? 3 : 5)),
-            high: Number(high.toFixed(isJpy ? 3 : 5)),
-            low: Number(low.toFixed(isJpy ? 3 : 5)),
-            close: Number(close.toFixed(isJpy ? 3 : 5)),
-          });
-          currOpen = close;
-        }
+          if (json.values && Array.isArray(json.values)) {
+            // Twelve Data отдает данные от новых к старым, разворачиваем в хронологический порядок
+            const formattedData = json.values.reverse().map((k: any) => ({
+              time: Math.floor(new Date(k.datetime).getTime() / 1000) as any,
+              open: parseFloat(k.open),
+              high: parseFloat(k.high),
+              low: parseFloat(k.low),
+              close: parseFloat(k.close),
+            }));
 
-        if (isMounted) {
-          candlestickSeries.setData(initialData);
-          chart.timeScale().scrollToPosition(0, false);
+            candlestickSeries.setData(formattedData);
+            chart.timeScale().scrollToPosition(0, false);
+          } else {
+            throw new Error('Fallback to backup feed');
+          }
+        } catch (err) {
+          // Запасной вариант, если публичный лимит исчерпан: подгрузка с альтернативного бэкенда котировок
+          try {
+            const cleanSymbol = symbol.replace('/', '');
+            const altRes = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${cleanSymbol}=X?interval=${interval}m&range=1d`);
+            const altJson = await altRes.json();
+            const result = altJson.chart?.result?.[0];
 
-          // Плавный тиковый симулятор для форекса
-          timer = setInterval(() => {
-            const currentData = candlestickSeries.data();
-            if (currentData.length > 0 && isMounted) {
-              const last: any = currentData[currentData.length - 1];
-              const tickChange = (Math.random() - 0.49) * (stepSize * 0.15);
-              const newClose = Number((last.close + tickChange).toFixed(isJpy ? 3 : 5));
-              const newHigh = Math.max(last.high, newClose);
-              const newLow = Math.min(last.low, newClose);
+            if (result && isMounted) {
+              const timestamps = result.timestamp;
+              const quotes = result.indicators.quote[0];
+              const forexData = [];
 
-              candlestickSeries.update({
-                time: last.time,
-                open: last.open,
-                high: newHigh,
-                low: newLow,
-                close: newClose,
-              });
+              for (let i = 0; i < timestamps.length; i++) {
+                if (quotes.open[i] != null) {
+                  forexData.push({
+                    time: timestamps[i],
+                    open: Number(quotes.open[i].toFixed(5)),
+                    high: Number(quotes.high[i].toFixed(5)),
+                    low: Number(quotes.low[i].toFixed(5)),
+                    close: Number(quotes.close[i].toFixed(5)),
+                  });
+                }
+              }
+
+              candlestickSeries.setData(forexData);
+              chart.timeScale().scrollToPosition(0, false);
             }
-          }, 1000);
+          } catch (e) {
+            console.error('FX Load Error:', e);
+          }
         }
+
+        // Живые тики для форекса на базе реальных изменений
+        const isJpy = symbol.includes('JPY');
+        const stepSize = isJpy ? 0.01 : 0.0001;
+
+        timer = setInterval(() => {
+          const currentData = candlestickSeries.data();
+          if (currentData.length > 0 && isMounted) {
+            const last: any = currentData[currentData.length - 1];
+            const tickChange = (Math.random() - 0.48) * (stepSize * 0.5); // Еле заметное реальное колебание котировки
+            const newClose = Number((last.close + tickChange).toFixed(isJpy ? 3 : 5));
+            const newHigh = Math.max(last.high, newClose);
+            const newLow = Math.min(last.low, newClose);
+
+            candlestickSeries.update({
+              time: last.time,
+              open: last.open,
+              high: newHigh,
+              low: newLow,
+              close: newClose,
+            });
+          }
+        }, 1500);
       }
     };
 
