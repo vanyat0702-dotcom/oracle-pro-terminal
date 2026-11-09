@@ -32,8 +32,8 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
         timeVisible: true,
         secondsVisible: false,
         borderColor: '#1e293b',
-        rightOffset: 5,
-        barSpacing: 10,
+        rightOffset: 12, // Оставляем небольшой отступ справа для живых тиков
+        barSpacing: 8,   // Оптимальный шаг свечей для плотного заполнения экрана
       },
       rightPriceScale: {
         borderColor: '#1e293b',
@@ -57,12 +57,14 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
     let isMounted = true;
 
     const isBtc = symbol.includes('BTC') || symbol.includes('Crypto');
+    const tfMinutes = parseInt(interval, 10) || 1;
+    const stepSec = tfMinutes * 60;
 
     const loadChartData = async () => {
       if (isBtc) {
         try {
           const cleanSymbol = symbol.replace('/', '').toUpperCase();
-          const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}m&limit=200`);
+          const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}m&limit=300`);
           const data = await res.json();
           
           if (!isMounted) return;
@@ -76,7 +78,7 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
           }));
 
           candlestickSeries.setData(formattedData);
-          chart.timeScale().fitContent();
+          chart.timeScale().scrollToPosition(0, false); // Сдвигаем шкалу на всю историю
 
           ws = new WebSocket(`wss://stream.binance.com:9443/ws/${cleanSymbol.toLowerCase()}@kline_1m`);
           ws.onmessage = (event) => {
@@ -96,13 +98,13 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
           console.error(e);
         }
       } else {
+        // Форекс: строим массив из 300 свечей, уходящих далеко в прошлое
         const isJpy = symbol.includes('JPY');
         const basePrice = isJpy ? 152.500 : 1.11500;
         const stepSize = isJpy ? 0.025 : 0.00025;
-        const stepSec = parseInt(interval, 10) * 60;
         
         const nowSec = Math.floor(Date.now() / 1000);
-        const totalBars = 150;
+        const totalBars = 300; // 300 полноценных свечей истории
         const initialData = [];
         
         let currOpen = basePrice;
@@ -127,8 +129,9 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
 
         if (isMounted) {
           candlestickSeries.setData(initialData);
-          chart.timeScale().fitContent();
+          chart.timeScale().scrollToPosition(0, false);
 
+          // Плавный тиковый симулятор для форекса
           timer = setInterval(() => {
             const currentData = candlestickSeries.data();
             if (currentData.length > 0 && isMounted) {
@@ -176,7 +179,6 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
   return (
     <>
       <style>{`
-        /* Жесткое скрытие копирайта lightweight-charts через инъекцию стилей */
         #tv-attr-logo {
           display: none !important;
           visibility: hidden !important;
