@@ -142,3 +142,4 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
     />
   );
 };
+// render update v2
