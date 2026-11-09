@@ -102,7 +102,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({
         success: true,
         result: {
-          signal: "SKIP",
+          signal: "SKIP" as const,
           confidence: 0,
           tradeId: tradeId,
           reasoning: `⏳ До закрытия свечи ${remSecs}с. Сканирование мультивыбора (${targetPairs.length} пар).`,
@@ -223,7 +223,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       success: true,
       result: {
-        signal: finalVerdict,
+        signal: finalVerdict as ('CALL' | 'PUT' | 'SKIP'),
         confidence: confidence,
         tradeId: tradeId,
         reasoning: combinedReasoning,
@@ -234,12 +234,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
   } catch (err) {
-    // Исправлено: безопасный fallback без падения по области видимости переменных
     const fallbackPair = "EUR/USD";
     return res.status(200).json({
       success: true,
       result: {
-        signal: "CALL",
+        signal: "CALL" as const,
         confidence: 80,
         tradeId: Math.floor(1000 + Math.random() * 9000),
         reasoning: "🤖 [Резервный режим шлюза]",
