@@ -14,14 +14,13 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    // Инициализация чистого графика на Canvas без водяных знаков
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: '#030712' },
         textColor: '#94a3b8',
       },
       watermark: {
-        visible: false, // 👈 Полное удаление любых водяных знаков
+        visible: false,
       },
       grid: {
         vertLines: { color: '#1e293b' },
@@ -57,11 +56,9 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
 
     const isBtc = symbol.includes('BTC') || symbol.includes('Crypto');
 
-    // Функция загрузки реальных данных
     const loadChartData = async () => {
       if (isBtc) {
         try {
-          // Загружаем реальную историю свечей с Binance REST API (последние 100 свечей)
           const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=${interval}m&limit=100`);
           const data = await res.json();
           
@@ -78,7 +75,6 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
           candlestickSeries.setData(formattedData);
           chart.timeScale().fitContent();
 
-          // Подключаем живой WebSocket Binance для реальных котировок
           ws = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@kline_1m');
           ws.onmessage = (event) => {
             const message = JSON.parse(event.data);
@@ -94,29 +90,31 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
             }
           };
         } catch (e) {
-          console.error('Ошибка загрузки истории Binance:', e);
+          console.error('Ошибка загрузки Binance:', e);
         }
       } else {
-        // Для Форекс-пар: формируем реалистичный стартовый срез и плавный тиковый поток
-        const basePrice = symbol.includes('JPY') ? 152.500 : 1.11500;
+        // Форекс-пары: честное случайное блуждание (Random Walk) без всяких синусоид
+        const isJpy = symbol.includes('JPY');
+        const basePrice = isJpy ? 152.500 : 1.11500;
+        const stepSize = isJpy ? 0.03 : 0.0003;
         const now = Math.floor(Date.now() / 1000);
         const stepSec = parseInt(interval, 10) * 60;
         const initialData = [];
+        
         let currOpen = basePrice;
-
         for (let i = 80; i >= 0; i--) {
           const time = (now - i * stepSec) as any;
-          const delta = (Math.sin(i * 0.3) * 0.0015) + ((Math.random() - 0.5) * 0.0008);
-          const close = currOpen + delta;
-          const high = Math.max(currOpen, close) + Math.random() * 0.0004;
-          const low = Math.min(currOpen, close) - Math.random() * 0.0004;
+          const change = (Math.random() - 0.49) * stepSize;
+          const close = currOpen + change;
+          const high = Math.max(currOpen, close) + Math.random() * (stepSize * 0.5);
+          const low = Math.min(currOpen, close) - Math.random() * (stepSize * 0.5);
 
           initialData.push({
             time,
-            open: Number(currOpen.toFixed(5)),
-            high: Number(high.toFixed(5)),
-            low: Number(low.toFixed(5)),
-            close: Number(close.toFixed(5)),
+            open: Number(currOpen.toFixed(isJpy ? 3 : 5)),
+            high: Number(high.toFixed(isJpy ? 3 : 5)),
+            low: Number(low.toFixed(isJpy ? 3 : 5)),
+            close: Number(close.toFixed(isJpy ? 3 : 5)),
           });
           currOpen = close;
         }
@@ -125,13 +123,12 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
           candlestickSeries.setData(initialData);
           chart.timeScale().fitContent();
 
-          // Тиковый симулятор для форекса на базе реальных микро-флуктуаций
           timer = setInterval(() => {
             const currentData = candlestickSeries.data();
             if (currentData.length > 0 && isMounted) {
               const last: any = currentData[currentData.length - 1];
-              const tick = (Math.random() - 0.49) * 0.00015;
-              const newClose = Number((last.close + tick).toFixed(5));
+              const tickChange = (Math.random() - 0.49) * (stepSize * 0.2);
+              const newClose = Number((last.close + tickChange).toFixed(isJpy ? 3 : 5));
               const newHigh = Math.max(last.high, newClose);
               const newLow = Math.min(last.low, newClose);
 
