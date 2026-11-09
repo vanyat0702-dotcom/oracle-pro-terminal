@@ -134,7 +134,7 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
   return (
     <div 
       ref={chartContainerRef} 
-      className="w-full h-full min-h-[480px] relative rounded-xl overflow-hidden" 
+      className="w-full h-full min-h-[480px] relative rounded-xl overflow-hidden bg-slate-950" 
     />
   );
 };
