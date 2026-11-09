@@ -14,7 +14,7 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    // Создаем локальный график на чистом Canvas без iframe и разрывов
+    // Создаем чистый локальный график
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: '#090d16' },
@@ -48,32 +48,73 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
 
     candleSeriesRef.current = candlestickSeries;
 
-    // Генерация слитного массива свечей (цена открытия строго равна закрытию предыдущей)
-    const basePrice = symbol.includes('BTC') ? 75500 : 1.11900;
+    // Базовые данные для старта
+    const isBtc = symbol.includes('BTC') || symbol.includes('Crypto');
+    const basePrice = isBtc ? 75500 : 1.11900;
     const now = Math.floor(Date.now() / 1000);
     const step = parseInt(interval, 10) * 60;
     const initialData = [];
 
     let currentOpen = basePrice;
-    for (let i = 50; i >= 0; i--) {
+    for (let i = 60; i >= 0; i--) {
       const time = (now - i * step) as any;
-      const variation = (Math.random() - 0.49) * (symbol.includes('BTC') ? 50 : 0.0003);
+      const variation = (Math.random() - 0.48) * (isBtc ? 40 : 0.0002);
       const close = currentOpen + variation;
-      const high = Math.max(currentOpen, close) + Math.random() * (symbol.includes('BTC') ? 20 : 0.0001);
-      const low = Math.min(currentOpen, close) - Math.random() * (symbol.includes('BTC') ? 20 : 0.0001);
+      const high = Math.max(currentOpen, close) + Math.random() * (isBtc ? 15 : 0.0001);
+      const low = Math.min(currentOpen, close) - Math.random() * (isBtc ? 15 : 0.0001);
 
       initialData.push({
         time,
-        open: Number(currentOpen.toFixed(5)),
-        high: Number(high.toFixed(5)),
-        low: Number(low.toFixed(5)),
-        close: Number(close.toFixed(5)),
+        open: Number(currentOpen.toFixed(isBtc ? 2 : 5)),
+        high: Number(high.toFixed(isBtc ? 2 : 5)),
+        low: Number(low.toFixed(isBtc ? 2 : 5)),
+        close: Number(close.toFixed(isBtc ? 2 : 5)),
       });
-
       currentOpen = close;
     }
 
     candlestickSeries.setData(initialData);
+
+    let ws: WebSocket | null = null;
+    let timer: any = null;
+
+    // Если это криптовалюта (например, BTC/USDT), подключаем реальный WebSocket Binance в реальном времени!
+    if (isBtc) {
+      ws = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@kline_1m');
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        if (message.k) {
+          const kline = message.k;
+          candlestickSeries.update({
+            time: Math.floor(kline.t / 1000) as any,
+            open: parseFloat(kline.o),
+            high: parseFloat(kline.h),
+            low: parseFloat(kline.l),
+            close: parseFloat(kline.c),
+          });
+        }
+      };
+    } else {
+      // Для форекс-пар запускаем живой симулятор тиков, который плавно двигает последнюю свечу в реальном времени
+      timer = setInterval(() => {
+        const currentData = candlestickSeries.data();
+        if (currentData.length > 0) {
+          const lastCandle: any = currentData[currentData.length - 1];
+          const tickVariation = (Math.random() - 0.49) * 0.0001;
+          const newClose = Number((lastCandle.close + tickVariation).toFixed(5));
+          const newHigh = Math.max(lastCandle.high, newClose);
+          const newLow = Math.min(lastCandle.low, newClose);
+
+          candlestickSeries.update({
+            time: lastCandle.time,
+            open: lastCandle.open,
+            high: newHigh,
+            low: newLow,
+            close: newClose,
+          });
+        }
+      }, 1000);
+    }
 
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current) {
@@ -88,6 +129,8 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      if (ws) ws.close();
+      if (timer) clearInterval(timer);
       chart.remove();
     };
   }, [symbol, interval]);
