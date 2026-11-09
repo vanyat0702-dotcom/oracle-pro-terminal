@@ -92,7 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const tradeId = Math.floor(1000 + Math.random() * 9000);
     const expMins = parseInt(timeframe, 10) || 1;
 
-    // Четкое выравнивание времени старта свечи по серверу (без хаоса)
+    // Четкое выравнивание времени старта свечи по серверу
     const now = new Date();
     const tfMins = parseInt(timeframe, 10) || 1;
     const currentEpochSecs = Math.floor(now.getTime() / 1000);
@@ -135,7 +135,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const timeoutId = setTimeout(() => controller.abort(), 5000);
 
         const prompt = `Ты профессиональный Price Action трейдер. Актив: ${selectedPair}. 15M=${trend15m}, 30M=${trend30m}, RSI(5M)=${rsi5m}. Свеча: тени (верх:${upperShadow}, низ:${lowerShadow}), тип: ${candleType}. 
-Ответ строго JSON: {"signal": "CALL" или "PUT", "reasoning": "Краткое обоснование на русском"}`;
+Ответ строго JSON: {"signal": "CALL" или "PUT" или "SKIP", "reasoning": "Краткое обоснование на русском"}`;
 
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
           method: 'POST',
@@ -160,7 +160,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         if (rawSignal.includes("CALL")) gptVerdict = "CALL";
         else if (rawSignal.includes("PUT")) gptVerdict = "PUT";
-        else gptVerdict = "CALL";
+        else gptVerdict = "SKIP";
 
         gptReasoning = content.reasoning || "Анализ структуры Price Action выполнен.";
       } catch (e) {
@@ -175,7 +175,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const timeoutId = setTimeout(() => controller.abort(), 5000);
 
         const prompt = `Аналитик. Актив: ${selectedPair}. 15M=${trend15m}, 30M=${trend30m}, RSI=${rsi5m}. Свеча: ${candleType}. 
-Ответ строго JSON: {"signal": "CALL" или "PUT", "reasoning": "Краткое пояснение"}`;
+Ответ строго JSON: {"signal": "CALL" или "PUT" или "SKIP", "reasoning": "Краткое пояснение"}`;
 
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
         const response = await fetch(url, {
@@ -196,7 +196,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         if (rawSignal.includes("PUT")) geminiVerdict = "PUT";
         else if (rawSignal.includes("CALL")) geminiVerdict = "CALL";
-        else geminiVerdict = "CALL";
+        else geminiVerdict = "SKIP";
 
         geminiReasoning = content.reasoning || "Мультивременной консенсус подтвержден.";
       } catch (e) {
@@ -207,7 +207,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await Promise.allSettled([gptPromise, geminiPromise]);
 
-    let finalVerdict: 'CALL' | 'PUT' = 'CALL';
+    // ИСПРАВЛЕНИЕ ТИПА: явно разрешаем типы 'CALL' | 'PUT' | 'SKIP'
+    let finalVerdict: 'CALL' | 'PUT' | 'SKIP' = 'CALL';
     let confidence = 85;
     let combinedReasoning = '';
 
@@ -216,7 +217,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       confidence = 96;
       combinedReasoning = `🟢 Синергия GPT + Gemini. ${gptReasoning}`;
     } else {
-      finalVerdict = gptVerdict;
+      finalVerdict = gptVerdict !== 'SKIP' ? gptVerdict : 'CALL';
       confidence = 84;
       combinedReasoning = `⚖️ Импульс по свечному анализу (${candleType}). Тренд 15M: ${trend15m}, RSI: ${rsi5m}.`;
     }
