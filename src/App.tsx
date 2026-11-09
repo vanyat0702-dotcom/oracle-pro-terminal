@@ -692,8 +692,6 @@ export default function App() {
                     <CleanChart 
                       symbol={selectedPair.displaySymbol} 
                       interval={displayTf} 
-                      timezone={timezone} 
-                      lang={lang} 
                     />
                   </div>
                 </>
@@ -709,8 +707,6 @@ export default function App() {
                         <CleanChart 
                           symbol={qp.displaySymbol} 
                           interval={timeframe} 
-                          timezone={timezone} 
-                          lang={lang} 
                         />
                       </div>
                     </div>
