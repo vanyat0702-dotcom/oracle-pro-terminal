@@ -32,6 +32,8 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
         timeVisible: true,
         secondsVisible: false,
         borderColor: '#1e293b',
+        rightOffset: 5,
+        barSpacing: 10,
       },
       rightPriceScale: {
         borderColor: '#1e293b',
@@ -59,8 +61,7 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
     const loadChartData = async () => {
       if (isBtc) {
         try {
-          // Загружаем 300 свечей для полноценной глубокой истории на биткоине
-          const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=${interval}m&limit=300`);
+          const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=${interval}m&limit=200`);
           const data = await res.json();
           
           if (!isMounted) return;
@@ -91,29 +92,27 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
             }
           };
         } catch (e) {
-          console.error('Ошибка загрузки Binance:', e);
+          console.error(e);
         }
       } else {
-        // Форекс: генерируем 300 свечей назад, чтобы график заполнял всю сессию
         const isJpy = symbol.includes('JPY');
         const basePrice = isJpy ? 152.500 : 1.11500;
-        const stepSize = isJpy ? 0.03 : 0.0003;
+        const stepSize = isJpy ? 0.025 : 0.00025;
         const stepSec = parseInt(interval, 10) * 60;
         
         const nowSec = Math.floor(Date.now() / 1000);
-        const totalBars = 300; // 300 баров истории для полной сессии
+        const totalBars = 150;
         const initialData = [];
         
         let currOpen = basePrice;
-        // Стартуем из прошлого, чтобы график шел до самого текущего момента
         const startTime = nowSec - (totalBars * stepSec);
 
         for (let i = 0; i < totalBars; i++) {
           const time = (startTime + (i * stepSec)) as any;
           const change = (Math.random() - 0.49) * stepSize;
           const close = currOpen + change;
-          const high = Math.max(currOpen, close) + Math.random() * (stepSize * 0.5);
-          const low = Math.min(currOpen, close) - Math.random() * (stepSize * 0.5);
+          const high = Math.max(currOpen, close) + Math.random() * (stepSize * 0.4);
+          const low = Math.min(currOpen, close) - Math.random() * (stepSize * 0.4);
 
           initialData.push({
             time,
@@ -133,7 +132,7 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
             const currentData = candlestickSeries.data();
             if (currentData.length > 0 && isMounted) {
               const last: any = currentData[currentData.length - 1];
-              const tickChange = (Math.random() - 0.49) * (stepSize * 0.2);
+              const tickChange = (Math.random() - 0.49) * (stepSize * 0.15);
               const newClose = Number((last.close + tickChange).toFixed(isJpy ? 3 : 5));
               const newHigh = Math.max(last.high, newClose);
               const newLow = Math.min(last.low, newClose);
