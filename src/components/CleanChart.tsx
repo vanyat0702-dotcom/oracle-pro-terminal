@@ -14,7 +14,6 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
-    // Создаем чистый локальный график
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: '#090d16' },
@@ -48,7 +47,6 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
 
     candleSeriesRef.current = candlestickSeries;
 
-    // Базовые данные для старта
     const isBtc = symbol.includes('BTC') || symbol.includes('Crypto');
     const basePrice = isBtc ? 75500 : 1.11900;
     const now = Math.floor(Date.now() / 1000);
@@ -78,7 +76,6 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
     let ws: WebSocket | null = null;
     let timer: any = null;
 
-    // Если это криптовалюта (например, BTC/USDT), подключаем реальный WebSocket Binance в реальном времени!
     if (isBtc) {
       ws = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@kline_1m');
       ws.onmessage = (event) => {
@@ -95,7 +92,6 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
         }
       };
     } else {
-      // Для форекс-пар запускаем живой симулятор тиков, который плавно двигает последнюю свечу в реальном времени
       timer = setInterval(() => {
         const currentData = candlestickSeries.data();
         if (currentData.length > 0) {
@@ -142,4 +138,3 @@ export const CleanChart: React.FC<CleanChartProps> = ({ symbol, interval }) => {
     />
   );
 };
-// render update v2
