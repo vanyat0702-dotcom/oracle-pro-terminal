@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Zap, LineChart, RefreshCw, BrainCircuit, Clock, Flame, Sliders, ChevronDown, ChevronUp, ChevronRight, Volume2, VolumeX } from 'lucide-react';
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
-import { CleanChart } from './components/CleanChart';
+import { TerminalChart } from './components/TerminalChart';
 
 export default function App() {
   const [selectedPair, setSelectedPair] = useState<TradingPair>(() => {
@@ -689,7 +689,7 @@ export default function App() {
                   </div>
 
                   <div className="flex-1 w-full h-full border border-slate-800 bg-slate-950 rounded-xl overflow-hidden relative min-h-[500px]">
-                    <CleanChart 
+                    <TerminalChart 
                       symbol={selectedPair.displaySymbol} 
                       interval={displayTf} 
                     />
@@ -704,7 +704,7 @@ export default function App() {
                         <span className="text-[10px] font-mono text-slate-400">{timeframe}M ({riskMode})</span>
                       </div>
                       <div className="flex-1 relative rounded-lg overflow-hidden border border-slate-900 min-h-[220px]">
-                        <CleanChart 
+                        <TerminalChart 
                           symbol={qp.displaySymbol} 
                           interval={timeframe} 
                         />
@@ -960,4 +960,3 @@ export default function App() {
     </div>
   );
 }
-// v10.6-canvas-fix
