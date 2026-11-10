@@ -91,4 +91,3 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ pair = 'EUR/USD', 
     </>
   );
 };
-```[cite: 15]
