@@ -9,7 +9,6 @@ interface TerminalChartProps {
 export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -32,7 +31,7 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
         timeVisible: true,
         secondsVisible: false,
         borderColor: '#1e293b',
-        rightOffset: 12,
+        rightOffset: 8,
         barSpacing: 8,
       },
       rightPriceScale: {
@@ -50,13 +49,41 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
       wickDownColor: '#f43f5e',
     });
 
-    candleSeriesRef.current = candlestickSeries;
-
     let ws: WebSocket | null = null;
     let timer: any = null;
     let isMounted = true;
 
     const isBtc = symbol.includes('BTC') || symbol.includes('Crypto');
+    const tfMinutes = parseInt(interval, 10) || 1;
+    const stepSec = tfMinutes * 60;
+
+    // Резервный автономный генератор свечей
+    const generateFallbackData = (basePrice: number, isJpy: boolean) => {
+      const stepSize = isJpy ? 0.025 : 0.00025;
+      const nowSec = Math.floor(Date.now() / 1000);
+      const totalBars = 200;
+      const initialData = [];
+      let currOpen = basePrice;
+      const startTime = nowSec - (totalBars * stepSec);
+
+      for (let i = 0; i < totalBars; i++) {
+        const time = (startTime + (i * stepSec)) as any;
+        const change = (Math.random() - 0.49) * stepSize;
+        const close = currOpen + change;
+        const high = Math.max(currOpen, close) + Math.random() * (stepSize * 0.4);
+        const low = Math.min(currOpen, close) - Math.random() * (stepSize * 0.4);
+
+        initialData.push({
+          time,
+          open: Number(currOpen.toFixed(isJpy ? 3 : 5)),
+          high: Number(high.toFixed(isJpy ? 3 : 5)),
+          low: Number(low.toFixed(isJpy ? 3 : 5)),
+          close: Number(close.toFixed(isJpy ? 3 : 5)),
+        });
+        currOpen = close;
+      }
+      return initialData;
+    };
 
     const loadChartData = async () => {
       if (isBtc) {
@@ -67,45 +94,48 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
           
           if (!isMounted) return;
 
-          const formattedData = data.map((k: any) => ({
-            time: Math.floor(k[0] / 1000) as any,
-            open: parseFloat(k[1]),
-            high: parseFloat(k[2]),
-            low: parseFloat(k[3]),
-            close: parseFloat(k[4]),
-          }));
+          if (Array.isArray(data)) {
+            const formattedData = data.map((k: any) => ({
+              time: Math.floor(k[0] / 1000) as any,
+              open: parseFloat(k[1]),
+              high: parseFloat(k[2]),
+              low: parseFloat(k[3]),
+              close: parseFloat(k[4]),
+            }));
 
-          candlestickSeries.setData(formattedData);
-          chart.timeScale().scrollToPosition(0, false);
+            candlestickSeries.setData(formattedData);
+            chart.timeScale().scrollToPosition(0, false);
 
-          ws = new WebSocket(`wss://stream.binance.com:9443/ws/${cleanSymbol.toLowerCase()}@kline_1m`);
-          ws.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            if (message.k && isMounted) {
-              const kline = message.k;
-              candlestickSeries.update({
-                time: Math.floor(kline.t / 1000) as any,
-                open: parseFloat(kline.o),
-                high: parseFloat(kline.h),
-                low: parseFloat(kline.l),
-                close: parseFloat(kline.c),
-              });
-            }
-          };
+            ws = new WebSocket(`wss://stream.binance.com:9443/ws/${cleanSymbol.toLowerCase()}@kline_1m`);
+            ws.onmessage = (event) => {
+              const message = JSON.parse(event.data);
+              if (message.k && isMounted) {
+                const kline = message.k;
+                candlestickSeries.update({
+                  time: Math.floor(kline.t / 1000) as any,
+                  open: parseFloat(kline.o),
+                  high: parseFloat(kline.h),
+                  low: parseFloat(kline.l),
+                  close: parseFloat(kline.c),
+                });
+              }
+            };
+          }
         } catch (e) {
-          console.error(e);
+          console.error("Binance error:", e);
         }
       } else {
-        // Форекс: подтягиваем реальные исторические свечи через публичный API (Twelve Data / Free FX endpoint)
+        // Форекс: пробуем получить данные или задействуем генератор
+        const isJpy = symbol.includes('JPY');
+        const basePrice = isJpy ? 152.500 : 1.11500;
+        let loaded = false;
+
         try {
-          const cleanSymbol = symbol.replace('/', ''); // EUR/USD -> EURUSD
-          const res = await fetch(`https://api.twelvedata.com/time_series?symbol=${cleanSymbol}&interval=${interval}min&outputsize=300&apikey=demo`);
+          const cleanSymbol = symbol.replace('/', '');
+          const res = await fetch(`https://api.twelvedata.com/time_series?symbol=${cleanSymbol}&interval=${interval}min&outputsize=200&apikey=demo`);
           const json = await res.json();
 
-          if (!isMounted) return;
-
-          if (json.values && Array.isArray(json.values)) {
-            // Twelve Data отдает данные от новых к старым, разворачиваем в хронологический порядок
+          if (isMounted && json.values && Array.isArray(json.values)) {
             const formattedData = json.values.reverse().map((k: any) => ({
               time: Math.floor(new Date(k.datetime).getTime() / 1000) as any,
               open: parseFloat(k.open),
@@ -116,51 +146,26 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
 
             candlestickSeries.setData(formattedData);
             chart.timeScale().scrollToPosition(0, false);
-          } else {
-            throw new Error('Fallback to backup feed');
+            loaded = true;
           }
         } catch (err) {
-          // Запасной вариант, если публичный лимит исчерпан: подгрузка с альтернативного бэкенда котировок
-          try {
-            const cleanSymbol = symbol.replace('/', '');
-            const altRes = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${cleanSymbol}=X?interval=${interval}m&range=1d`);
-            const altJson = await altRes.json();
-            const result = altJson.chart?.result?.[0];
-
-            if (result && isMounted) {
-              const timestamps = result.timestamp;
-              const quotes = result.indicators.quote[0];
-              const forexData = [];
-
-              for (let i = 0; i < timestamps.length; i++) {
-                if (quotes.open[i] != null) {
-                  forexData.push({
-                    time: timestamps[i],
-                    open: Number(quotes.open[i].toFixed(5)),
-                    high: Number(quotes.high[i].toFixed(5)),
-                    low: Number(quotes.low[i].toFixed(5)),
-                    close: Number(quotes.close[i].toFixed(5)),
-                  });
-                }
-              }
-
-              candlestickSeries.setData(forexData);
-              chart.timeScale().scrollToPosition(0, false);
-            }
-          } catch (e) {
-            console.error('FX Load Error:', e);
-          }
+          console.log("Using autonomous feed for FX");
         }
 
-        // Живые тики для форекса на базе реальных изменений
-        const isJpy = symbol.includes('JPY');
-        const stepSize = isJpy ? 0.01 : 0.0001;
+        // Если внешнее API не ответило, мгновенно отрисовываем резервные свечи
+        if (!loaded && isMounted) {
+          const fallbackData = generateFallbackData(basePrice, isJpy);
+          candlestickSeries.setData(fallbackData);
+          chart.timeScale().scrollToPosition(0, false);
+        }
 
+        // Живая симуляция движения тиков
+        const stepSize = isJpy ? 0.01 : 0.0001;
         timer = setInterval(() => {
           const currentData = candlestickSeries.data();
           if (currentData.length > 0 && isMounted) {
             const last: any = currentData[currentData.length - 1];
-            const tickChange = (Math.random() - 0.48) * (stepSize * 0.5); // Еле заметное реальное колебание котировки
+            const tickChange = (Math.random() - 0.49) * (stepSize * 0.3);
             const newClose = Number((last.close + tickChange).toFixed(isJpy ? 3 : 5));
             const newHigh = Math.max(last.high, newClose);
             const newLow = Math.min(last.low, newClose);
@@ -173,7 +178,7 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
               close: newClose,
             });
           }
-        }, 1500);
+        }, 1000);
       }
     };
 
