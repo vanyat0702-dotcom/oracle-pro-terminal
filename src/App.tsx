@@ -35,6 +35,8 @@ export default function App() {
   const [timezone, setTimezone] = useState<'Europe/Moscow' | 'Etc/UTC'>('Europe/Moscow');
   const [lang, setLang] = useState<'ru' | 'en'>('ru');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  
+  // 👈 Исправлено: вкладка называется 'strategies' для полного соответствия интерфейсу
   const [rightTab, setRightTab] = useState<'logs' | 'history' | 'martingale' | 'strategies'>('history');
 
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<any | null>(null);
@@ -792,7 +794,7 @@ export default function App() {
             <button onClick={() => setRightTab('logs')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Логи</button>
             <button onClick={() => setRightTab('history')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>История</button>
             <button onClick={() => setRightTab('martingale')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'martingale' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Мартен</button>
-            <button onClick={() => setRightTab('strategies')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'strategies' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Стат</button>
+            <button onClick={() => setRightTab('strategies')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'strategies' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Стратегии</button>
           </div>
 
           {rightTab === 'logs' ? (
@@ -892,7 +894,7 @@ export default function App() {
             </div>
           ) : rightTab === 'strategies' ? (
             <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-2 overflow-hidden min-h-[180px] font-mono text-[10px]">
-              <div className="text-[11px] font-bold text-cyan-400">ЭФФЕКТИВНОСТЬ:</div>
+              <div className="text-[11px] font-bold text-cyan-400">АКТИВНЫЕ СТРАТЕГИИ:</div>
               <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
                 {strategies.map(s => {
                   const total = s.wins + s.losses;
