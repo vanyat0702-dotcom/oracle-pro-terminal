@@ -35,8 +35,6 @@ export default function App() {
   const [timezone, setTimezone] = useState<'Europe/Moscow' | 'Etc/UTC'>('Europe/Moscow');
   const [lang, setLang] = useState<'ru' | 'en'>('ru');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
-  
-  // 👈 Исправлено: вкладка называется 'strategies' для полного соответствия интерфейсу
   const [rightTab, setRightTab] = useState<'logs' | 'history' | 'martingale' | 'strategies'>('history');
 
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<any | null>(null);
@@ -611,6 +609,37 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* 👈 ВОТ ОНА, ГРАФА СТРАТЕГИЙ С ВИНРЕЙТОМ И ТУМБЛЕРАМИ */}
+                <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
+                  <div className="flex justify-between items-center text-xs font-bold text-cyan-300">
+                    <span className="flex items-center gap-1.5"><BrainCircuit className="w-4 h-4 text-cyan-400" /> АКТИВНЫЕ СТРАТЕГИИ АНАЛИЗА (ПРИВЯЗКА К ПРОФИЛЮ):</span>
+                    <span className="text-[10px] text-slate-400">Авто-адаптация под: <span className="text-amber-400 font-bold">{riskMode}</span></span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
+                    {strategies.map((s) => {
+                      const total = s.wins + s.losses;
+                      const winrate = total > 0 ? Math.round((s.wins / total) * 100) : 0;
+                      return (
+                        <div key={s.id} className={`p-2 rounded-lg border flex flex-col justify-between gap-1 transition-all ${s.enabled ? 'bg-cyan-950/40 border-cyan-500/60 text-cyan-200' : 'bg-slate-950 border-slate-800 text-slate-500'}`}>
+                          <div className="flex justify-between items-start gap-1">
+                            <span className="font-bold text-[10px] leading-tight">{s.name}</span>
+                            <span className="text-emerald-400 font-black text-[10px] shrink-0">{winrate}%</span>
+                          </div>
+                          <div className="flex justify-between items-center pt-1 border-t border-slate-800/60 text-[9px]">
+                            <span className="text-slate-400">П: {s.wins} | Л: {s.losses}</span>
+                            <button 
+                              onClick={() => toggleStrategy(s.id)}
+                              className={`px-2 py-0.5 rounded font-bold transition-colors ${s.enabled ? 'bg-cyan-500 text-slate-950' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+                            >
+                              {s.enabled ? 'ВКЛ' : 'ВЫКЛ'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
                   <div className="flex justify-between items-center text-xs font-bold text-cyan-400">
                     <span>МУЛЬТИВЫБОР ПАР ДЛЯ АВТОПИЛОТА ({selectedMultiPairs.length})</span>
@@ -794,7 +823,7 @@ export default function App() {
             <button onClick={() => setRightTab('logs')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Логи</button>
             <button onClick={() => setRightTab('history')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>История</button>
             <button onClick={() => setRightTab('martingale')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'martingale' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Мартен</button>
-            <button onClick={() => setRightTab('strategies')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'strategies' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Стратегии</button>
+            <button onClick={() => setRightTab('strategies')} className={`py-1 rounded-lg font-bold truncate ${rightTab === 'strategies' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Стат</button>
           </div>
 
           {rightTab === 'logs' ? (
@@ -894,7 +923,7 @@ export default function App() {
             </div>
           ) : rightTab === 'strategies' ? (
             <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-2 overflow-hidden min-h-[180px] font-mono text-[10px]">
-              <div className="text-[11px] font-bold text-cyan-400">АКТИВНЫЕ СТРАТЕГИИ:</div>
+              <div className="text-[11px] font-bold text-cyan-400">СТАТИСТИКА АЛГОРИТМОВ:</div>
               <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
                 {strategies.map(s => {
                   const total = s.wins + s.losses;
@@ -907,9 +936,7 @@ export default function App() {
                       </div>
                       <div className="flex justify-between text-[9px] text-slate-400">
                         <span>Побед: {s.wins} | Пор: {s.losses}</span>
-                        <button onClick={() => toggleStrategy(s.id)} className={`px-1.5 py-0.2 rounded ${s.enabled ? 'bg-cyan-950 text-cyan-300 border border-cyan-800' : 'bg-slate-800 text-slate-400'}`}>
-                          {s.enabled ? 'Вкл' : 'Выкл'}
-                        </button>
+                        <span className={s.enabled ? 'text-cyan-400' : 'text-slate-500'}>{s.enabled ? 'Активна' - 'Выкл'}</span>
                       </div>
                     </div>
                   );
