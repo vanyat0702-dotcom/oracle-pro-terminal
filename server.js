@@ -1,35 +1,26 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
-const { getJointPrediction } = require('./ai-consensus'); // 👈 Исправлено имя файла консенсуса
-const aiDebugger = require('./ai-debugger'); // 👈 Изолированный модуль диагностики
+const { getJointPrediction } = require('./ai-consensus'); // 👈 Проверь, чтобы было именно так
+const aiDebugger = require('./ai-debugger');
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-// Единый эндпоинт, к которому стучится фронтенд (App.tsx)
 app.post('/api/analyze', async (req, res) => {
   try {
     const marketData = req.body;
-    
-    // 🔍 Сквозной аудит входящих данных через отладчик
     aiDebugger.auditIncomingPayload(marketData);
 
-    // Если пришел запрос на сохранение результата завершенной сделки
     if (marketData.action === 'send_result') {
       console.log(`📊 [РЕЗУЛЬТАТ СДЕЛКИ] #${marketData.tradeId} | ${marketData.pair} | ${marketData.direction} | ${marketData.isWin ? 'WIN' : 'LOSS'} (${marketData.pipsNum} п.)`);
       return res.json({ success: true, message: 'Результат залогирован' });
     }
 
-    // Стандартный запрос на анализ рынка для автопилота
     const prediction = await getJointPrediction(marketData);
-    
-    res.json({
-      success: true,
-      result: prediction
-    });
+    res.json({ success: true, result: prediction });
   } catch (error) {
     console.error('Ошибка в шлюзе /api/analyze:', error);
     res.status(500).json({ 
