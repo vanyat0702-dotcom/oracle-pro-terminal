@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Zap, LineChart, RefreshCw, BrainCircuit, Clock, Flame, Sliders, ChevronDown, ChevronUp, ChevronRight, Volume2, VolumeX } from 'lucide-react';
+import { Zap, LineChart, RefreshCw, BrainCircuit, Clock, Flame, Sliders, ChevronDown, ChevronUp, Volume2, VolumeX } from 'lucide-react';
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
 import { TerminalChart } from './components/TerminalChart';
 
@@ -28,7 +28,6 @@ export default function App() {
   });
 
   const [timeframe, setTimeframe] = useState<string>("1");
-  const [displayTf, setDisplayTf] = useState<string>("1");
   const [selectedHigherTfs, setSelectedHigherTfs] = useState<string[]>(["15", "60"]);
   
   const [viewMode, setViewMode] = useState<'single' | 'quad'>('single');
@@ -45,9 +44,9 @@ export default function App() {
   });
 
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
-  const [newsFilterEnabled, setNewsFilterEnabled] = useState<boolean>(true);
-  const [atrFilterEnabled, setAtrFilterEnabled] = useState<boolean>(true);
-  const [riskCapEnabled, setRiskCapEnabled] = useState<boolean>(true);
+  const [newsFilterEnabled] = useState<boolean>(true);
+  const [atrFilterEnabled] = useState<boolean>(true);
+  const [riskCapEnabled] = useState<boolean>(true);
   const [maxMartingaleStep, setMaxMartingaleStep] = useState<number>(3);
 
   const lastPricesRef = useRef<{ [key: string]: number }>({
@@ -75,35 +74,8 @@ export default function App() {
         ...s,
         enabled: ['trend_following', 'price_action', 'vsa_volume', 'body_breakout'].includes(s.id)
       })));
-    } else {
-      setStrategies(prev => prev.map(s => ({
-        ...s,
-        enabled: ['trend_following', 'price_action', 'vsa_volume'].includes(s.id)
-      })));
     }
   }, [safeModeEnabled]);
-
-  useEffect(() => {
-    if (safeModeEnabled) return;
-
-    setStrategies(prev => prev.map(s => {
-      let shouldEnable = s.enabled;
-      if (riskMode === 'BALANCED') {
-        shouldEnable = ['trend_following', 'price_action', 'vsa_volume'].includes(s.id);
-      } else if (riskMode === 'SAFE') {
-        shouldEnable = ['trend_following', 'price_action', 'body_breakout', 'vsa_volume'].includes(s.id);
-      } else if (riskMode === 'AGGRESSIVE') {
-        shouldEnable = ['volume_scalping', 'rsi_bollinger', 'breakout_impulse'].includes(s.id);
-      } else if (riskMode === 'BREAKOUT') {
-        shouldEnable = ['breakout_impulse', 'body_breakout', 'trend_following'].includes(s.id);
-      } else if (riskMode === 'ANTITILT') {
-        shouldEnable = ['trend_following', 'vsa_volume'].includes(s.id);
-      } else if (riskMode === 'TRENDSURF') {
-        shouldEnable = ['trend_following', 'trend_rider_ema', 'vsa_volume'].includes(s.id);
-      }
-      return { ...s, enabled: shouldEnable };
-    }));
-  }, [riskMode, safeModeEnabled]);
 
   useEffect(() => {
     try { localStorage.setItem('oracle_selected_pair', JSON.stringify(selectedPair)); } catch (e) {}
@@ -689,10 +661,7 @@ export default function App() {
                 {['1', '5', '15', '30', '60'].map((tfVal) => (
                   <button
                     key={tfVal}
-                    onClick={() => {
-                      setTimeframe(tfVal);
-                      setDisplayTf(tfVal);
-                    }}
+                    onClick={() => setTimeframe(tfVal)}
                     className={`px-3 py-1 rounded text-xs font-bold transition-all ${timeframe === tfVal ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}
                   >
                     {tfVal === '60' ? '1H' : `${tfVal}M`}
@@ -743,7 +712,7 @@ export default function App() {
               {!isAnalyzing ? (
                 <button
                   onClick={handleStartAnalysis}
-                  className="px-5 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-black text-xs shadow-lg shadow-cyan-500/20 hover:brightness-110 transition-all flex items-center gap-2"
+                  className="px-5 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-black text-xs shadow-lg shadow-cyan-500/20 hover:brightness-110 transition-all flex items-center gap-2 cursor-pointer"
                 >
                   <Zap className="w-4 h-4 fill-slate-950"/>
                   ЗАПУСТИТЬ АВТОПИЛОТ (СНАЙПЕР)
@@ -751,7 +720,7 @@ export default function App() {
               ) : (
                 <button
                   onClick={handleStopAnalysis}
-                  className="px-5 py-2 rounded-lg bg-rose-600 text-white font-black text-xs shadow-lg shadow-rose-600/20 hover:bg-rose-500 transition-all flex items-center gap-2"
+                  className="px-5 py-2 rounded-lg bg-rose-600 text-white font-black text-xs shadow-lg shadow-rose-600/20 hover:bg-rose-500 transition-all flex items-center gap-2 cursor-pointer"
                 >
                   <RefreshCw className="w-4 h-4 animate-spin"/>
                   ОСТАНОВИТЬ АВТОПИЛОТ
