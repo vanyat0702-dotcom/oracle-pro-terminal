@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
-const { getJointPrediction } = require('./ai-consensus-1');
+const { getJointPrediction } = require('./ai-consensus'); // 👈 Исправлено имя файла консенсуса
 const aiDebugger = require('./ai-debugger'); // 👈 Изолированный модуль диагностики
 
 const app = express();
@@ -14,7 +14,7 @@ app.post('/api/analyze', async (req, res) => {
   try {
     const marketData = req.body;
     
-    // 🔍 Сквозной аудит входящих данных и скриншота через отладчик
+    // 🔍 Сквозной аудит входящих данных через отладчик
     aiDebugger.auditIncomingPayload(marketData);
 
     // Если пришел запрос на сохранение результата завершенной сделки
