@@ -13,7 +13,6 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ pair = 'EUR/USD', 
     if (!containerRef.current) return;
     containerRef.current.innerHTML = '';
 
-    // Защищенное форматирование символа через оператор || ''
     const safePair = pair || 'EUR/USD';
     let cleanSymbol = safePair.replace('/', '').toUpperCase();
     let tvSymbol = cleanSymbol;
@@ -24,7 +23,6 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ pair = 'EUR/USD', 
       tvSymbol = `FX:${cleanSymbol}`;
     }
 
-    // Приводим таймфреймы под TradingView
     const safeTf = timeframe || '1';
     let tvInterval = '1';
     if (safeTf === '5') tvInterval = '5';
