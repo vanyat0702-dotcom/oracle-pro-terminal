@@ -1,34 +1,39 @@
 import React, { useEffect, useRef } from 'react';
 
 interface TerminalChartProps {
-  symbol: string;
-  interval: string;
+  pair?: string;
+  timeframe?: string;
+  timezone?: string;
 }
 
-export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }) => {
+export const TerminalChart: React.FC<TerminalChartProps> = ({ pair = 'EUR/USD', timeframe = '1', timezone = 'Europe/Moscow' }) => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
     containerRef.current.innerHTML = '';
 
-    // Форматируем символ под стандарты TradingView Widget
-    let cleanSymbol = symbol.replace('/', '').toUpperCase();
+    // Защищенное форматирование символа через оператор || ''
+    const safePair = pair || 'EUR/USD';
+    let cleanSymbol = safePair.replace('/', '').toUpperCase();
     let tvSymbol = cleanSymbol;
 
     if (cleanSymbol.includes('BTC') || cleanSymbol.includes('CRYPTO')) {
       tvSymbol = 'BINANCE:BTCUSDT';
     } else {
-      // Для всех Форекс пар передаем чистое имя (EURUSD, GBPUSD и т.д.)
       tvSymbol = `FX:${cleanSymbol}`;
     }
 
     // Приводим таймфреймы под TradingView
+    const safeTf = timeframe || '1';
     let tvInterval = '1';
-    if (interval === '5') tvInterval = '5';
-    else if (interval === '15') tvInterval = '15';
-    else if (interval === '60') tvInterval = '60';
-    else if (interval === '240') tvInterval = '240';
+    if (safeTf === '5') tvInterval = '5';
+    else if (safeTf === '15') tvInterval = '15';
+    else if (safeTf === '30') tvInterval = '30';
+    else if (safeTf === '60' || safeTf === '1H') tvInterval = '60';
+    else if (safeTf === '240' || safeTf === '4H') tvInterval = '240';
+    else if (safeTf === 'D' || safeTf === '1D') tvInterval = 'D';
+    else tvInterval = safeTf;
 
     const widgetId = `tv_chart_${Math.random().toString(36).substring(2, 9)}`;
     const widgetDiv = document.createElement('div');
@@ -47,7 +52,7 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
           autosize: true,
           symbol: tvSymbol,
           interval: tvInterval,
-          timezone: 'Europe/Moscow',
+          timezone: timezone || 'Europe/Moscow',
           theme: 'dark',
           style: '1',
           locale: 'ru',
@@ -70,7 +75,7 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
         containerRef.current.innerHTML = '';
       }
     };
-  }, [symbol, interval]);
+  }, [pair, timeframe, timezone]);
 
   return (
     <>
@@ -88,3 +93,4 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
     </>
   );
 };
+```[cite: 15]
