@@ -99,7 +99,7 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
           console.error("Binance error:", e);
         }
       } else {
-        // Форекс: точные минутные свечи с привязкой к реальным котировкам Intrade Bar / FXCM
+        // Форекс: честный стохастический генератор случайного блуждания без синусоид
         const isJpy = symbol.includes('JPY');
         const cleanSymbol = symbol.replace('/', '');
 
@@ -136,15 +136,21 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
         
         let currOpen = basePrice;
         const startTime = nowSec - (totalBars * stepSec);
-        const stepSize = isJpy ? 0.03 : 0.00030;
+        const stepSize = isJpy ? 0.04 : 0.00035;
 
+        // Генерация реалистичного случайного блуждания (Random Walk)
+        let trend = 0;
         for (let i = 0; i < totalBars; i++) {
           const time = (startTime + (i * stepSec)) as any;
-          // Добавляем реалистичное рыночное поведение цен
-          const change = (Math.sin(i * 0.3) * 0.0015) + ((Math.random() - 0.49) * stepSize);
+          
+          // Меняем тренд плавно, чтобы не было резких углов и синусоид
+          trend += (Math.random() - 0.5) * 0.0001;
+          trend = Math.max(-0.0005, Math.min(0.0005, trend));
+
+          const change = trend + (Math.random() - 0.49) * stepSize;
           const close = currOpen + change;
-          const high = Math.max(currOpen, close) + Math.random() * (stepSize * 0.5);
-          const low = Math.min(currOpen, close) - Math.random() * (stepSize * 0.5);
+          const high = Math.max(currOpen, close) + Math.random() * (stepSize * 0.6);
+          const low = Math.min(currOpen, close) - Math.random() * (stepSize * 0.6);
 
           forexData.push({
             time,
@@ -160,7 +166,7 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
           candlestickSeries.setData(forexData);
           chart.timeScale().scrollToPosition(0, false);
 
-          // Плавный тиковый поток реального времени для форекса
+          // Плавные живые тики без волн
           const tickStep = isJpy ? 0.004 : 0.00004;
           timer = setInterval(() => {
             const currentData = candlestickSeries.data();
