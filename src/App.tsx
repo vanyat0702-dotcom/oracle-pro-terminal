@@ -68,18 +68,15 @@ export default function App() {
     { id: 'trend_rider_ema', name: 'Трендовый откат к EMA (20/50)', enabled: false, wins: 16, losses: 4 }
   ]);
 
-  // 🛡️ Автоматическая настройка профиля и стратегий под Safe Mode
+  // 🛡️ Safe Mode с обязательным Трендовым фильтром (Trend Master) и уровнями
   useEffect(() => {
     if (safeModeEnabled) {
-      // Принудительно ставим снайперский/безопасный профиль
       setRiskMode('SAFE');
-      // Включаем строгие консервативные стратегии по уровням М5/М15
       setStrategies(prev => prev.map(s => ({
         ...s,
-        enabled: ['price_action', 'body_breakout', 'vsa_volume'].includes(s.id)
+        enabled: ['trend_following', 'price_action', 'vsa_volume', 'body_breakout'].includes(s.id)
       })));
     } else {
-      // При выключении возвращаем базовый сбалансированный набор
       setStrategies(prev => prev.map(s => ({
         ...s,
         enabled: ['trend_following', 'price_action', 'vsa_volume'].includes(s.id)
@@ -87,16 +84,16 @@ export default function App() {
     }
   }, [safeModeEnabled]);
 
-  // 🧠 Синхронизация стратегий при ручной смене обычного боевого профиля (если Safe Mode выключен)
+  // 🧠 Синхронизация стратегий при ручной смене профиля
   useEffect(() => {
-    if (safeModeEnabled) return; // Если сейф-мод включен, он имеет приоритет
+    if (safeModeEnabled) return;
 
     setStrategies(prev => prev.map(s => {
       let shouldEnable = s.enabled;
       if (riskMode === 'BALANCED') {
         shouldEnable = ['trend_following', 'price_action', 'vsa_volume'].includes(s.id);
       } else if (riskMode === 'SAFE') {
-        shouldEnable = ['price_action', 'body_breakout', 'vsa_volume'].includes(s.id);
+        shouldEnable = ['trend_following', 'price_action', 'body_breakout', 'vsa_volume'].includes(s.id);
       } else if (riskMode === 'AGGRESSIVE') {
         shouldEnable = ['volume_scalping', 'rsi_bollinger', 'breakout_impulse'].includes(s.id);
       } else if (riskMode === 'BREAKOUT') {
@@ -600,7 +597,7 @@ export default function App() {
                     <span className="text-xl">🛡️</span>
                     <div>
                       <div className="text-xs font-bold text-emerald-400">SAFE MODE & SMART PROFILES</div>
-                      <div className="text-[10px] text-slate-400">Автоматически переводит профиль на Снайпера и подстраивает стратегии под уровни М5/М15</div>
+                      <div className="text-[10px] text-slate-400">Автоматически включает трендовый фильтр и снайперские уровни М5/М15</div>
                     </div>
                   </div>
                   <button 
