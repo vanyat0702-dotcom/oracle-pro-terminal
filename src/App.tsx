@@ -68,8 +68,29 @@ export default function App() {
     { id: 'trend_rider_ema', name: 'Трендовый откат к EMA (20/50)', enabled: false, wins: 16, losses: 4 }
   ]);
 
-  // 🧠 Автоматическое переключение стратегий при изменении боевого профиля
+  // 🛡️ Автоматическая настройка профиля и стратегий под Safe Mode
   useEffect(() => {
+    if (safeModeEnabled) {
+      // Принудительно ставим снайперский/безопасный профиль
+      setRiskMode('SAFE');
+      // Включаем строгие консервативные стратегии по уровням М5/М15
+      setStrategies(prev => prev.map(s => ({
+        ...s,
+        enabled: ['price_action', 'body_breakout', 'vsa_volume'].includes(s.id)
+      })));
+    } else {
+      // При выключении возвращаем базовый сбалансированный набор
+      setStrategies(prev => prev.map(s => ({
+        ...s,
+        enabled: ['trend_following', 'price_action', 'vsa_volume'].includes(s.id)
+      })));
+    }
+  }, [safeModeEnabled]);
+
+  // 🧠 Синхронизация стратегий при ручной смене обычного боевого профиля (если Safe Mode выключен)
+  useEffect(() => {
+    if (safeModeEnabled) return; // Если сейф-мод включен, он имеет приоритет
+
     setStrategies(prev => prev.map(s => {
       let shouldEnable = s.enabled;
       if (riskMode === 'BALANCED') {
@@ -87,7 +108,7 @@ export default function App() {
       }
       return { ...s, enabled: shouldEnable };
     }));
-  }, [riskMode]);
+  }, [riskMode, safeModeEnabled]);
 
   useEffect(() => {
     try { localStorage.setItem('oracle_selected_pair', JSON.stringify(selectedPair)); } catch (e) {}
@@ -563,7 +584,7 @@ export default function App() {
                 <Sliders className="w-4 h-4 text-cyan-400" />
                 <span>НАСТРОЙКИ СКАНИРОВАНИЯ И АДАПТИВНЫХ ПРОФИЛЕЙ</span>
                 <span className="text-[10px] text-slate-400 font-normal ml-2">
-                  (Мультивыбор: <span className="text-cyan-300 font-bold">{selectedMultiPairs.length} пар</span> | Профиль: <span className="text-amber-400 font-bold">{riskMode}</span>)
+                  (Мультивыбор: <span className="text-cyan-300 font-bold">{selectedMultiPairs.length} пар</span> | Профиль: <span className="text-amber-400 font-bold">{riskMode}</span> {safeModeEnabled && <span className="text-emerald-400 font-bold">| SAFE MODE АКТИВЕН</span>})
                 </span>
               </div>
               <div className="flex items-center gap-1 text-[11px] text-slate-400">
@@ -579,7 +600,7 @@ export default function App() {
                     <span className="text-xl">🛡️</span>
                     <div>
                       <div className="text-xs font-bold text-emerald-400">SAFE MODE & SMART PROFILES</div>
-                      <div className="text-[10px] text-slate-400">Выбор боевого режима автоматически настраивает подходящие стратегии анализа</div>
+                      <div className="text-[10px] text-slate-400">Автоматически переводит профиль на Снайпера и подстраивает стратегии под уровни М5/М15</div>
                     </div>
                   </div>
                   <button 
@@ -618,22 +639,22 @@ export default function App() {
                 <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-amber-500/30">
                   <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
                     <Flame className="w-4 h-4 text-amber-400" />
-                    <span>БОЕВОЙ ПРОФИЛЬ ТОРГОВЛИ:</span>
+                    <span>БОЕВОЙ ПРОФИЛЬ ТОРГОВЛИ {safeModeEnabled && <span className="text-emerald-400 text-[10px]">(Управляется Safe Mode)</span>}:</span>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 text-xs">
-                    <button onClick={() => setRiskMode('BALANCED')} className={`p-2 rounded font-bold text-center border ${riskMode === 'BALANCED' ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>⚡ Баланс</button>
-                    <button onClick={() => setRiskMode('SAFE')} className={`p-2 rounded font-bold text-center border ${riskMode === 'SAFE' ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🎯 Снайпер</button>
-                    <button onClick={() => setRiskMode('AGGRESSIVE')} className={`p-2 rounded font-bold text-center border ${riskMode === 'AGGRESSIVE' ? 'bg-rose-500 text-white border-rose-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🔥 Скальпинг</button>
-                    <button onClick={() => setRiskMode('BREAKOUT')} className={`p-2 rounded font-bold text-center border ${riskMode === 'BREAKOUT' ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🚀 Пробойник</button>
-                    <button onClick={() => setRiskMode('ANTITILT')} className={`p-2 rounded font-bold text-center border ${riskMode === 'ANTITILT' ? 'bg-emerald-600 text-white border-emerald-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🛡 Анти-Тильт</button>
-                    <button onClick={() => setRiskMode('TRENDSURF')} className={`p-2 rounded font-bold text-center border ${riskMode === 'TRENDSURF' ? 'bg-blue-600 text-white border-blue-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🌊 Тренд-Серфер</button>
+                    <button onClick={() => !safeModeEnabled && setRiskMode('BALANCED')} className={`p-2 rounded font-bold text-center border ${riskMode === 'BALANCED' ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>⚡ Баланс</button>
+                    <button onClick={() => !safeModeEnabled && setRiskMode('SAFE')} className={`p-2 rounded font-bold text-center border ${riskMode === 'SAFE' ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🎯 Снайпер</button>
+                    <button onClick={() => !safeModeEnabled && setRiskMode('AGGRESSIVE')} className={`p-2 rounded font-bold text-center border ${riskMode === 'AGGRESSIVE' ? 'bg-rose-500 text-white border-rose-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🔥 Скальпинг</button>
+                    <button onClick={() => !safeModeEnabled && setRiskMode('BREAKOUT')} className={`p-2 rounded font-bold text-center border ${riskMode === 'BREAKOUT' ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🚀 Пробойник</button>
+                    <button onClick={() => !safeModeEnabled && setRiskMode('ANTITILT')} className={`p-2 rounded font-bold text-center border ${riskMode === 'ANTITILT' ? 'bg-emerald-600 text-white border-emerald-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🛡 Анти-Тильт</button>
+                    <button onClick={() => !safeModeEnabled && setRiskMode('TRENDSURF')} className={`p-2 rounded font-bold text-center border ${riskMode === 'TRENDSURF' ? 'bg-blue-600 text-white border-blue-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🌊 Тренд-Серфер</button>
                   </div>
                 </div>
 
                 <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
                   <div className="flex justify-between items-center text-xs font-bold text-cyan-300">
-                    <span className="flex items-center gap-1.5"><BrainCircuit className="w-4 h-4 text-cyan-400" /> АКТИВНЫЕ СТРАТЕГИИ АНАЛИЗА (ПРИВЯЗКА К ПРОФИЛЮ):</span>
-                    <span className="text-[10px] text-slate-400">Авто-адаптация под: <span className="text-amber-400 font-bold">{riskMode}</span></span>
+                    <span className="flex items-center gap-1.5"><BrainCircuit className="w-4 h-4 text-cyan-400" /> АКТИВНЫЕ СТРАТЕГИИ АНАЛИЗА:</span>
+                    <span className="text-[10px] text-slate-400">Режим: <span className="text-amber-400 font-bold">{riskMode}</span></span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
                     {strategies.map((s) => {
