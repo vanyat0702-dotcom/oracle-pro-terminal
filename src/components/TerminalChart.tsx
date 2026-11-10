@@ -1,5 +1,4 @@
 import React, { useEffect, useRef } from 'react';
-import { createChart, ColorType, IChartApi, ISeriesApi } from 'lightweight-charts';
 
 interface TerminalChartProps {
   symbol: string;
@@ -7,208 +6,69 @@ interface TerminalChartProps {
 }
 
 export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }) => {
-  const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!chartContainerRef.current) return;
+    if (!containerRef.current) return;
+    containerRef.current.innerHTML = '';
 
-    const chart = createChart(chartContainerRef.current, {
-      layout: {
-        background: { type: ColorType.Solid, color: '#030712' },
-        textColor: '#94a3b8',
-      },
-      watermark: {
-        visible: false,
-      },
-      grid: {
-        vertLines: { color: '#1e293b' },
-        horzLines: { color: '#1e293b' },
-      },
-      width: chartContainerRef.current.clientWidth,
-      height: chartContainerRef.current.clientHeight || 500,
-      timeScale: {
-        timeVisible: true,
-        secondsVisible: false,
-        borderColor: '#1e293b',
-        rightOffset: 12,
-        barSpacing: 8,
-      },
-      rightPriceScale: {
-        borderColor: '#1e293b',
-        scaleMargins: {
-          top: 0.1,
-          bottom: 0.1,
-        },
-      },
-    });
+    // Форматируем символ под стандарты TradingView Widget
+    let cleanSymbol = symbol.replace('/', '').toUpperCase();
+    let tvSymbol = cleanSymbol;
 
-    chartRef.current = chart;
+    if (cleanSymbol.includes('BTC') || cleanSymbol.includes('CRYPTO')) {
+      tvSymbol = 'BINANCE:BTCUSDT';
+    } else {
+      // Для всех Форекс пар передаем чистое имя (EURUSD, GBPUSD и т.д.)
+      tvSymbol = `FX:${cleanSymbol}`;
+    }
 
-    const candlestickSeries = chart.addCandlestickSeries({
-      upColor: '#10b981',
-      downColor: '#f43f5e',
-      borderVisible: false,
-      wickUpColor: '#10b981',
-      wickDownColor: '#f43f5e',
-    });
+    // Приводим таймфреймы под TradingView
+    let tvInterval = '1';
+    if (interval === '5') tvInterval = '5';
+    else if (interval === '15') tvInterval = '15';
+    else if (interval === '60') tvInterval = '60';
+    else if (interval === '240') tvInterval = '240';
 
-    let ws: WebSocket | null = null;
-    let timer: any = null;
-    let isMounted = true;
+    const widgetId = `tv_chart_${Math.random().toString(36).substring(2, 9)}`;
+    const widgetDiv = document.createElement('div');
+    widgetDiv.id = widgetId;
+    widgetDiv.style.height = '100%';
+    widgetDiv.style.width = '100%';
+    containerRef.current.appendChild(widgetDiv);
 
-    const isBtc = symbol.includes('BTC') || symbol.includes('Crypto');
-
-    const loadChartData = async () => {
-      if (isBtc) {
-        try {
-          const cleanSymbol = symbol.replace('/', '').toUpperCase();
-          const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${cleanSymbol}&interval=${interval}m&limit=300`);
-          const data = await res.json();
-          
-          if (!isMounted) return;
-
-          if (Array.isArray(data)) {
-            const formattedData = data.map((k: any) => ({
-              time: Math.floor(k[0] / 1000) as any,
-              open: parseFloat(k[1]),
-              high: parseFloat(k[2]),
-              low: parseFloat(k[3]),
-              close: parseFloat(k[4]),
-            }));
-
-            candlestickSeries.setData(formattedData);
-            chart.timeScale().scrollToPosition(0, false);
-
-            ws = new WebSocket(`wss://stream.binance.com:9443/ws/${cleanSymbol.toLowerCase()}@kline_1m`);
-            ws.onmessage = (event) => {
-              const message = JSON.parse(event.data);
-              if (message.k && isMounted) {
-                const kline = message.k;
-                candlestickSeries.update({
-                  time: Math.floor(kline.t / 1000) as any,
-                  open: parseFloat(kline.o),
-                  high: parseFloat(kline.h),
-                  low: parseFloat(kline.l),
-                  close: parseFloat(kline.c),
-                });
-              }
-            };
-          }
-        } catch (e) {
-          console.error("Binance error:", e);
-        }
-      } else {
-        // Форекс: профессиональный финансовый стохастический движок (абсолютно живой рынок)
-        const isJpy = symbol.includes('JPY');
-        const cleanSymbol = symbol.replace('/', '');
-
-        const fxPrices: Record<string, number> = {
-          'EURUSD': 1.11519,
-          'GBPUSD': 1.28540,
-          'USDJPY': 152.450,
-          'AUDUSD': 0.65400,
-          'USDCAD': 1.39100,
-          'EURJPY': 169.800,
-          'GBPJPY': 195.900,
-          'AUDCAD': 0.90900,
-          'AUDCHF': 0.58200,
-          'AUDJPY': 99.700,
-          'AUDNZD': 1.10100,
-          'CADJPY': 109.500,
-          'EURAUD': 1.70500,
-          'EURCAD': 1.55200,
-          'EURCHF': 0.94100,
-          'EURNZD': 1.83100,
-          'GBPCAD': 1.78800,
-          'GBPCHF': 1.08400,
-          'GBPNZD': 2.11200,
-          'NZDUSD': 0.59100,
-          'USDCHF': 0.86900
-        };
-
-        const basePrice = fxPrices[cleanSymbol] || (isJpy ? 152.500 : 1.11519);
-        const tfMinutes = parseInt(interval, 10) || 1;
-        const stepSec = tfMinutes * 60;
-        const nowSec = Math.floor(Date.now() / 1000);
-        const totalBars = 250;
-        const forexData = [];
-        
-        let currPrice = basePrice;
-        const startTime = nowSec - (totalBars * stepSec);
-        const scale = isJpy ? 0.025 : 0.00025;
-
-        for (let i = 0; i < totalBars; i++) {
-          const time = (startTime + (i * stepSec)) as any;
-          
-          // Моделируем случайное блуждание с возвратом к среднему (Ornstein-Uhlenbeck)
-          const shock = (Math.random() - 0.495) * scale;
-          const open = currPrice;
-          const close = open + shock;
-          
-          const spreadHigh = Math.random() * (scale * 0.7);
-          const spreadLow = Math.random() * (scale * 0.7);
-          
-          const high = Math.max(open, close) + spreadHigh;
-          const low = Math.min(open, close) - spreadLow;
-
-          forexData.push({
-            time,
-            open: Number(open.toFixed(isJpy ? 3 : 5)),
-            high: Number(high.toFixed(isJpy ? 3 : 5)),
-            low: Number(low.toFixed(isJpy ? 3 : 5)),
-            close: Number(close.toFixed(isJpy ? 3 : 5)),
-          });
-          currPrice = close;
-        }
-
-        if (isMounted) {
-          candlestickSeries.setData(forexData);
-          chart.timeScale().scrollToPosition(0, false);
-
-          // Плавные тики реального времени
-          const tickStep = isJpy ? 0.002 : 0.00002;
-          timer = setInterval(() => {
-            const currentData = candlestickSeries.data();
-            if (currentData.length > 0 && isMounted) {
-              const last: any = currentData[currentData.length - 1];
-              const tickChange = (Math.random() - 0.495) * tickStep;
-              const newClose = Number((last.close + tickChange).toFixed(isJpy ? 3 : 5));
-              const newHigh = Math.max(last.high, newClose);
-              const newLow = Math.min(last.low, newClose);
-
-              candlestickSeries.update({
-                time: last.time,
-                open: last.open,
-                high: newHigh,
-                low: newLow,
-                close: newClose,
-              });
-            }
-          }, 800);
-        }
-      }
-    };
-
-    loadChartData();
-
-    const handleResize = () => {
-      if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-          height: chartContainerRef.current.clientHeight,
+    const script = document.createElement('script');
+    script.src = 'https://s3.tradingview.com/tv.js';
+    script.type = 'text/javascript';
+    script.async = true;
+    script.onload = () => {
+      if ((window as any).TradingView) {
+        new (window as any).TradingView.widget({
+          autosize: true,
+          symbol: tvSymbol,
+          interval: tvInterval,
+          timezone: 'Europe/Moscow',
+          theme: 'dark',
+          style: '1',
+          locale: 'ru',
+          toolbar_bg: '#030712',
+          enable_publishing: false,
+          hide_top_toolbar: false,
+          hide_legend: false,
+          save_image: false,
+          container_id: widgetId,
+          backgroundColor: '#030712',
+          gridColor: 'rgba(30, 41, 59, 0.5)',
         });
       }
     };
 
-    window.addEventListener('resize', handleResize);
+    document.head.appendChild(script);
 
     return () => {
-      isMounted = false;
-      window.removeEventListener('resize', handleResize);
-      if (ws) ws.close();
-      if (timer) clearInterval(timer);
-      chart.remove();
+      if (containerRef.current) {
+        containerRef.current.innerHTML = '';
+      }
     };
   }, [symbol, interval]);
 
@@ -219,12 +79,11 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
           display: none !important;
           visibility: hidden !important;
           opacity: 0 !important;
-          pointer-events: none !important;
         }
       `}</style>
       <div 
-        ref={chartContainerRef} 
-        className="w-full h-full min-h-[480px] relative rounded-xl overflow-hidden bg-slate-950" 
+        ref={containerRef} 
+        className="w-full h-full min-h-[500px] relative rounded-xl overflow-hidden bg-slate-950" 
       />
     </>
   );
