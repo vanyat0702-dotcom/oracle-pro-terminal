@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Zap, LineChart, RefreshCw, BrainCircuit, Clock, Flame, Sliders, ChevronDown, ChevronUp, Volume2, VolumeX } from 'lucide-react';
+import { Zap, RefreshCw, BrainCircuit, Clock, Flame, Sliders, ChevronDown, ChevronUp, Volume2, VolumeX } from 'lucide-react';
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
 import { TerminalChart } from './components/TerminalChart';
 
@@ -505,18 +505,18 @@ export default function App() {
         </div>
         
         <div className="flex items-center gap-3 text-xs">
-          <button onClick={() => setSoundEnabled(!soundEnabled)} className="p-1.5 rounded-lg border bg-cyan-950/60 border-cyan-800 text-cyan-400">
+          <button onClick={() => setSoundEnabled(!soundEnabled)} className="p-1.5 rounded-lg border bg-cyan-950/60 border-cyan-800 text-cyan-400 cursor-pointer">
             {soundEnabled ? <Volume2 className="w-4 h-4"/> : <VolumeX className="w-4 h-4"/>}
           </button>
 
           <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
-            <button onClick={() => setTimezone('Europe/Moscow')} className={`px-2 py-0.5 rounded text-[10px] font-bold ${timezone === 'Europe/Moscow' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>МСК</button>
-            <button onClick={() => setTimezone('Etc/UTC')} className={`px-2 py-0.5 rounded text-[10px] font-bold ${timezone === 'Etc/UTC' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>UTC</button>
+            <button onClick={() => setTimezone('Europe/Moscow')} className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer ${timezone === 'Europe/Moscow' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>МСК</button>
+            <button onClick={() => setTimezone('Etc/UTC')} className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer ${timezone === 'Etc/UTC' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>UTC</button>
           </div>
 
           <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
-            <button onClick={() => setLang('ru')} className={`px-2 py-0.5 rounded text-[10px] font-bold ${lang === 'ru' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>РУС</button>
-            <button onClick={() => setLang('en')} className={`px-2 py-0.5 rounded text-[10px] font-bold ${lang === 'en' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>ENG</button>
+            <button onClick={() => setLang('ru')} className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer ${lang === 'ru' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>РУС</button>
+            <button onClick={() => setLang('en')} className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer ${lang === 'en' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>ENG</button>
           </div>
 
           <span className="flex items-center gap-1.5 px-3 py-1 rounded-full border text-emerald-400 bg-emerald-950/60 border-emerald-800 text-[11px]">
@@ -559,7 +559,7 @@ export default function App() {
                   </div>
                   <button 
                     onClick={() => setSafeModeEnabled(!safeModeEnabled)}
-                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    className={`px-4 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${
                       safeModeEnabled 
                         ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20' 
                         : 'bg-slate-800 text-slate-400 border border-slate-700'
@@ -581,7 +581,7 @@ export default function App() {
                         <button 
                           key={tfVal} 
                           onClick={() => toggleHigherTf(tfVal)} 
-                          className={`p-2 rounded font-bold text-center border transition-all ${isSelected ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}
+                          className={`p-2 rounded font-bold text-center border cursor-pointer transition-all ${isSelected ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}
                         >
                           {tfVal === '60' ? '1H' : tfVal === '240' ? '4H' : tfVal === 'D' ? '1D' : `${tfVal}M`}
                         </button>
@@ -596,12 +596,12 @@ export default function App() {
                     <span>БОЕВОЙ ПРОФИЛЬ ТОРГОВЛИ {safeModeEnabled && <span className="text-emerald-400 text-[10px]">(Управляется Safe Mode)</span>}:</span>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 text-xs">
-                    <button onClick={() => !safeModeEnabled && setRiskMode('BALANCED')} className={`p-2 rounded font-bold text-center border ${riskMode === 'BALANCED' ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>⚡ Баланс</button>
-                    <button onClick={() => !safeModeEnabled && setRiskMode('SAFE')} className={`p-2 rounded font-bold text-center border ${riskMode === 'SAFE' ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🎯 Снайпер</button>
-                    <button onClick={() => !safeModeEnabled && setRiskMode('AGGRESSIVE')} className={`p-2 rounded font-bold text-center border ${riskMode === 'AGGRESSIVE' ? 'bg-rose-500 text-white border-rose-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🔥 Скальпинг</button>
-                    <button onClick={() => !safeModeEnabled && setRiskMode('BREAKOUT')} className={`p-2 rounded font-bold text-center border ${riskMode === 'BREAKOUT' ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🚀 Пробойник</button>
-                    <button onClick={() => !safeModeEnabled && setRiskMode('ANTITILT')} className={`p-2 rounded font-bold text-center border ${riskMode === 'ANTITILT' ? 'bg-emerald-600 text-white border-emerald-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🛡 Анти-Тильт</button>
-                    <button onClick={() => !safeModeEnabled && setRiskMode('TRENDSURF')} className={`p-2 rounded font-bold text-center border ${riskMode === 'TRENDSURF' ? 'bg-blue-600 text-white border-blue-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🌊 Тренд-Серфер</button>
+                    <button onClick={() => !safeModeEnabled && setRiskMode('BALANCED')} className={`p-2 rounded font-bold text-center border cursor-pointer ${riskMode === 'BALANCED' ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>⚡ Баланс</button>
+                    <button onClick={() => !safeModeEnabled && setRiskMode('SAFE')} className={`p-2 rounded font-bold text-center border cursor-pointer ${riskMode === 'SAFE' ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🎯 Снайпер</button>
+                    <button onClick={() => !safeModeEnabled && setRiskMode('AGGRESSIVE')} className={`p-2 rounded font-bold text-center border cursor-pointer ${riskMode === 'AGGRESSIVE' ? 'bg-rose-500 text-white border-rose-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🔥 Скальпинг</button>
+                    <button onClick={() => !safeModeEnabled && setRiskMode('BREAKOUT')} className={`p-2 rounded font-bold text-center border cursor-pointer ${riskMode === 'BREAKOUT' ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🚀 Пробойник</button>
+                    <button onClick={() => !safeModeEnabled && setRiskMode('ANTITILT')} className={`p-2 rounded font-bold text-center border cursor-pointer ${riskMode === 'ANTITILT' ? 'bg-emerald-600 text-white border-emerald-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🛡 Анти-Тильт</button>
+                    <button onClick={() => !safeModeEnabled && setRiskMode('TRENDSURF')} className={`p-2 rounded font-bold text-center border cursor-pointer ${riskMode === 'TRENDSURF' ? 'bg-blue-600 text-white border-blue-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🌊 Тренд-Серфер</button>
                   </div>
                 </div>
 
@@ -620,7 +620,7 @@ export default function App() {
                             <span className="font-bold text-[11px] leading-tight">{s.name}</span>
                             <button 
                               onClick={() => toggleStrategy(s.id)}
-                              className={`w-7 h-4 rounded-full transition-all relative ${s.enabled ? 'bg-cyan-500' : 'bg-slate-800'}`}
+                              className={`w-7 h-4 rounded-full cursor-pointer transition-all relative ${s.enabled ? 'bg-cyan-500' : 'bg-slate-800'}`}
                             >
                               <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-slate-950 transition-all ${s.enabled ? 'right-0.5' : 'left-0.5'}`} />
                             </button>
@@ -647,7 +647,7 @@ export default function App() {
                   const found = TRADING_PAIRS.find(p => p.id === Number(e.target.value));
                   if (found) setSelectedPair(found);
                 }}
-                className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-bold text-cyan-400 focus:outline-none focus:border-cyan-500"
+                className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-bold text-cyan-400 focus:outline-none focus:border-cyan-500 cursor-pointer"
               >
                 {TRADING_PAIRS.map(pair => (
                   <option key={pair.id} value={pair.id}>{pair.displaySymbol} — {pair.name}</option>
@@ -662,7 +662,7 @@ export default function App() {
                   <button
                     key={tfVal}
                     onClick={() => setTimeframe(tfVal)}
-                    className={`px-3 py-1 rounded text-xs font-bold transition-all ${timeframe === tfVal ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                    className={`px-3 py-1 rounded text-xs font-bold cursor-pointer transition-all ${timeframe === tfVal ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}
                   >
                     {tfVal === '60' ? '1H' : `${tfVal}M`}
                   </button>
@@ -673,8 +673,8 @@ export default function App() {
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-slate-400">РЕЖИМ ВИДА:</span>
               <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
-                <button onClick={() => setViewMode('single')} className={`px-3 py-1 rounded text-xs font-bold ${viewMode === 'single' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Одиночный</button>
-                <button onClick={() => setViewMode('quad')} className={`px-3 py-1 rounded text-xs font-bold ${viewMode === 'quad' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Мульти 4</button>
+                <button onClick={() => setViewMode('single')} className={`px-3 py-1 rounded text-xs font-bold cursor-pointer ${viewMode === 'single' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Одиночный</button>
+                <button onClick={() => setViewMode('quad')} className={`px-3 py-1 rounded text-xs font-bold cursor-pointer ${viewMode === 'quad' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Мульти 4</button>
               </div>
             </div>
           </div>
@@ -691,7 +691,7 @@ export default function App() {
                   <button
                     key={pair.id}
                     onClick={() => togglePairSelection(pair)}
-                    className={`px-2.5 py-1 rounded text-[11px] font-bold border transition-all ${isSelected ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm' : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'}`}
+                    className={`px-2.5 py-1 rounded text-[11px] font-bold border cursor-pointer transition-all ${isSelected ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm' : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'}`}
                   >
                     {pair.displaySymbol} {isSelected ? '✓' : ''}
                   </button>
@@ -774,10 +774,10 @@ export default function App() {
         <aside className="flex flex-col gap-4">
           <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex flex-col gap-3 shadow-lg">
             <div className="flex border-b border-slate-800 pb-2 gap-1 text-xs font-bold">
-              <button onClick={() => setRightTab('history')} className={`flex-1 py-1.5 rounded text-center transition-all ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Сделки</button>
-              <button onClick={() => setRightTab('logs')} className={`flex-1 py-1.5 rounded text-center transition-all ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Логи AI</button>
-              <button onClick={() => setRightTab('martingale')} className={`flex-1 py-1.5 rounded text-center transition-all ${rightTab === 'martingale' ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Мартингейл</button>
-              <button onClick={() => setRightTab('strategies')} className={`flex-1 py-1.5 rounded text-center transition-all ${rightTab === 'strategies' ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Статы</button>
+              <button onClick={() => setRightTab('history')} className={`flex-1 py-1.5 rounded text-center cursor-pointer transition-all ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Сделки</button>
+              <button onClick={() => setRightTab('logs')} className={`flex-1 py-1.5 rounded text-center cursor-pointer transition-all ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Логи AI</button>
+              <button onClick={() => setRightTab('martingale')} className={`flex-1 py-1.5 rounded text-center cursor-pointer transition-all ${rightTab === 'martingale' ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Мартингейл</button>
+              <button onClick={() => setRightTab('strategies')} className={`flex-1 py-1.5 rounded text-center cursor-pointer transition-all ${rightTab === 'strategies' ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Статы</button>
             </div>
 
             {rightTab === 'history' && (
@@ -862,7 +862,7 @@ export default function App() {
                   <span className="text-slate-400 font-bold">Лимит шагов Мартингейла:</span>
                   <button 
                     onClick={() => setMaxMartingaleStep(prev => prev === 4 ? 2 : prev + 1)}
-                    className="px-3 py-1 rounded bg-cyan-500 text-slate-950 font-bold"
+                    className="px-3 py-1 rounded bg-cyan-500 text-slate-950 font-bold cursor-pointer"
                   >
                     {maxMartingaleStep} шага
                   </button>
@@ -916,7 +916,7 @@ export default function App() {
                 <span className="text-lg">📊</span>
                 <h3 className="font-black text-cyan-400 text-sm">ДЕТАЛЬНЫЙ ОТЧЕТ СДЕЛКИ #{selectedHistoryItem.tradeId}</h3>
               </div>
-              <button onClick={() => setSelectedHistoryItem(null)} className="text-slate-400 hover:text-white font-bold text-sm">✕</button>
+              <button onClick={() => setSelectedHistoryItem(null)} className="text-slate-400 hover:text-white font-bold text-sm cursor-pointer">✕</button>
             </div>
 
             <div className="flex flex-col gap-2 text-xs font-mono bg-slate-950 p-3 rounded-lg border border-slate-800">
@@ -937,7 +937,7 @@ export default function App() {
 
             <button
               onClick={() => setSelectedHistoryItem(null)}
-              className="w-full py-2 rounded-lg bg-cyan-500 text-slate-950 font-black text-xs hover:bg-cyan-400 transition-all"
+              className="w-full py-2 rounded-lg bg-cyan-500 text-slate-950 font-black text-xs hover:bg-cyan-400 transition-all cursor-pointer"
             >
               ЗАКРЫТЬ ОТЧЕТ
             </button>
