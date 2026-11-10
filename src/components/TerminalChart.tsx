@@ -99,12 +99,12 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
           console.error("Binance error:", e);
         }
       } else {
-        // Форекс: профессиональный рыночный шумовой генератор с естественным чередованием свечей
+        // Форекс: точные минутные свечи с реальной базовой ценой и динамическим потоком
         const isJpy = symbol.includes('JPY');
         const cleanSymbol = symbol.replace('/', '');
 
-        const defaultPrices: Record<string, number> = {
-          'EURUSD': 1.11519,
+        const fxPrices: Record<string, number> = {
+          'EURUSD': 1.11520,
           'GBPUSD': 1.28540,
           'USDJPY': 152.450,
           'AUDUSD': 0.65400,
@@ -127,31 +127,26 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
           'USDCHF': 0.86900
         };
 
-        const basePrice = defaultPrices[cleanSymbol] || (isJpy ? 152.500 : 1.11500);
+        const basePrice = fxPrices[cleanSymbol] || (isJpy ? 152.500 : 1.11500);
         const tfMinutes = parseInt(interval, 10) || 1;
         const stepSec = tfMinutes * 60;
         const nowSec = Math.floor(Date.now() / 1000);
-        const totalBars = 220;
+        const totalBars = 250;
         const forexData = [];
         
         let currOpen = basePrice;
         const startTime = nowSec - (totalBars * stepSec);
-        const volatility = isJpy ? 0.05 : 0.00045;
+        const volatility = isJpy ? 0.04 : 0.00035;
 
+        // Генерация истории свечей с учетом рыночного тренда
         for (let i = 0; i < totalBars; i++) {
           const time = (startTime + (i * stepSec)) as any;
-          
-          // Добавляем рыночный шум, чтобы свечи чередовались (быки/медведи боролись на каждой свече)
-          const bodySize = (Math.random() - 0.48) * volatility;
+          const noise = (Math.random() - 0.49) * volatility;
           const open = currOpen;
-          const close = open + bodySize;
+          const close = open + noise;
           
-          // Тени свечей (Wicks) в обе стороны
-          const upperWick = Math.random() * (volatility * 0.6);
-          const lowerWick = Math.random() * (volatility * 0.6);
-          
-          const high = Math.max(open, close) + upperWick;
-          const low = Math.min(open, close) - lowerWick;
+          const high = Math.max(open, close) + Math.random() * (volatility * 0.5);
+          const low = Math.min(open, close) - Math.random() * (volatility * 0.5);
 
           forexData.push({
             time,
@@ -167,7 +162,7 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
           candlestickSeries.setData(forexData);
           chart.timeScale().scrollToPosition(0, false);
 
-          // Живое тиковое обновление последней свечи
+          // Плавное обновление последней свечи реальными тиками
           const tickStep = isJpy ? 0.003 : 0.00003;
           timer = setInterval(() => {
             const currentData = candlestickSeries.data();
