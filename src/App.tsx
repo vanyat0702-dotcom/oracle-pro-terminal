@@ -523,7 +523,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none">
       <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Zap className="w-7 h-7 text-cyan-400 animate-pulse" />
+          <Zap className="w-7 h-7 text-cyan-400 animate-pulse"/>
           <div>
             <h1 className="text-lg font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
               ORACLE PRO TERMINAL (AUTO-PILOT SNIPER v10.5)
@@ -534,7 +534,7 @@ export default function App() {
         
         <div className="flex items-center gap-3 text-xs">
           <button onClick={() => setSoundEnabled(!soundEnabled)} className="p-1.5 rounded-lg border bg-cyan-950/60 border-cyan-800 text-cyan-400">
-            {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            {soundEnabled ? <Volume2 className="w-4 h-4"/> : <VolumeX className="w-4 h-4"/>}
           </button>
 
           <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
@@ -563,7 +563,7 @@ export default function App() {
               className="w-full px-4 py-2.5 bg-slate-900 hover:bg-slate-850 flex items-center justify-between text-xs font-bold text-cyan-400 cursor-pointer border-b border-slate-800/50"
             >
               <div className="flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-cyan-400" />
+                <Sliders className="w-4 h-4 text-cyan-400"/>
                 <span>НАСТРОЙКИ СКАНИРОВАНИЯ И АДАПТИВНЫХ ПРОФИЛЕЙ</span>
                 <span className="text-[10px] text-slate-400 font-normal ml-2">
                   (Мультивыбор: <span className="text-cyan-300 font-bold">{selectedMultiPairs.length} пар</span> | Профиль: <span className="text-amber-400 font-bold">{riskMode}</span> {safeModeEnabled && <span className="text-emerald-400 font-bold">| SAFE MODE АКТИВЕН</span>})
@@ -571,7 +571,7 @@ export default function App() {
               </div>
               <div className="flex items-center gap-1 text-[11px] text-slate-400">
                 <span>{isSettingsOpen ? 'Свернуть' : 'Развернуть настройки'}</span>
-                {isSettingsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                {isSettingsOpen ? <ChevronUp className="w-4 h-4"/> : <ChevronDown className="w-4 h-4"/>}
               </div>
             </button>
 
@@ -599,7 +599,7 @@ export default function App() {
 
                 <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
                   <div className="flex items-center justify-between text-xs font-bold text-cyan-300">
-                    <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-cyan-400" /> СТАРШИЕ ТАЙМФРЕЙМЫ ДЛЯ МУЛЬТИАНАЛИЗА:</span>
+                    <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-cyan-400"/> СТАРШИЕ ТАЙМФРЕЙМЫ ДЛЯ МУЛЬТИАНАЛИЗА:</span>
                     <span className="text-[10px] text-slate-400">Выбрано: [{selectedHigherTfs.join(', ')}]M</span>
                   </div>
                   <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 text-xs">
@@ -620,7 +620,7 @@ export default function App() {
 
                 <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-amber-500/30">
                   <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
-                    <Flame className="w-4 h-4 text-amber-400" />
+                    <Flame className="w-4 h-4 text-amber-400"/>
                     <span>БОЕВОЙ ПРОФИЛЬ ТОРГОВЛИ {safeModeEnabled && <span className="text-emerald-400 text-[10px]">(Управляется Safe Mode)</span>}:</span>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 text-xs">
@@ -635,7 +635,7 @@ export default function App() {
 
                 <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
                   <div className="flex justify-between items-center text-xs font-bold text-cyan-300">
-                    <span className="flex items-center gap-1.5"><BrainCircuit className="w-4 h-4 text-cyan-400" /> АКТИВНЫЕ СТРАТЕГИИ АНАЛИЗА:</span>
+                    <span className="flex items-center gap-1.5"><BrainCircuit className="w-4 h-4 text-cyan-400"/> АКТИВНЫЕ СТРАТЕГИИ АНАЛИЗА:</span>
                     <span className="text-[10px] text-slate-400">Режим: <span className="text-amber-400 font-bold">{riskMode}</span></span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
@@ -712,7 +712,7 @@ export default function App() {
 
           <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex flex-col gap-2 shadow-lg">
             <div className="flex items-center justify-between text-xs font-bold text-slate-300">
-              <span className="flex items-center gap-1.5"><Zap className="w-4 h-4 text-cyan-400" /> МУЛЬТИВЫБОР ПАР ДЛЯ АВТОПИЛОТА ({selectedMultiPairs.length} выбрано):</span>
+              <span className="flex items-center gap-1.5"><Zap className="w-4 h-4 text-cyan-400"/> МУЛЬТИВЫБОР ПАР ДЛЯ АВТОПИЛОТА ({selectedMultiPairs.length} выбрано):</span>
               <span className="text-[10px] text-slate-400">Бот сканирует только отмеченные активы</span>
             </div>
             <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-slate-950/60 rounded-lg border border-slate-800">
@@ -745,7 +745,7 @@ export default function App() {
                   onClick={handleStartAnalysis}
                   className="px-5 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-black text-xs shadow-lg shadow-cyan-500/20 hover:brightness-110 transition-all flex items-center gap-2"
                 >
-                  <Zap className="w-4 h-4 fill-slate-950" />
+                  <Zap className="w-4 h-4 fill-slate-950"/>
                   ЗАПУСТИТЬ АВТОПИЛОТ (СНАЙПЕР)
                 </button>
               ) : (
@@ -753,7 +753,7 @@ export default function App() {
                   onClick={handleStopAnalysis}
                   className="px-5 py-2 rounded-lg bg-rose-600 text-white font-black text-xs shadow-lg shadow-rose-600/20 hover:bg-rose-500 transition-all flex items-center gap-2"
                 >
-                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <RefreshCw className="w-4 h-4 animate-spin"/>
                   ОСТАНОВИТЬ АВТОПИЛОТ
                 </button>
               )}
@@ -761,25 +761,25 @@ export default function App() {
 
             {viewMode === 'single' ? (
               <div className="flex-1 w-full h-full min-h-[480px]">
-                <TerminalChart pair={selectedPair.displaySymbol} timeframe={timeframe} timezone={timezone} />
+                <TerminalChart pair="{selectedPair.displaySymbol}" timeframe="{timeframe}" timezone="{timezone}"/>
               </div>
             ) : (
               <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 p-2 min-h-[500px]">
                 <div className="relative border border-slate-800 rounded-lg overflow-hidden bg-slate-950">
                   <div className="absolute top-2 left-2 z-10 bg-slate-900/80 px-2 py-0.5 rounded text-[10px] font-bold text-cyan-300">{quadPair1.displaySymbol}</div>
-                  <TerminalChart pair={quadPair1.displaySymbol} timeframe={timeframe} timezone={timezone} />
+                  <TerminalChart pair="{quadPair1.displaySymbol}" timeframe="{timeframe}" timezone="{timezone}"/>
                 </div>
                 <div className="relative border border-slate-800 rounded-lg overflow-hidden bg-slate-950">
                   <div className="absolute top-2 left-2 z-10 bg-slate-900/80 px-2 py-0.5 rounded text-[10px] font-bold text-cyan-300">{quadPair2.displaySymbol}</div>
-                  <TerminalChart pair={quadPair2.displaySymbol} timeframe={timeframe} timezone={timezone} />
+                  <TerminalChart pair="{quadPair2.displaySymbol}" timeframe="{timeframe}" timezone="{timezone}"/>
                 </div>
                 <div className="relative border border-slate-800 rounded-lg overflow-hidden bg-slate-950">
                   <div className="absolute top-2 left-2 z-10 bg-slate-900/80 px-2 py-0.5 rounded text-[10px] font-bold text-cyan-300">{quadPair3.displaySymbol}</div>
-                  <TerminalChart pair={quadPair3.displaySymbol} timeframe={timeframe} timezone={timezone} />
+                  <TerminalChart pair="{quadPair3.displaySymbol}" timeframe="{timeframe}" timezone="{timezone}"/>
                 </div>
                 <div className="relative border border-slate-800 rounded-lg overflow-hidden bg-slate-950">
                   <div className="absolute top-2 left-2 z-10 bg-slate-900/80 px-2 py-0.5 rounded text-[10px] font-bold text-cyan-300">{quadPair4.displaySymbol}</div>
-                  <TerminalChart pair={quadPair4.displaySymbol} timeframe={timeframe} timezone={timezone} />
+                  <TerminalChart pair="{quadPair4.displaySymbol}" timeframe="{timeframe}" timezone="{timezone}"/>
                 </div>
               </div>
             )}
@@ -978,6 +978,3 @@ export default function App() {
     </div>
   );
 }
-```[cite: 1]
-
-Заменяй этим кодом файл `src/App.tsx` в репозитории[cite: 1], пуши изменения в коммит — сборка на Vercel сразу пройдет успешно без единой ошибки! Жду сигнал, как развернется билд, братан! 🚀🔥
