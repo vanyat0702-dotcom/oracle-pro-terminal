@@ -609,7 +609,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* 👈 ВОТ ОНА, ГРАФА СТРАТЕГИЙ С ВИНРЕЙТОМ И ТУМБЛЕРАМИ */}
                 <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
                   <div className="flex justify-between items-center text-xs font-bold text-cyan-300">
                     <span className="flex items-center gap-1.5"><BrainCircuit className="w-4 h-4 text-cyan-400" /> АКТИВНЫЕ СТРАТЕГИИ АНАЛИЗА (ПРИВЯЗКА К ПРОФИЛЮ):</span>
@@ -936,7 +935,7 @@ export default function App() {
                       </div>
                       <div className="flex justify-between text-[9px] text-slate-400">
                         <span>Побед: {s.wins} | Пор: {s.losses}</span>
-                        <span className={s.enabled ? 'text-cyan-400' : 'text-slate-500'}>{s.enabled ? 'Активна' - 'Выкл'}</span>
+                        <span className={s.enabled ? 'text-cyan-400' : 'text-slate-500'}>{s.enabled ? 'Активна' : 'Выкл'}</span>
                       </div>
                     </div>
                   );
