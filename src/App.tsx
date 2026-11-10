@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Zap, RefreshCw, BrainCircuit, Clock, Flame, Sliders, ChevronDown, ChevronUp, Volume2, VolumeX } from 'lucide-react';
+import { Zap, LineChart, RefreshCw, BrainCircuit, Clock, Flame, Sliders, ChevronDown, ChevronUp, Volume2, VolumeX, ChevronRight } from 'lucide-react';
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
 import { TerminalChart } from './components/TerminalChart';
 
@@ -28,7 +28,7 @@ export default function App() {
   });
 
   const [timeframe, setTimeframe] = useState<string>("1");
-  const [selectedHigherTfs, setSelectedHigherTfs] = useState<string[]>(["15", "60"]);
+  const [displayTf, setDisplayTf] = useState<string>("1");
   
   const [viewMode, setViewMode] = useState<'single' | 'quad'>('single');
   const [timezone, setTimezone] = useState<'Europe/Moscow' | 'Etc/UTC'>('Europe/Moscow');
@@ -44,17 +44,10 @@ export default function App() {
   });
 
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
-  const [newsFilterEnabled] = useState<boolean>(true);
-  const [atrFilterEnabled] = useState<boolean>(true);
-  const [riskCapEnabled] = useState<boolean>(true);
+  const [newsFilterEnabled, setNewsFilterEnabled] = useState<boolean>(true);
+  const [atrFilterEnabled, setAtrFilterEnabled] = useState<boolean>(true);
+  const [riskCapEnabled, setRiskCapEnabled] = useState<boolean>(true);
   const [maxMartingaleStep, setMaxMartingaleStep] = useState<number>(3);
-
-  const lastPricesRef = useRef<{ [key: string]: number }>({
-    'EUR/USD': 1.11500,
-    'GBP/USD': 1.28500,
-    'USD/JPY': 152.500,
-    'BTC/USDT': 75530.00
-  });
 
   const [strategies, setStrategies] = useState([
     { id: 'trend_following', name: 'Трендовый фильтр (Trend Master)', enabled: true, wins: 14, losses: 3 },
@@ -114,16 +107,13 @@ export default function App() {
   const timeframeRef = useRef(timeframe);
   timeframeRef.current = timeframe;
 
-  const selectedHigherTfsRef = useRef(selectedHigherTfs);
-  selectedHigherTfsRef.current = selectedHigherTfs;
-
   const selectedMultiPairsRef = useRef(selectedMultiPairs);
   selectedMultiPairsRef.current = selectedMultiPairs;
 
   const hasTriggeredCurrentCandleRef = useRef<boolean>(false);
   const currentCandleIndexRef = useRef<number>(0);
 
-  const activeTradesRef = useRef<Array<{ tradeId: number; pair: string; direction: 'CALL' | 'PUT'; candleOpenTime: string; expireAt: number; expMins: number; openPrice: number }>>([]);
+  const activeTradesRef = useRef<Array<{ tradeId: number; pair: string; direction: 'CALL' | 'PUT'; candleOpenTime: string; expireAt: number; expMins: number }>>([]);
 
   const [aiLogs, setAiLogs] = useState<Array<{ id: number; time: string; text: string; type: 'info' | 'level' | 'pattern' | 'sniper' | 'vision' }>>([
     { id: 1, time: '00:01', text: 'Vision AI Core v10.5: Адаптивные боевые профили активированы.', type: 'info' }
@@ -199,18 +189,7 @@ export default function App() {
     setStrategies(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
   };
 
-  const toggleHigherTf = (tf: string) => {
-    setSelectedHigherTfs(prev => {
-      if (prev.includes(tf)) {
-        if (prev.length === 1) return prev;
-        return prev.filter(t => t !== tf);
-      } else {
-        return [...prev, tf];
-      }
-    });
-  };
-
-  const fetchAiAnalysisFromBackend = async (tf: string, hTfs: string[], currentRemSec: number, openTimeStr: string) => {
+  const fetchAiAnalysisFromBackend = async (tf: string, currentRemSec: number, openTimeStr: string) => {
     try {
       const multiPairsSymbols = selectedMultiPairsRef.current.map(p => p.displaySymbol);
       const activeStratNames = strategies.filter(s => s.enabled).map(s => s.name);
@@ -218,7 +197,6 @@ export default function App() {
       const requestPayload = {
         pairs: multiPairsSymbols,
         timeframe: tf,
-        higherTimeframes: hTfs,
         mode: riskModeRef.current,
         safeModeEnabled: safeModeEnabled,
         secondsRemaining: currentRemSec,
@@ -329,8 +307,7 @@ export default function App() {
                   pair: pairKey,
                   direction: trade.direction,
                   candleOpenTime: trade.candleOpenTime,
-                  tradeId: trade.tradeId,
-                  openPrice: trade.openPrice
+                  tradeId: trade.tradeId
                 })
               });
 
@@ -344,16 +321,15 @@ export default function App() {
 
                 setHistoryList(prev => prev.map(item => 
                   item.tradeId === trade.tradeId 
-                    ? { ...item, result: finalWin ? 'WIN' : 'LOSS', pips: pipsFormatted, status: 'FINISHED', openPrice: trade.openPrice, closePrice } 
+                    ? { ...item, result: finalWin ? 'WIN' : 'LOSS', pips: pipsFormatted, status: 'FINISHED', closePrice } 
                     : item
                 ));
 
-                addLog(`🎯 ИТОГ СДЕЛКИ #${trade.tradeId} [${pairKey}]: ${finalWin ? '🟢 WIN' : '🔴 LOSS'} (${pipsFormatted}) | Откр: ${trade.openPrice} ➔ Закр: ${closePrice}`, finalWin ? 'sniper' : 'info');
+                addLog(`🎯 ИТОГ СДЕЛКИ #${trade.tradeId} [${pairKey}]: ${finalWin ? '🟢 WIN' : '🔴 LOSS'} (${pipsFormatted})`, finalWin ? 'sniper' : 'info');
               } else {
                 remainingTrades.push(trade);
               }
             } catch (e) {
-              console.error("Result check error:", e);
               remainingTrades.push(trade);
             }
           } else {
@@ -376,7 +352,7 @@ export default function App() {
         const nextTime = new Date(Date.now() + remaining * 1000);
         const candleOpenTimeStr = `${nextTime.getHours().toString().padStart(2, '0')}:${nextTime.getMinutes().toString().padStart(2, '0')}`;
 
-        const aiResult = await fetchAiAnalysisFromBackend(timeframeRef.current, selectedHigherTfsRef.current, remaining, candleOpenTimeStr);
+        const aiResult = await fetchAiAnalysisFromBackend(timeframeRef.current, remaining, candleOpenTimeStr);
         const chosenPairSymbol = aiResult.bestPair || selectedMultiPairsRef.current[0].displaySymbol;
 
         const foundPairObj = TRADING_PAIRS.find(p => p.displaySymbol === chosenPairSymbol);
@@ -403,7 +379,6 @@ export default function App() {
         playBeep('sniper');
 
         const expMins = parseInt(aiResult.recommendedExpiration || timeframeRef.current, 10) || 1;
-        const currentPairPrice = lastPricesRef.current[chosenPairSymbol] || (chosenPairSymbol.includes('BTC') ? 75530 : 1.11500);
         
         activeTradesRef.current.push({
           tradeId: aiResult.tradeId,
@@ -411,8 +386,7 @@ export default function App() {
           direction: aiResult.signal,
           candleOpenTime: candleOpenTimeStr,
           expireAt: Date.now() + (remaining * 1000) + (expMins * 60 * 1000),
-          expMins,
-          openPrice: currentPairPrice
+          expMins
         });
 
         setAiSignal({
@@ -444,11 +418,11 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [timeframe, selectedHigherTfs, strategies, newsFilterEnabled, atrFilterEnabled, safeModeEnabled]);
+  }, [timeframe, strategies, newsFilterEnabled, atrFilterEnabled, safeModeEnabled]);
 
   const handleStartAnalysis = async () => {
     setIsAnalyzing(true);
-    setAuditStepText('🤖 Автопилот запущен. Сканирование мультикорзины...');
+    setAuditStepText('🤖 Автопилот запущен. Ожидание снайперского окна...');
     playBeep('alert');
     addLog(`🚀 Автопилот активирован для ${selectedMultiPairs.length} выбранных пар.`, 'vision');
   };
@@ -500,7 +474,7 @@ export default function App() {
             <h1 className="text-lg font-black tracking-wider bg-gradient-to-r from-cyan-400 via-blue-500 to-indigo-500 bg-clip-text text-transparent">
               ORACLE PRO TERMINAL (AUTO-PILOT SNIPER v10.5)
             </h1>
-            <p className="text-[9px] text-slate-400 tracking-widest uppercase">Адаптивный ИИ-Терминал (Adaptive Profiles)</p>
+            <p className="text-[9px] text-slate-400 tracking-widest uppercase">Автономный режим снайперских входов</p>
           </div>
         </div>
         
@@ -526,8 +500,8 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 p-4 grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <section className="lg:col-span-3 flex flex-col gap-3">
+      <main className="flex-1 p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <section className="lg:col-span-9 flex flex-col gap-3">
           
           <div className="bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-lg transition-all">
             <button
@@ -536,9 +510,9 @@ export default function App() {
             >
               <div className="flex items-center gap-2">
                 <Sliders className="w-4 h-4 text-cyan-400"/>
-                <span>НАСТРОЙКИ СКАНИРОВАНИЯ И АДАПТИВНЫХ ПРОФИЛЕЙ</span>
+                <span>НАСТРОЙКИ СКАНИРОВАНИЯ И ИИ-РЕЖИМОВ</span>
                 <span className="text-[10px] text-slate-400 font-normal ml-2">
-                  (Мультивыбор: <span className="text-cyan-300 font-bold">{selectedMultiPairs.length} пар</span> | Профиль: <span className="text-amber-400 font-bold">{riskMode}</span> {safeModeEnabled && <span className="text-emerald-400 font-bold">| SAFE MODE АКТИВЕН</span>})
+                  (Safe Mode: <span className="text-emerald-400 font-bold">{safeModeEnabled ? 'ВКЛ' : 'ВЫКЛ'}</span> | Режим: <span className="text-amber-400 font-bold">{riskMode}</span>)
                 </span>
               </div>
               <div className="flex items-center gap-1 text-[11px] text-slate-400">
@@ -553,8 +527,8 @@ export default function App() {
                   <div className="flex items-center gap-2">
                     <span className="text-xl">🛡️</span>
                     <div>
-                      <div className="text-xs font-bold text-emerald-400">SAFE MODE & SMART PROFILES</div>
-                      <div className="text-[10px] text-slate-400">Автоматически включает трендовый фильтр и снайперские уровни М5/М15</div>
+                      <div className="text-xs font-bold text-emerald-400">SAFE MODE (Торговля от уровней M5/M15)</div>
+                      <div className="text-[10px] text-slate-400">Фильтрация шума, проверка уровней и развернутые отчеты в истории</div>
                     </div>
                   </div>
                   <button 
@@ -569,381 +543,378 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
-                  <div className="flex items-center justify-between text-xs font-bold text-cyan-300">
-                    <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-cyan-400"/> СТАРШИЕ ТАЙМФРЕЙМЫ ДЛЯ МУЛЬТИАНАЛИЗА:</span>
-                    <span className="text-[10px] text-slate-400">Выбрано: [{selectedHigherTfs.join(', ')}]M</span>
+                <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-amber-500/30">
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
+                    <Flame className="w-4 h-4 text-amber-400"/>
+                    <span>БОЕВОЙ РЕЖИМ ТОРГОВЛИ И ИИ-АНАЛИЗА:</span>
                   </div>
-                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 text-xs">
-                    {['5', '15', '30', '60', '240', 'D'].map((tfVal) => {
-                      const isSelected = selectedHigherTfs.includes(tfVal);
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 text-xs">
+                    <button onClick={() => setRiskMode('BALANCED')} className={`p-2 rounded font-bold text-center cursor-pointer border ${riskMode === 'BALANCED' ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>⚡ Баланс</button>
+                    <button onClick={() => setRiskMode('SAFE')} className={`p-2 rounded font-bold text-center cursor-pointer border ${riskMode === 'SAFE' ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🎯 Снайпер</button>
+                    <button onClick={() => setRiskMode('AGGRESSIVE')} className={`p-2 rounded font-bold text-center cursor-pointer border ${riskMode === 'AGGRESSIVE' ? 'bg-rose-500 text-white border-rose-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🔥 Скальпинг</button>
+                    <button onClick={() => setRiskMode('BREAKOUT')} className={`p-2 rounded font-bold text-center cursor-pointer border ${riskMode === 'BREAKOUT' ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🚀 Пробойник</button>
+                    <button onClick={() => setRiskMode('ANTITILT')} className={`p-2 rounded font-bold text-center cursor-pointer border ${riskMode === 'ANTITILT' ? 'bg-emerald-600 text-white border-emerald-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🛡 Анти-Тильт</button>
+                    <button onClick={() => setRiskMode('TRENDSURF')} className={`p-2 rounded font-bold text-center cursor-pointer border ${riskMode === 'TRENDSURF' ? 'bg-blue-600 text-white border-blue-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🌊 Тренд-Серфер</button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4 text-xs p-2 bg-slate-900/80 rounded-lg border border-indigo-500/30">
+                  <span className="font-bold text-indigo-300">ФИЛЬТРЫ:</span>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" checked={newsFilterEnabled} onChange={() => setNewsFilterEnabled(!newsFilterEnabled)} className="rounded text-indigo-500 cursor-pointer" />
+                    <span className="text-slate-300">📰 Новостной фильтр</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" checked={atrFilterEnabled} onChange={() => setAtrFilterEnabled(!atrFilterEnabled)} className="rounded text-indigo-500 cursor-pointer" />
+                    <span className="text-slate-300">📊 ATR Волатильность</span>
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" checked={riskCapEnabled} onChange={() => setRiskCapEnabled(!riskCapEnabled)} className="rounded text-indigo-500 cursor-pointer" />
+                    <span className="text-slate-300">🛡 Risk-Cap (до {maxMartingaleStep} шага)</span>
+                  </label>
+                </div>
+
+                <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
+                  <div className="flex justify-between items-center text-xs font-bold text-cyan-400">
+                    <span>АКТИВНЫЕ СТРАТЕГИИ</span>
+                    <button onClick={() => setStrategies(prev => prev.map(s => ({ ...s, enabled: true })))} className="text-[10px] text-cyan-300 hover:underline cursor-pointer">Включить все</button>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+                    {strategies.map((strat) => (
+                      <button
+                        key={strat.id}
+                        onClick={() => toggleStrategy(strat.id)}
+                        className={`p-2 rounded-lg text-left text-xs font-bold transition-all border cursor-pointer ${strat.enabled ? 'bg-cyan-950/60 border-cyan-500 text-cyan-300' : 'bg-slate-950 border-slate-800 text-slate-500'}`}
+                      >
+                        <div className="truncate">{strat.name}</div>
+                        <div className="text-[9px] text-emerald-400 font-mono mt-0.5">Win: {Math.round((strat.wins / (strat.wins + strat.losses)) * 100)}%</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
+                  <div className="flex justify-between items-center text-xs font-bold text-cyan-400">
+                    <span>МУЛЬТИВЫБОР ПАР ДЛЯ АВТОПИЛОТА ({selectedMultiPairs.length})</span>
+                    <div className="flex gap-2 text-[10px]">
+                      <button onClick={() => setSelectedMultiPairs([...TRADING_PAIRS])} className="text-cyan-300 hover:underline cursor-pointer">Выбрать все</button>
+                      <button onClick={() => setSelectedMultiPairs([TRADING_PAIRS[0]])} className="text-slate-400 hover:underline cursor-pointer">Сбросить</button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
+                    {TRADING_PAIRS.map((pair) => {
+                      const isChecked = selectedMultiPairs.some(p => p.id === pair.id);
                       return (
-                        <button 
-                          key={tfVal} 
-                          onClick={() => toggleHigherTf(tfVal)} 
-                          className={`p-2 rounded font-bold text-center border cursor-pointer transition-all ${isSelected ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}
+                        <button
+                          key={pair.id}
+                          onClick={() => togglePairSelection(pair)}
+                          className={`px-2 py-1 rounded text-[10px] font-bold border cursor-pointer transition-all ${isChecked ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black' : 'bg-slate-950 border-slate-800 text-slate-400'}`}
                         >
-                          {tfVal === '60' ? '1H' : tfVal === '240' ? '4H' : tfVal === 'D' ? '1D' : `${tfVal}M`}
+                          {pair.displaySymbol} {isChecked ? '✓' : ''}
                         </button>
                       );
                     })}
                   </div>
                 </div>
-
-                <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-amber-500/30">
-                  <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
-                    <Flame className="w-4 h-4 text-amber-400"/>
-                    <span>БОЕВОЙ ПРОФИЛЬ ТОРГОВЛИ {safeModeEnabled && <span className="text-emerald-400 text-[10px]">(Управляется Safe Mode)</span>}:</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 text-xs">
-                    <button onClick={() => !safeModeEnabled && setRiskMode('BALANCED')} className={`p-2 rounded font-bold text-center border cursor-pointer ${riskMode === 'BALANCED' ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>⚡ Баланс</button>
-                    <button onClick={() => !safeModeEnabled && setRiskMode('SAFE')} className={`p-2 rounded font-bold text-center border cursor-pointer ${riskMode === 'SAFE' ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🎯 Снайпер</button>
-                    <button onClick={() => !safeModeEnabled && setRiskMode('AGGRESSIVE')} className={`p-2 rounded font-bold text-center border cursor-pointer ${riskMode === 'AGGRESSIVE' ? 'bg-rose-500 text-white border-rose-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🔥 Скальпинг</button>
-                    <button onClick={() => !safeModeEnabled && setRiskMode('BREAKOUT')} className={`p-2 rounded font-bold text-center border cursor-pointer ${riskMode === 'BREAKOUT' ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🚀 Пробойник</button>
-                    <button onClick={() => !safeModeEnabled && setRiskMode('ANTITILT')} className={`p-2 rounded font-bold text-center border cursor-pointer ${riskMode === 'ANTITILT' ? 'bg-emerald-600 text-white border-emerald-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🛡 Анти-Тильт</button>
-                    <button onClick={() => !safeModeEnabled && setRiskMode('TRENDSURF')} className={`p-2 rounded font-bold text-center border cursor-pointer ${riskMode === 'TRENDSURF' ? 'bg-blue-600 text-white border-blue-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🌊 Тренд-Серфер</button>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
-                  <div className="flex justify-between items-center text-xs font-bold text-cyan-300">
-                    <span className="flex items-center gap-1.5"><BrainCircuit className="w-4 h-4 text-cyan-400"/> АКТИВНЫЕ СТРАТЕГИИ АНАЛИЗА:</span>
-                    <span className="text-[10px] text-slate-400">Режим: <span className="text-amber-400 font-bold">{riskMode}</span></span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
-                    {strategies.map((s) => {
-                      const total = s.wins + s.losses;
-                      const winrate = total > 0 ? Math.round((s.wins / total) * 100) : 0;
-                      return (
-                        <div key={s.id} className={`p-2 rounded-lg border flex flex-col justify-between gap-1 transition-all ${s.enabled ? 'bg-cyan-950/40 border-cyan-500/60 text-cyan-200' : 'bg-slate-950 border-slate-800 text-slate-500'}`}>
-                          <div className="flex justify-between items-start gap-1">
-                            <span className="font-bold text-[11px] leading-tight">{s.name}</span>
-                            <button 
-                              onClick={() => toggleStrategy(s.id)}
-                              className={`w-7 h-4 rounded-full cursor-pointer transition-all relative ${s.enabled ? 'bg-cyan-500' : 'bg-slate-800'}`}
-                            >
-                              <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-slate-950 transition-all ${s.enabled ? 'right-0.5' : 'left-0.5'}`} />
-                            </button>
-                          </div>
-                          <div className="flex justify-between items-center text-[10px] text-slate-400 pt-1 border-t border-slate-800/60">
-                            <span>Винрейт: <strong className={winrate >= 70 ? 'text-emerald-400' : 'text-cyan-400'}>{winrate}%</strong></span>
-                            <span>(✅{s.wins} / ❌{s.losses})</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
               </div>
             )}
           </div>
 
-          <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 shadow-lg">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-400">ВЫБОР ПАРЫ:</span>
-              <select 
-                value={selectedPair.id} 
-                onChange={(e) => {
-                  const found = TRADING_PAIRS.find(p => p.id === Number(e.target.value));
-                  if (found) setSelectedPair(found);
-                }}
-                className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-bold text-cyan-400 focus:outline-none focus:border-cyan-500 cursor-pointer"
-              >
-                {TRADING_PAIRS.map(pair => (
-                  <option key={pair.id} value={pair.id}>{pair.displaySymbol} — {pair.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-400">ТАЙМФРЕЙМ СВЕЧИ:</span>
-              <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
-                {['1', '5', '15', '30', '60'].map((tfVal) => (
-                  <button
-                    key={tfVal}
-                    onClick={() => setTimeframe(tfVal)}
-                    className={`px-3 py-1 rounded text-xs font-bold cursor-pointer transition-all ${timeframe === tfVal ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}
-                  >
-                    {tfVal === '60' ? '1H' : `${tfVal}M`}
-                  </button>
-                ))}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-stretch">
+            <div className="lg:col-span-3 bg-slate-900/90 border border-slate-800 rounded-xl p-3 backdrop-blur flex flex-col gap-2.5 max-h-[600px] overflow-hidden shadow-lg">
+              <div className="flex justify-between items-center">
+                <span className="text-[11px] font-bold text-cyan-400 tracking-wider">ПРОСМОТР ГРАФИКА:</span>
               </div>
-            </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-400">РЕЖИМ ВИДА:</span>
-              <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 gap-1">
-                <button onClick={() => setViewMode('single')} className={`px-3 py-1 rounded text-xs font-bold cursor-pointer ${viewMode === 'single' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Одиночный</button>
-                <button onClick={() => setViewMode('quad')} className={`px-3 py-1 rounded text-xs font-bold cursor-pointer ${viewMode === 'quad' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Мульти 4</button>
+              <div className="grid grid-cols-2 gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                <button onClick={() => setViewMode('single')} className={`py-1 rounded text-[10px] font-bold cursor-pointer ${viewMode === 'single' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Один</button>
+                <button onClick={() => setViewMode('quad')} className={`py-1 rounded text-[10px] font-bold cursor-pointer ${viewMode === 'quad' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Сетка 4</button>
               </div>
-            </div>
-          </div>
 
-          <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex flex-col gap-2 shadow-lg">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-300">
-              <span className="flex items-center gap-1.5"><Zap className="w-4 h-4 text-cyan-400"/> МУЛЬТИВЫБОР ПАР ДЛЯ АВТОПИЛОТА ({selectedMultiPairs.length} выбрано):</span>
-              <span className="text-[10px] text-slate-400">Бот сканирует только отмеченные активы</span>
-            </div>
-            <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-1 bg-slate-950/60 rounded-lg border border-slate-800">
-              {TRADING_PAIRS.map(pair => {
-                const isSelected = selectedMultiPairs.some(p => p.id === pair.id);
-                return (
+              <div className="grid grid-cols-2 gap-1.5 overflow-y-auto pr-1 flex-1">
+                {TRADING_PAIRS.map((pair) => (
                   <button
                     key={pair.id}
-                    onClick={() => togglePairSelection(pair)}
-                    className={`px-2.5 py-1 rounded text-[11px] font-bold border cursor-pointer transition-all ${isSelected ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm' : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'}`}
+                    onClick={() => setSelectedPair(pair)}
+                    className={`px-2 py-2 rounded-lg text-[10px] font-bold transition-all text-center truncate border cursor-pointer ${selectedPair.id === pair.id ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-sm' : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'}`}
                   >
-                    {pair.displaySymbol} {isSelected ? '✓' : ''}
+                    {pair.displaySymbol}
                   </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="relative bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-2xl flex-1 min-h-[500px] flex flex-col">
-            <div className="absolute top-3 left-3 z-10 flex items-center gap-2 bg-slate-950/80 backdrop-blur px-3 py-1.5 rounded-lg border border-slate-800 text-xs">
-              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></span>
-              <span className="font-bold text-cyan-300">{selectedPair.displaySymbol}</span>
-              <span className="text-slate-400">| Закрытие свечи через:</span>
-              <span className="font-mono font-bold text-amber-400 text-sm">{formatTimer(candleTimer)}</span>
-            </div>
-
-            <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
-              {!isAnalyzing ? (
-                <button
-                  onClick={handleStartAnalysis}
-                  className="px-5 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-black text-xs shadow-lg shadow-cyan-500/20 hover:brightness-110 transition-all flex items-center gap-2 cursor-pointer"
-                >
-                  <Zap className="w-4 h-4 fill-slate-950"/>
-                  ЗАПУСТИТЬ АВТОПИЛОТ (СНАЙПЕР)
-                </button>
-              ) : (
-                <button
-                  onClick={handleStopAnalysis}
-                  className="px-5 py-2 rounded-lg bg-rose-600 text-white font-black text-xs shadow-lg shadow-rose-600/20 hover:bg-rose-500 transition-all flex items-center gap-2 cursor-pointer"
-                >
-                  <RefreshCw className="w-4 h-4 animate-spin"/>
-                  ОСТАНОВИТЬ АВТОПИЛОТ
-                </button>
-              )}
-            </div>
-
-            {viewMode === 'single' ? (
-              <div className="flex-1 w-full h-full min-h-[480px]">
-                <TerminalChart pair={selectedPair.displaySymbol} timeframe={timeframe} timezone={timezone} />
-              </div>
-            ) : (
-              <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-2 p-2 min-h-[500px]">
-                <div className="relative border border-slate-800 rounded-lg overflow-hidden bg-slate-950">
-                  <div className="absolute top-2 left-2 z-10 bg-slate-900/80 px-2 py-0.5 rounded text-[10px] font-bold text-cyan-300">{quadPair1.displaySymbol}</div>
-                  <TerminalChart pair={quadPair1.displaySymbol} timeframe={timeframe} timezone={timezone} />
-                </div>
-                <div className="relative border border-slate-800 rounded-lg overflow-hidden bg-slate-950">
-                  <div className="absolute top-2 left-2 z-10 bg-slate-900/80 px-2 py-0.5 rounded text-[10px] font-bold text-cyan-300">{quadPair2.displaySymbol}</div>
-                  <TerminalChart pair={quadPair2.displaySymbol} timeframe={timeframe} timezone={timezone} />
-                </div>
-                <div className="relative border border-slate-800 rounded-lg overflow-hidden bg-slate-950">
-                  <div className="absolute top-2 left-2 z-10 bg-slate-900/80 px-2 py-0.5 rounded text-[10px] font-bold text-cyan-300">{quadPair3.displaySymbol}</div>
-                  <TerminalChart pair={quadPair3.displaySymbol} timeframe={timeframe} timezone={timezone} />
-                </div>
-                <div className="relative border border-slate-800 rounded-lg overflow-hidden bg-slate-950">
-                  <div className="absolute top-2 left-2 z-10 bg-slate-900/80 px-2 py-0.5 rounded text-[10px] font-bold text-cyan-300">{quadPair4.displaySymbol}</div>
-                  <TerminalChart pair={quadPair4.displaySymbol} timeframe={timeframe} timezone={timezone} />
-                </div>
-              </div>
-            )}
-
-            {isAnalyzing && auditStepText && (
-              <div className="absolute bottom-3 left-3 right-3 bg-slate-950/90 border border-cyan-500/50 backdrop-blur rounded-lg p-3 flex items-center justify-between shadow-xl">
-                <div className="flex items-center gap-3">
-                  <div className="w-3 h-3 rounded-full bg-cyan-400 animate-ping"></div>
-                  <span className="text-xs font-bold text-cyan-300">{auditStepText}</span>
-                </div>
-                {aiSignal && (
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="text-slate-400">Пара: <strong className="text-cyan-400">{aiSignal.pair}</strong></span>
-                    <span className="text-slate-400">Сигнал: <strong className={aiSignal.direction === 'CALL' ? 'text-emerald-400 font-black' : aiSignal.direction === 'PUT' ? 'text-rose-400 font-black' : 'text-amber-400'}>{aiSignal.direction}</strong></span>
-                    <span className="text-slate-400">Уверенность: <strong className="text-cyan-300">{aiSignal.confidence}%</strong></span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </section>
-
-        <aside className="flex flex-col gap-4">
-          <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 flex flex-col gap-3 shadow-lg">
-            <div className="flex border-b border-slate-800 pb-2 gap-1 text-xs font-bold">
-              <button onClick={() => setRightTab('history')} className={`flex-1 py-1.5 rounded text-center cursor-pointer transition-all ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Сделки</button>
-              <button onClick={() => setRightTab('logs')} className={`flex-1 py-1.5 rounded text-center cursor-pointer transition-all ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Логи AI</button>
-              <button onClick={() => setRightTab('martingale')} className={`flex-1 py-1.5 rounded text-center cursor-pointer transition-all ${rightTab === 'martingale' ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Мартингейл</button>
-              <button onClick={() => setRightTab('strategies')} className={`flex-1 py-1.5 rounded text-center cursor-pointer transition-all ${rightTab === 'strategies' ? 'bg-cyan-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'}`}>Статы</button>
-            </div>
-
-            {rightTab === 'history' && (
-              <div className="flex flex-col gap-2 max-h-[500px] overflow-y-auto">
-                <div className="text-[11px] font-bold text-slate-400 flex justify-between px-1">
-                  <span>ИСТОРИЯ СИГНАЛОВ И СДЕЛОК</span>
-                  <span>Статус / Итог</span>
-                </div>
-                {historyList.length === 0 ? (
-                  <div className="text-xs text-slate-500 text-center py-6">Нет совершенных сделок</div>
-                ) : (
-                  historyList.map(item => (
-                    <div 
-                      key={item.id} 
-                      onClick={() => setSelectedHistoryItem(item)}
-                      className="p-2.5 rounded-lg bg-slate-950 border border-slate-800/80 hover:border-cyan-500/50 cursor-pointer transition-all flex flex-col gap-1.5"
-                    >
-                      <div className="flex justify-between items-center text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-cyan-300">{item.pair}</span>
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-black ${item.direction === 'CALL' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-rose-950 text-rose-400 border border-rose-800'}`}>
-                            {item.direction}
-                          </span>
-                        </div>
-                        <span className="font-mono text-[10px] text-slate-400">#{item.tradeId}</span>
-                      </div>
-
-                      <div className="flex justify-between items-center text-[11px]">
-                        <span className="text-slate-400">{item.time}</span>
-                        {item.status === 'ACTIVE' ? (
-                          <span className="text-amber-400 font-bold animate-pulse">⏳ В работе...</span>
-                        ) : (
-                          <span className={`font-bold ${item.result === 'WIN' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {item.result === 'WIN' ? '🟢 WIN' : '🔴 LOSS'} ({item.pips})
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-
-            {rightTab === 'logs' && (
-              <div className="flex flex-col gap-1.5 max-h-[500px] overflow-y-auto font-mono text-[11px]">
-                {aiLogs.map(log => (
-                  <div key={log.id} className="p-2 rounded bg-slate-950 border border-slate-800/60 flex flex-col gap-0.5">
-                    <div className="flex justify-between text-[9px] text-slate-500">
-                      <span>{log.time}</span>
-                      <span className="uppercase text-cyan-400 font-bold">{log.type}</span>
-                    </div>
-                    <div className="text-slate-300 leading-tight">{log.text}</div>
-                  </div>
                 ))}
               </div>
-            )}
+            </div>
 
-            {rightTab === 'martingale' && (
-              <div className="flex flex-col gap-3 text-xs">
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[10px] text-slate-400 font-bold">Стартовая сумма ($):</span>
-                    <input 
-                      type="number" 
-                      value={startAmount} 
-                      onChange={(e) => setStartAmount(e.target.value)}
-                      className="bg-slate-950 border border-slate-700 rounded p-1.5 text-cyan-400 font-bold focus:outline-none focus:border-cyan-500"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[10px] text-slate-400 font-bold">Выплата брокера (%):</span>
-                    <input 
-                      type="number" 
-                      value={payoutPercent} 
-                      onChange={(e) => setPayoutPercent(e.target.value)}
-                      className="bg-slate-950 border border-slate-700 rounded p-1.5 text-cyan-400 font-bold focus:outline-none focus:border-cyan-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between p-2 bg-slate-950 rounded border border-slate-800">
-                  <span className="text-slate-400 font-bold">Лимит шагов Мартингейла:</span>
-                  <button 
-                    onClick={() => setMaxMartingaleStep(prev => prev === 4 ? 2 : prev + 1)}
-                    className="px-3 py-1 rounded bg-cyan-500 text-slate-950 font-bold cursor-pointer"
-                  >
-                    {maxMartingaleStep} шага
-                  </button>
-                </div>
-
-                <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-800">
-                  <span className="text-[10px] font-bold text-slate-400">РАСЧЕТ ШАГОВ МАРТИНГЕЙЛА:</span>
-                  {calculateMartingale().map(step => (
-                    <div key={step.step} className={`p-2 rounded border flex justify-between items-center ${step.isCapped ? 'bg-slate-950/40 border-rose-900/50 text-slate-500' : 'bg-slate-950 border-slate-800 text-slate-300'}`}>
+            <div className="lg:col-span-9 bg-slate-900/40 border border-slate-800 rounded-xl p-3 flex flex-col relative overflow-hidden backdrop-blur h-[620px] shadow-lg">
+              {viewMode === 'single' ? (
+                <>
+                  <div className="flex justify-between items-center mb-2 px-1 z-10 relative">
+                    <div className="flex items-center gap-2.5">
+                      <LineChart className="w-5 h-5 text-cyan-400"/>
                       <div>
-                        <div className="font-bold">Шаг #{step.step} {step.isCapped && '(Ограничен)'}</div>
-                        <div className="text-[10px] text-slate-400">Сумма: ${step.amount} | Всего: ${step.total}</div>
+                        <span className="font-bold text-base text-slate-100">{selectedPair.displaySymbol}</span>
+                        <span className="ml-2 text-xs text-cyan-400 font-mono">Таймфрейм: {displayTf}M {isAnalyzing && '(Автопилот ВКЛ)'}</span>
                       </div>
-                      <div className="text-right">
-                        <div className="font-bold text-emerald-400">+${step.profit}</div>
-                        <div className="text-[9px] text-slate-500">Чистый профит</div>
+                    </div>
+
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 px-2.5 py-1 rounded-lg text-xs font-mono">
+                        <Clock className="w-3.5 h-3.5 text-amber-400 animate-pulse"/>
+                        <span className={`font-bold ${candleTimer <= 12 ? 'text-rose-400 animate-ping' : 'text-amber-400'}`}>{formatTimer(candleTimer)}</span>
+                      </div>
+                      <div className="flex bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs gap-1">
+                        {['1', '5', '15', '60', '240'].map((val) => (
+                          <button key={val} onClick={() => { setTimeframe(val); setDisplayTf(val); }} className={`px-2.5 py-0.5 rounded cursor-pointer ${timeframe === val ? 'bg-cyan-500 text-slate-950 font-bold' : 'text-slate-400'}`}>
+                            {val === '60' ? '1H' : val === '240' ? '4H' : `${val}M`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 w-full h-full border border-slate-800 bg-slate-950 rounded-xl overflow-hidden relative min-h-[500px]">
+                    <TerminalChart pair={selectedPair.displaySymbol} timeframe={displayTf} timezone={timezone} />
+                  </div>
+                </>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 flex-1 h-full min-h-[500px]">
+                  {[quadPair1, quadPair2, quadPair3, quadPair4].map((qp, idx) => (
+                    <div key={idx} className="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex flex-col relative">
+                      <div className="flex justify-between items-center mb-1.5 z-10 relative">
+                        <span className="font-bold text-xs text-cyan-400">{qp.displaySymbol}</span>
+                        <span className="text-[10px] font-mono text-slate-400">{timeframe}M</span>
+                      </div>
+                      <div className="flex-1 relative rounded-lg overflow-hidden border border-slate-900 min-h-[220px]">
+                        <TerminalChart pair={qp.displaySymbol} timeframe={timeframe} timezone={timezone} />
                       </div>
                     </div>
                   ))}
                 </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <aside className="lg:col-span-3 bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex flex-col gap-3 backdrop-blur shadow-lg">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+            <h2 className="font-bold text-slate-200 flex items-center gap-2 text-xs">
+              <BrainCircuit className="w-4 h-4 text-cyan-400 animate-pulse"/>
+              VISION AI АНАЛИТИК (АВТОПИЛОТ)
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={handleStartAnalysis}
+              disabled={isAnalyzing}
+              className={`font-black py-2.5 px-3 rounded-xl text-xs uppercase cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1 shadow-lg transition-all ${
+                isAnalyzing ? 'bg-emerald-500 text-slate-950 animate-pulse' : 'bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950'
+              }`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isAnalyzing ? 'animate-spin' : ''}`}/> {isAnalyzing ? 'АВТОПИЛОТ ВКЛ' : 'ЗАПУСТИТЬ АВТО'}
+            </button>
+            <button
+              onClick={handleStopAnalysis}
+              disabled={!isAnalyzing}
+              className="bg-rose-950/80 text-rose-300 border border-rose-800 font-black py-2.5 px-3 rounded-xl text-xs uppercase cursor-pointer disabled:opacity-40"
+            >
+              СТОП
+            </button>
+          </div>
+
+          {isAnalyzing && auditStepText && (
+            <div className="bg-cyan-950/40 border border-cyan-500/50 rounded-xl p-2.5 text-[10px] text-cyan-300 font-mono animate-pulse text-center">
+              {auditStepText}
+            </div>
+          )}
+
+          <div className="bg-gradient-to-b from-amber-950/60 to-slate-950 border-2 border-amber-500/80 rounded-xl p-3.5 text-center relative overflow-hidden shadow-lg shadow-amber-500/10">
+            {!aiSignal ? (
+              <div className="py-3 text-xs text-slate-400 font-mono">
+                {isAnalyzing ? `⏳ Автопилот ожидает отметку 12с до конца свечи...` : 'Нажмите ЗАПУСТИТЬ АВТО для автономной торговли'}
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <div className="text-[11px] font-bold text-cyan-300 tracking-wider">АКТИВ: {aiSignal.pair}</div>
+                <div className="text-xl font-black flex items-center justify-center gap-2">
+                  <span className="text-amber-400 text-xs">ВЕРДИКТ:</span>
+                  <span className={aiSignal.direction === 'CALL' ? 'text-emerald-400 bg-emerald-950 px-2.5 py-0.5 rounded border border-emerald-500 text-base' : aiSignal.direction === 'PUT' ? 'text-rose-400 bg-emerald-950 px-2.5 py-0.5 rounded border border-rose-500 text-base' : 'text-slate-400 bg-slate-900 px-2.5 py-0.5 rounded border border-slate-700 text-base'}>
+                    {aiSignal.direction}
+                  </span>
+                </div>
+
+                {aiSignal.nextCandleTime && aiSignal.direction !== 'SKIP' && (
+                  <div className="bg-slate-900/90 border border-amber-500/30 rounded-lg py-1 px-2">
+                    <div className="text-[9px] text-amber-300 font-semibold uppercase tracking-wider">
+                      Экспирация: <span className="text-emerald-400 font-bold">{aiSignal.recommendedExpiration || '1M'}</span> | Старт:
+                    </div>
+                    <div className="text-base font-mono font-black text-white tracking-widest">{aiSignal.nextCandleTime}</div>
+                  </div>
+                )}
+
+                {aiSignal.reasoning && (
+                  <div className="text-[10px] text-slate-300 italic px-1">
+                    "{aiSignal.reasoning}"
+                  </div>
+                )}
+
+                {aiSignal.confidence > 0 && (
+                  <div className="text-[10px] text-amber-300 font-mono">Уверенность ИИ: <span className="font-bold text-white">{aiSignal.confidence}%</span></div>
+                )}
               </div>
             )}
+          </div>
 
-            {rightTab === 'strategies' && (
-              <div className="flex flex-col gap-2 max-h-[500px] overflow-y-auto text-xs">
-                <span className="text-[10px] font-bold text-slate-400">СТАТИСТИКА СТРАТЕГИЙ</span>
+          <div className="grid grid-cols-4 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[10px]">
+            <button onClick={() => setRightTab('logs')} className={`py-1 rounded-lg font-bold truncate cursor-pointer ${rightTab === 'logs' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Логи</button>
+            <button onClick={() => setRightTab('history')} className={`py-1 rounded-lg font-bold truncate cursor-pointer ${rightTab === 'history' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>История</button>
+            <button onClick={() => setRightTab('martingale')} className={`py-1 rounded-lg font-bold truncate cursor-pointer ${rightTab === 'martingale' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Мартен</button>
+            <button onClick={() => setRightTab('strategies')} className={`py-1 rounded-lg font-bold truncate cursor-pointer ${rightTab === 'strategies' ? 'bg-cyan-500 text-slate-950' : 'text-slate-400'}`}>Стат</button>
+          </div>
+
+          {rightTab === 'logs' ? (
+            <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-2 overflow-hidden min-h-[180px]">
+              <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 text-[10px] font-mono">
+                {aiLogs.map(log => (
+                  <div key={log.id} className={`p-1.5 rounded border ${log.type === 'vision' ? 'bg-indigo-950/40 border-indigo-500 text-indigo-200 font-bold' : 'bg-slate-900/60 border-slate-800 text-slate-400'}`}>
+                    <div className="flex justify-between text-[9px] text-slate-500 mb-0.5"><span>{log.time}</span><span>{log.type}</span></div>
+                    <p>{log.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : rightTab === 'history' ? (
+            <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-2 overflow-hidden min-h-[180px] relative">
+              <div className="text-[10px] text-slate-400 mb-1">💡 Нажмите на сделку для деталей и отчета ИИ:</div>
+              <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 text-[10px] font-mono">
+                {historyList.map(item => (
+                  <div 
+                    key={item.id} 
+                    onClick={() => setSelectedHistoryItem(item)}
+                    className="p-2 rounded bg-slate-900 hover:bg-slate-850 cursor-pointer border border-slate-800 flex flex-col gap-1 transition-all"
+                  >
+                    <div className="flex justify-between items-center font-bold">
+                      <span className="text-cyan-400 flex items-center gap-1">{item.pair} (#{item.tradeId}) <ChevronRight className="w-3 h-3 text-slate-500"/></span>
+                      <span className={item.direction === 'CALL' ? 'text-emerald-400' : 'text-rose-400'}>{item.direction}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[9px] text-slate-400">
+                      <span>Время: {item.time}</span>
+                      {item.status === 'ACTIVE' ? (
+                        <span className="text-amber-400 animate-pulse font-bold">⏳ Сделка активна...</span>
+                      ) : (
+                        <span className={`font-bold ${item.result === 'WIN' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {item.result} ({item.pips})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {selectedHistoryItem && (
+                <div className="absolute inset-0 bg-slate-950/95 backdrop-blur p-3 flex flex-col justify-between z-20 border border-cyan-500/40 rounded-xl animate-fadeIn overflow-y-auto">
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center border-b border-slate-800 pb-1.5">
+                      <span className="font-bold text-cyan-400 text-xs">ДЕТАЛИ СДЕЛКИ #{selectedHistoryItem.tradeId}</span>
+                      <button onClick={() => setSelectedHistoryItem(null)} className="text-slate-400 hover:text-white font-bold text-xs px-1.5 py-0.5 bg-slate-900 rounded border border-slate-700 cursor-pointer">✕</button>
+                    </div>
+                    <div className="space-y-1.5 text-[10px] font-mono">
+                      <div className="flex justify-between"><span className="text-slate-400">Актив:</span><span className="text-white font-bold">{selectedHistoryItem.pair}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-400">Прогноз:</span><span className={selectedHistoryItem.direction === 'CALL' ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>{selectedHistoryItem.direction}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-400">Время старта:</span><span className="text-white">{selectedHistoryItem.time}</span></div>
+                      <div className="flex justify-between"><span className="text-slate-400">Статус:</span><span className="text-cyan-300 font-bold">{selectedHistoryItem.status}</span></div>
+                      {selectedHistoryItem.openPrice && (
+                        <div className="flex justify-between"><span className="text-slate-400">Цена открытия:</span><span className="text-cyan-300 font-mono">{selectedHistoryItem.openPrice}</span></div>
+                      )}
+                      {selectedHistoryItem.closePrice && (
+                        <div className="flex justify-between"><span className="text-slate-400">Цена закрытия:</span><span className="text-cyan-300 font-mono">{selectedHistoryItem.closePrice}</span></div>
+                      )}
+                      {selectedHistoryItem.pips && (
+                        <div className="flex justify-between"><span className="text-slate-400">Результат:</span><span className={`font-bold ${selectedHistoryItem.result === 'WIN' ? 'text-emerald-400' : 'text-rose-400'}`}>{selectedHistoryItem.result === 'WIN' ? '🟢 WIN' : '🔴 LOSS'} ({selectedHistoryItem.pips})</span></div>
+                      )}
+
+                      {selectedHistoryItem.detailedReport && (
+                        <div className="mt-2 p-2 bg-slate-900/90 rounded border border-emerald-500/40 space-y-1 text-slate-300">
+                          <div className="font-bold text-emerald-400">{selectedHistoryItem.detailedReport.mode}</div>
+                          <div>• <b>Статус:</b> {selectedHistoryItem.detailedReport.status}</div>
+                          <div>• <b>Уровни:</b> {selectedHistoryItem.detailedReport.levelDetails}</div>
+                          <div>• <b>GPT-4o:</b> {selectedHistoryItem.detailedReport.aiVerdictGPT}</div>
+                          <div>• <b>Gemini:</b> {selectedHistoryItem.detailedReport.aiVerdictGemini}</div>
+                          <div className="text-amber-400">• <b>Риск:</b> {selectedHistoryItem.detailedReport.riskLevel}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <button onClick={() => setSelectedHistoryItem(null)} className="w-full py-1.5 mt-2 bg-cyan-500 text-slate-950 font-bold rounded-lg text-xs cursor-pointer">Закрыть</button>
+                </div>
+              )}
+            </div>
+          ) : rightTab === 'strategies' ? (
+            <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-2 overflow-hidden min-h-[180px] font-mono text-[10px]">
+              <div className="text-[11px] font-bold text-cyan-400">ЭФФЕКТИВНОСТЬ:</div>
+              <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
                 {strategies.map(s => {
                   const total = s.wins + s.losses;
-                  const wr = total > 0 ? Math.round((s.wins / total) * 100) : 0;
+                  const winrate = total > 0 ? Math.round((s.wins / total) * 100) : 0;
                   return (
-                    <div key={s.id} className="p-2.5 rounded-lg bg-slate-950 border border-slate-800 flex flex-col gap-1">
-                      <div className="font-bold text-cyan-300">{s.name}</div>
-                      <div className="flex justify-between text-[11px] text-slate-400">
-                        <span>Винрейт: <strong className="text-emerald-400">{wr}%</strong></span>
-                        <span>Побед: <strong className="text-cyan-400">{s.wins}</strong> | Поражений: <strong className="text-rose-400">{s.losses}</strong></span>
+                    <div key={s.id} className="p-1.5 rounded bg-slate-900 border border-slate-800 flex flex-col gap-0.5">
+                      <div className="flex justify-between items-center">
+                        <span className="text-white font-bold truncate text-[10px]">{s.name}</span>
+                        <span className="text-emerald-400 font-black text-[10px]">{winrate}%</span>
+                      </div>
+                      <div className="flex justify-between text-[9px] text-slate-400">
+                        <span>Побед: {s.wins} | Пор: {s.losses}</span>
+                        <button onClick={() => toggleStrategy(s.id)} className={`px-1.5 py-0.2 rounded cursor-pointer ${s.enabled ? 'bg-cyan-950 text-cyan-300 border border-cyan-800' : 'bg-slate-800 text-slate-400'}`}>
+                          {s.enabled ? 'Вкл' : 'Выкл'}
+                        </button>
                       </div>
                     </div>
                   );
                 })}
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="flex-1 bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex flex-col gap-2 font-mono">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <label className="text-[9px] text-slate-400 block mb-0.5">Старт ($):</label>
+                  <input type="number" value={startAmount} onChange={(e) => setStartAmount(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-white text-xs"/>
+                </div>
+                <div>
+                  <label className="text-[9px] text-slate-400 block mb-0.5">Выплата (%):</label>
+                  <input type="number" value={payoutPercent} onChange={(e) => setPayoutPercent(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-white text-xs"/>
+                </div>
+              </div>
+              <div className="flex items-center justify-between text-[10px] bg-slate-900 p-1.5 rounded border border-indigo-500/30">
+                <span className="text-indigo-300">Риск-лимит:</span>
+                <select 
+                  value={maxMartingaleStep} 
+                  onChange={(e) => setMaxMartingaleStep(Number(e.target.value))}
+                  className="bg-slate-950 text-white border border-slate-700 rounded px-1.5 py-0.5 text-[10px] cursor-pointer"
+                >
+                  <option value={2}>Шаг 2</option>
+                  <option value={3}>Шаг 3</option>
+                  <option value={4}>Шаг 4</option>
+                </select>
+              </div>
+              <div className="flex-1 overflow-y-auto space-y-1 text-[10px]">
+                {calculateMartingale().map(step => (
+                  <div key={step.step} className={`p-1.5 rounded border flex justify-between items-center ${step.isCapped ? 'bg-amber-950/30 border-amber-600/50' : 'bg-slate-950 border-slate-800'}`}>
+                    <div>
+                      <div>Шаг {step.step}: ${step.amount} {step.isCapped && <span className="text-[8px] text-amber-400 font-bold">(СБРОС)</span>}</div>
+                    </div>
+                    <span className="text-emerald-400">+${step.profit}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </aside>
       </main>
 
-      {selectedHistoryItem && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-lg w-full p-5 flex flex-col gap-4 shadow-2xl">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">📊</span>
-                <h3 className="font-black text-cyan-400 text-sm">ДЕТАЛЬНЫЙ ОТЧЕТ СДЕЛКИ #{selectedHistoryItem.tradeId}</h3>
-              </div>
-              <button onClick={() => setSelectedHistoryItem(null)} className="text-slate-400 hover:text-white font-bold text-sm cursor-pointer">✕</button>
-            </div>
-
-            <div className="flex flex-col gap-2 text-xs font-mono bg-slate-950 p-3 rounded-lg border border-slate-800">
-              <div className="flex justify-between"><span className="text-slate-400">Актив:</span><strong className="text-cyan-300">{selectedHistoryItem.pair}</strong></div>
-              <div className="flex justify-between"><span className="text-slate-400">Направление:</span><strong className={selectedHistoryItem.direction === 'CALL' ? 'text-emerald-400' : 'text-rose-400'}>{selectedHistoryItem.direction}</strong></div>
-              <div className="flex justify-between"><span className="text-slate-400">Время:</span><span className="text-slate-200">{selectedHistoryItem.time}</span></div>
-              <div className="flex justify-between"><span className="text-slate-400">Результат:</span><strong className={selectedHistoryItem.result === 'WIN' ? 'text-emerald-400' : 'text-rose-400'}>{selectedHistoryItem.result || 'Активна'} ({selectedHistoryItem.pips || '—'})</strong></div>
-              {selectedHistoryItem.openPrice && <div className="flex justify-between"><span className="text-slate-400">Цена открытия:</span><span className="text-cyan-400">{selectedHistoryItem.openPrice}</span></div>}
-              {selectedHistoryItem.closePrice && <div className="flex justify-between"><span className="text-slate-400">Цена закрытия:</span><span className="text-cyan-400">{selectedHistoryItem.closePrice}</span></div>}
-            </div>
-
-            {selectedHistoryItem.detailedReport && (
-              <div className="flex flex-col gap-2 text-xs bg-slate-950/60 p-3 rounded-lg border border-slate-800">
-                <span className="font-bold text-cyan-400">Лог AI-анализа:</span>
-                <p className="text-slate-300 text-[11px] leading-relaxed">{selectedHistoryItem.detailedReport.aiVerdictGPT || selectedHistoryItem.detailedReport.status}</p>
-              </div>
-            )}
-
-            <button
-              onClick={() => setSelectedHistoryItem(null)}
-              className="w-full py-2 rounded-lg bg-cyan-500 text-slate-950 font-black text-xs hover:bg-cyan-400 transition-all cursor-pointer"
-            >
-              ЗАКРЫТЬ ОТЧЕТ
-            </button>
-          </div>
-        </div>
-      )}
+      <footer className="border-t border-slate-800/80 bg-slate-950 px-6 py-3 text-xs text-slate-500 flex justify-between">
+        <span>ORACLE PRO v10.5 (Auto-Pilot Sniper Hub)</span>
+        <span>Environment: Production / Vercel Edge</span>
+      </footer>
     </div>
   );
 }
