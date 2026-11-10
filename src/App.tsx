@@ -68,6 +68,27 @@ export default function App() {
     { id: 'trend_rider_ema', name: 'Трендовый откат к EMA (20/50)', enabled: false, wins: 16, losses: 4 }
   ]);
 
+  // 🧠 Автоматическое переключение стратегий при изменении боевого профиля
+  useEffect(() => {
+    setStrategies(prev => prev.map(s => {
+      let shouldEnable = s.enabled;
+      if (riskMode === 'BALANCED') {
+        shouldEnable = ['trend_following', 'price_action', 'vsa_volume'].includes(s.id);
+      } else if (riskMode === 'SAFE') {
+        shouldEnable = ['price_action', 'body_breakout', 'vsa_volume'].includes(s.id);
+      } else if (riskMode === 'AGGRESSIVE') {
+        shouldEnable = ['volume_scalping', 'rsi_bollinger', 'breakout_impulse'].includes(s.id);
+      } else if (riskMode === 'BREAKOUT') {
+        shouldEnable = ['breakout_impulse', 'body_breakout', 'trend_following'].includes(s.id);
+      } else if (riskMode === 'ANTITILT') {
+        shouldEnable = ['trend_following', 'vsa_volume'].includes(s.id);
+      } else if (riskMode === 'TRENDSURF') {
+        shouldEnable = ['trend_following', 'trend_rider_ema', 'vsa_volume'].includes(s.id);
+      }
+      return { ...s, enabled: shouldEnable };
+    }));
+  }, [riskMode]);
+
   useEffect(() => {
     try { localStorage.setItem('oracle_selected_pair', JSON.stringify(selectedPair)); } catch (e) {}
   }, [selectedPair]);
