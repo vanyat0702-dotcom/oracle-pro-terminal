@@ -99,7 +99,7 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
           console.error("Binance error:", e);
         }
       } else {
-        // Форекс: честный стохастический генератор случайного блуждания без синусоид
+        // Форекс: профессиональный рыночный шумовой генератор с естественным чередованием свечей
         const isJpy = symbol.includes('JPY');
         const cleanSymbol = symbol.replace('/', '');
 
@@ -131,30 +131,31 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
         const tfMinutes = parseInt(interval, 10) || 1;
         const stepSec = tfMinutes * 60;
         const nowSec = Math.floor(Date.now() / 1000);
-        const totalBars = 200;
+        const totalBars = 220;
         const forexData = [];
         
         let currOpen = basePrice;
         const startTime = nowSec - (totalBars * stepSec);
-        const stepSize = isJpy ? 0.04 : 0.00035;
+        const volatility = isJpy ? 0.05 : 0.00045;
 
-        // Генерация реалистичного случайного блуждания (Random Walk)
-        let trend = 0;
         for (let i = 0; i < totalBars; i++) {
           const time = (startTime + (i * stepSec)) as any;
           
-          // Меняем тренд плавно, чтобы не было резких углов и синусоид
-          trend += (Math.random() - 0.5) * 0.0001;
-          trend = Math.max(-0.0005, Math.min(0.0005, trend));
-
-          const change = trend + (Math.random() - 0.49) * stepSize;
-          const close = currOpen + change;
-          const high = Math.max(currOpen, close) + Math.random() * (stepSize * 0.6);
-          const low = Math.min(currOpen, close) - Math.random() * (stepSize * 0.6);
+          // Добавляем рыночный шум, чтобы свечи чередовались (быки/медведи боролись на каждой свече)
+          const bodySize = (Math.random() - 0.48) * volatility;
+          const open = currOpen;
+          const close = open + bodySize;
+          
+          // Тени свечей (Wicks) в обе стороны
+          const upperWick = Math.random() * (volatility * 0.6);
+          const lowerWick = Math.random() * (volatility * 0.6);
+          
+          const high = Math.max(open, close) + upperWick;
+          const low = Math.min(open, close) - lowerWick;
 
           forexData.push({
             time,
-            open: Number(currOpen.toFixed(isJpy ? 3 : 5)),
+            open: Number(open.toFixed(isJpy ? 3 : 5)),
             high: Number(high.toFixed(isJpy ? 3 : 5)),
             low: Number(low.toFixed(isJpy ? 3 : 5)),
             close: Number(close.toFixed(isJpy ? 3 : 5)),
@@ -166,8 +167,8 @@ export const TerminalChart: React.FC<TerminalChartProps> = ({ symbol, interval }
           candlestickSeries.setData(forexData);
           chart.timeScale().scrollToPosition(0, false);
 
-          // Плавные живые тики без волн
-          const tickStep = isJpy ? 0.004 : 0.00004;
+          // Живое тиковое обновление последней свечи
+          const tickStep = isJpy ? 0.003 : 0.00003;
           timer = setInterval(() => {
             const currentData = candlestickSeries.data();
             if (currentData.length > 0 && isMounted) {
