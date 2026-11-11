@@ -24,12 +24,12 @@ export default function App() {
         if (matched.length > 0) return matched;
       }
     } catch (e) {}
-    return [TRADING_PAIRS[0], TRADING_PAIRS[1], TRADING_PAIRS[11], TRADING_PAIRS[19]];
+    return [...TRADING_PAIRS];
   });
 
   const [timeframe, setTimeframe] = useState<string>("1");
   const [displayTf, setDisplayTf] = useState<string>("1");
-  const [selectedHigherTfs, setSelectedHigherTfs] = useState<string[]>(["15", "60"]);
+  const [selectedHigherTfs, setSelectedHigherTfs] = useState<string[]>(["15", "60", "5"]);
   
   const [viewMode, setViewMode] = useState<'single' | 'quad'>('single');
   const [timezone, setTimezone] = useState<'Europe/Moscow' | 'Etc/UTC'>('Europe/Moscow');
@@ -41,10 +41,10 @@ export default function App() {
   const [safeModeEnabled, setSafeModeEnabled] = useState<boolean>(true);
 
   const [riskMode, setRiskMode] = useState<'SAFE' | 'BALANCED' | 'AGGRESSIVE' | 'BREAKOUT' | 'ANTITILT' | 'TRENDSURF'>(() => {
-    return (localStorage.getItem('oracle_risk_mode') as any) || 'BALANCED';
+    return (localStorage.getItem('oracle_risk_mode') as any) || 'SAFE';
   });
 
-  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(true);
   const [newsFilterEnabled, setNewsFilterEnabled] = useState<boolean>(true);
   const [atrFilterEnabled, setAtrFilterEnabled] = useState<boolean>(true);
   const [riskCapEnabled, setRiskCapEnabled] = useState<boolean>(true);
@@ -522,38 +522,36 @@ export default function App() {
         <section className="lg:col-span-9 flex flex-col gap-3">
           
           <div className="bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-lg transition-all">
-            <button
-              onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-              className="w-full px-4 py-2.5 bg-slate-900 hover:bg-slate-850 flex items-center justify-between text-xs font-bold text-cyan-400 cursor-pointer border-b border-slate-800/50"
-            >
+            <div className="w-full px-4 py-3 bg-slate-900 flex items-center justify-between text-xs font-bold text-cyan-400 border-b border-slate-800/50">
               <div className="flex items-center gap-2">
                 <Sliders className="w-4 h-4 text-cyan-400"/>
                 <span>НАСТРОЙКИ СКАНИРОВАНИЯ И ИИ-РЕЖИМОВ</span>
-                <span className="text-[10px] text-slate-400 font-normal ml-2">
-                  (Мультивыбор: <span className="text-cyan-300 font-bold">{selectedMultiPairs.length} пар</span> | Старшие TF: <span className="text-cyan-300 font-bold">[{selectedHigherTfs.join(', ')}]M</span> | Режим: <span className="text-amber-400 font-bold">{riskMode}</span>)
-                </span>
               </div>
-              <div className="flex items-center gap-1 text-[11px] text-slate-400">
-                <span>{isSettingsOpen ? 'Свернуть' : 'Развернуть настройки'}</span>
+              <button 
+                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-white cursor-pointer"
+              >
+                <span>{isSettingsOpen ? 'Свернуть' : 'Развернуть'}</span>
                 {isSettingsOpen ? <ChevronUp className="w-4 h-4"/> : <ChevronDown className="w-4 h-4"/>}
-              </div>
-            </button>
+              </button>
+            </div>
 
             {isSettingsOpen && (
-              <div className="p-4 flex flex-col gap-3 bg-slate-950/60 backdrop-blur">
-                <div className="flex items-center justify-between p-3 bg-slate-900/90 rounded-lg border border-emerald-500/40">
-                  <div className="flex items-center gap-2">
+              <div className="p-4 flex flex-col gap-3.5 bg-slate-950/80 backdrop-blur">
+                {/* 1. SAFE MODE & SMART PROFILES */}
+                <div className="flex items-center justify-between p-3 bg-slate-900/90 rounded-xl border border-emerald-500/40">
+                  <div className="flex items-center gap-3">
                     <span className="text-xl">🛡️</span>
                     <div>
-                      <div className="text-xs font-bold text-emerald-400">SAFE MODE (Торговля от уровней M5/M15)</div>
-                      <div className="text-[10px] text-slate-400">Фильтрация шума, проверка уровней и развернутые отчеты в истории</div>
+                      <div className="text-xs font-bold text-emerald-400 tracking-wide">SAFE MODE & SMART PROFILES</div>
+                      <div className="text-[10px] text-slate-400">Автоматически переводит профиль на Снайпера и подстраивает стратегии под уровни M5/M15</div>
                     </div>
                   </div>
                   <button 
                     onClick={() => setSafeModeEnabled(!safeModeEnabled)}
-                    className={`px-4 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                    className={`px-5 py-2 rounded-xl text-xs font-black cursor-pointer transition-all shadow-lg ${
                       safeModeEnabled 
-                        ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20' 
+                        ? 'bg-emerald-500 text-slate-950 shadow-emerald-500/20' 
                         : 'bg-slate-800 text-slate-400 border border-slate-700'
                     }`}
                   >
@@ -561,19 +559,20 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
+                {/* 2. СТАРШИЕ ТАЙМФРЕЙМЫ ДЛЯ МУЛЬТИАНАЛИЗА */}
+                <div className="flex flex-col gap-2 p-3 bg-slate-900/90 rounded-xl border border-cyan-500/30">
                   <div className="flex items-center justify-between text-xs font-bold text-cyan-300">
                     <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-cyan-400"/> СТАРШИЕ ТАЙМФРЕЙМЫ ДЛЯ МУЛЬТИАНАЛИЗА:</span>
-                    <span className="text-[10px] text-slate-400">Выбрано: [{selectedHigherTfs.join(', ')}]M</span>
+                    <span className="text-[10px] font-mono text-slate-400">Выбрано: [{selectedHigherTfs.join(', ')}]M</span>
                   </div>
-                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 text-xs">
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-xs">
                     {['5', '15', '30', '60', '240', 'D'].map((tfVal) => {
                       const isSelected = selectedHigherTfs.includes(tfVal);
                       return (
                         <button 
                           key={tfVal} 
                           onClick={() => toggleHigherTf(tfVal)} 
-                          className={`p-2 rounded font-bold text-center border cursor-pointer transition-all ${isSelected ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}
+                          className={`p-2.5 rounded-xl font-bold text-center border cursor-pointer transition-all ${isSelected ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm font-black' : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700'}`}
                         >
                           {tfVal === '60' ? '1H' : tfVal === '240' ? '4H' : tfVal === 'D' ? '1D' : `${tfVal}M`}
                         </button>
@@ -582,74 +581,76 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-amber-500/30">
-                  <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
-                    <Flame className="w-4 h-4 text-amber-400"/>
-                    <span>БОЕВОЙ РЕЖИМ ТОРГОВЛИ И ИИ-АНАЛИЗА:</span>
+                {/* 3. БОЕВОЙ ПРОФИЛЬ ТОРГОВЛИ */}
+                <div className="flex flex-col gap-2 p-3 bg-slate-900/90 rounded-xl border border-amber-500/30">
+                  <div className="flex items-center justify-between text-xs font-bold text-amber-300">
+                    <span className="flex items-center gap-1.5"><Flame className="w-4 h-4 text-amber-400"/> БОЕВОЙ ПРОФИЛЬ ТОРГОВЛИ (Определяется Safe Mode):</span>
+                    <span className="text-[10px] font-mono text-cyan-400">Режим: {riskMode}</span>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 text-xs">
-                    <button onClick={() => setRiskMode('BALANCED')} className={`p-2 rounded font-bold text-center cursor-pointer border ${riskMode === 'BALANCED' ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>⚡ Баланс</button>
-                    <button onClick={() => setRiskMode('SAFE')} className={`p-2 rounded font-bold text-center cursor-pointer border ${riskMode === 'SAFE' ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🎯 Снайпер</button>
-                    <button onClick={() => setRiskMode('AGGRESSIVE')} className={`p-2 rounded font-bold text-center cursor-pointer border ${riskMode === 'AGGRESSIVE' ? 'bg-rose-500 text-white border-rose-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🔥 Скальпинг</button>
-                    <button onClick={() => setRiskMode('BREAKOUT')} className={`p-2 rounded font-bold text-center cursor-pointer border ${riskMode === 'BREAKOUT' ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🚀 Пробойник</button>
-                    <button onClick={() => setRiskMode('ANTITILT')} className={`p-2 rounded font-bold text-center cursor-pointer border ${riskMode === 'ANTITILT' ? 'bg-emerald-600 text-white border-emerald-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🛡 Анти-Тильт</button>
-                    <button onClick={() => setRiskMode('TRENDSURF')} className={`p-2 rounded font-bold text-center cursor-pointer border ${riskMode === 'TRENDSURF' ? 'bg-blue-600 text-white border-blue-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🌊 Тренд-Серфер</button>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-4 text-xs p-2 bg-slate-900/80 rounded-lg border border-indigo-500/30">
-                  <span className="font-bold text-indigo-300">ФИЛЬТРЫ:</span>
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input type="checkbox" checked={newsFilterEnabled} onChange={() => setNewsFilterEnabled(!newsFilterEnabled)} className="rounded text-indigo-500 cursor-pointer" />
-                    <span className="text-slate-300">📰 Новостной фильтр</span>
-                  </label>
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input type="checkbox" checked={atrFilterEnabled} onChange={() => setAtrFilterEnabled(!atrFilterEnabled)} className="rounded text-indigo-500 cursor-pointer" />
-                    <span className="text-slate-300">📊 ATR Волатильность</span>
-                  </label>
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input type="checkbox" checked={riskCapEnabled} onChange={() => setRiskCapEnabled(!riskCapEnabled)} className="rounded text-indigo-500 cursor-pointer" />
-                    <span className="text-slate-300">🛡 Risk-Cap (до {maxMartingaleStep} шага)</span>
-                  </label>
-                </div>
-
-                <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
-                  <div className="flex justify-between items-center text-xs font-bold text-cyan-400">
-                    <span>АКТИВНЫЕ СТРАТЕГИИ</span>
-                    <button onClick={() => setStrategies(prev => prev.map(s => ({ ...s, enabled: true })))} className="text-[10px] text-cyan-300 hover:underline cursor-pointer">Включить все</button>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
-                    {strategies.map((strat) => (
-                      <button
-                        key={strat.id}
-                        onClick={() => toggleStrategy(strat.id)}
-                        className={`p-2 rounded-lg text-left text-xs font-bold transition-all border cursor-pointer ${strat.enabled ? 'bg-cyan-950/60 border-cyan-500 text-cyan-300' : 'bg-slate-950 border-slate-800 text-slate-500'}`}
-                      >
-                        <div className="truncate">{strat.name}</div>
-                        <div className="text-[9px] text-emerald-400 font-mono mt-0.5">Win: {Math.round((strat.wins / (strat.wins + strat.losses)) * 100)}%</div>
-                      </button>
-                    ))}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
+                    <button onClick={() => setRiskMode('BALANCED')} className={`p-2.5 rounded-xl font-bold text-center cursor-pointer border ${riskMode === 'BALANCED' ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm font-black' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>⚡ Баланс</button>
+                    <button onClick={() => setRiskMode('SAFE')} className={`p-2.5 rounded-xl font-bold text-center cursor-pointer border ${riskMode === 'SAFE' ? 'bg-indigo-600 text-white border-indigo-400 shadow-sm font-black' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🎯 Снайпер</button>
+                    <button onClick={() => setRiskMode('AGGRESSIVE')} className={`p-2.5 rounded-xl font-bold text-center cursor-pointer border ${riskMode === 'AGGRESSIVE' ? 'bg-rose-500 text-white border-rose-400 shadow-sm font-black' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🔥 Скальпинг</button>
+                    <button onClick={() => setRiskMode('BREAKOUT')} className={`p-2.5 rounded-xl font-bold text-center cursor-pointer border ${riskMode === 'BREAKOUT' ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm font-black' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🚀 Пробойник</button>
+                    <button onClick={() => setRiskMode('ANTITILT')} className={`p-2.5 rounded-xl font-bold text-center cursor-pointer border ${riskMode === 'ANTITILT' ? 'bg-emerald-600 text-white border-emerald-400 shadow-sm font-black' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🛡 Анти-Тильт</button>
+                    <button onClick={() => setRiskMode('TRENDSURF')} className={`p-2.5 rounded-xl font-bold text-center cursor-pointer border ${riskMode === 'TRENDSURF' ? 'bg-blue-600 text-white border-blue-400 shadow-sm font-black' : 'bg-slate-950 text-slate-400 border-slate-800'}`}>🌊 Тренд-Серфер</button>
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
-                  <div className="flex justify-between items-center text-xs font-bold text-cyan-400">
+                {/* 4. АКТИВНЫЕ СТРАТЕГИИ АНАЛИЗА */}
+                <div className="flex flex-col gap-2 p-3 bg-slate-900/90 rounded-xl border border-cyan-500/30">
+                  <div className="flex justify-between items-center text-xs font-bold text-cyan-300">
+                    <span>АКТИВНЫЕ СТРАТЕГИИ АНАЛИЗА:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-indigo-300 font-mono">Режим SAFE</span>
+                      <button onClick={() => setStrategies(prev => prev.map(s => ({ ...s, enabled: true })))} className="text-[10px] text-cyan-400 hover:underline cursor-pointer">Включить все</button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                    {strategies.map((strat) => {
+                      const total = strat.wins + strat.losses;
+                      const winrate = total > 0 ? Math.round((strat.wins / total) * 100) : 0;
+                      return (
+                        <div
+                          key={strat.id}
+                          onClick={() => toggleStrategy(strat.id)}
+                          className={`p-2.5 rounded-xl transition-all border cursor-pointer flex flex-col justify-between gap-1.5 ${strat.enabled ? 'bg-cyan-950/40 border-cyan-500/60 text-cyan-200' : 'bg-slate-950 border-slate-800 text-slate-500'}`}
+                        >
+                          <div className="flex justify-between items-start gap-1">
+                            <span className="text-xs font-bold truncate">{strat.name}</span>
+                            <span className="text-xs font-black text-emerald-400">{winrate}%</span>
+                          </div>
+                          <div className="flex justify-between items-center text-[10px] font-mono text-slate-400">
+                            <span>П: {strat.wins} | Л: {strat.losses}</span>
+                            <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${strat.enabled ? 'bg-cyan-500 text-slate-950' : 'bg-slate-800 text-slate-400'}`}>
+                              {strat.enabled ? 'ВКЛ' : 'ВЫКЛ'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 5. МУЛЬТИВЫБОР ПАР ДЛЯ АВТОПИЛОТА */}
+                <div className="flex flex-col gap-2 p-3 bg-slate-900/90 rounded-xl border border-cyan-500/30">
+                  <div className="flex justify-between items-center text-xs font-bold text-cyan-300">
                     <span>МУЛЬТИВЫБОР ПАР ДЛЯ АВТОПИЛОТА ({selectedMultiPairs.length})</span>
                     <div className="flex gap-2 text-[10px]">
-                      <button onClick={() => setSelectedMultiPairs([...TRADING_PAIRS])} className="text-cyan-300 hover:underline cursor-pointer">Выбрать все</button>
+                      <button onClick={() => setSelectedMultiPairs([...TRADING_PAIRS])} className="text-cyan-400 hover:underline cursor-pointer">Выбрать все</button>
                       <button onClick={() => setSelectedMultiPairs([TRADING_PAIRS[0]])} className="text-slate-400 hover:underline cursor-pointer">Сбросить</button>
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
+                  <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
                     {TRADING_PAIRS.map((pair) => {
                       const isChecked = selectedMultiPairs.some(p => p.id === pair.id);
                       return (
                         <button
                           key={pair.id}
                           onClick={() => togglePairSelection(pair)}
-                          className={`px-2 py-1 rounded text-[10px] font-bold border cursor-pointer transition-all ${isChecked ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black' : 'bg-slate-950 border-slate-800 text-slate-400'}`}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-all ${isChecked ? 'bg-cyan-500 text-slate-950 border-cyan-400 font-black shadow-sm' : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'}`}
                         >
-                          {pair.displaySymbol} {isChecked ? '✓' : ''}
+                          {pair.displaySymbol}
                         </button>
                       );
                     })}
@@ -691,7 +692,7 @@ export default function App() {
                       <LineChart className="w-5 h-5 text-cyan-400"/>
                       <div>
                         <span className="font-bold text-base text-slate-100">{selectedPair.displaySymbol}</span>
-                        <span className="ml-2 text-xs text-cyan-400 font-mono">Таймфрейм: {displayTf}M {isAnalyzing && '(Автопилот ВКЛ)'}</span>
+                        <span className="ml-2 text-xs text-cyan-400 font-mono">Таймфрейм: {displayTf}M | Мультискан: {selectedMultiPairs.length} пар</span>
                       </div>
                     </div>
 
