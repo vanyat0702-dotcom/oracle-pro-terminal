@@ -29,6 +29,7 @@ export default function App() {
 
   const [timeframe, setTimeframe] = useState<string>("1");
   const [displayTf, setDisplayTf] = useState<string>("1");
+  const [selectedHigherTfs, setSelectedHigherTfs] = useState<string[]>(["15", "60"]);
   
   const [viewMode, setViewMode] = useState<'single' | 'quad'>('single');
   const [timezone, setTimezone] = useState<'Europe/Moscow' | 'Etc/UTC'>('Europe/Moscow');
@@ -106,6 +107,9 @@ export default function App() {
 
   const timeframeRef = useRef(timeframe);
   timeframeRef.current = timeframe;
+
+  const selectedHigherTfsRef = useRef(selectedHigherTfs);
+  selectedHigherTfsRef.current = selectedHigherTfs;
 
   const selectedMultiPairsRef = useRef(selectedMultiPairs);
   selectedMultiPairsRef.current = selectedMultiPairs;
@@ -189,7 +193,18 @@ export default function App() {
     setStrategies(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
   };
 
-  const fetchAiAnalysisFromBackend = async (tf: string, currentRemSec: number, openTimeStr: string) => {
+  const toggleHigherTf = (tf: string) => {
+    setSelectedHigherTfs(prev => {
+      if (prev.includes(tf)) {
+        if (prev.length === 1) return prev;
+        return prev.filter(t => t !== tf);
+      } else {
+        return [...prev, tf];
+      }
+    });
+  };
+
+  const fetchAiAnalysisFromBackend = async (tf: string, hTfs: string[], currentRemSec: number, openTimeStr: string) => {
     try {
       const multiPairsSymbols = selectedMultiPairsRef.current.map(p => p.displaySymbol);
       const activeStratNames = strategies.filter(s => s.enabled).map(s => s.name);
@@ -197,6 +212,7 @@ export default function App() {
       const requestPayload = {
         pairs: multiPairsSymbols,
         timeframe: tf,
+        higherTimeframes: hTfs,
         mode: riskModeRef.current,
         safeModeEnabled: safeModeEnabled,
         secondsRemaining: currentRemSec,
@@ -217,7 +233,7 @@ export default function App() {
         return {
           ...data.result,
           detailedReport: data.result.detailedReport || {
-            mode: `Профиль: ${riskModeRef.current} | Мультивыбор (${multiPairsSymbols.length} пар) | TF: ${tf}M`,
+            mode: `Профиль: ${riskModeRef.current} | Мультивыбор (${multiPairsSymbols.length} пар) | Старшие TF: [${hTfs.join(', ')}]M`,
             status: '✅ Анализ корзины мультивыбора успешно завершен',
             levelDetails: `Просканировано пар: ${multiPairsSymbols.join(', ')}`,
             aiVerdictGPT: data.result.reasoning || 'Сигнал подтвержден по уровням.',
@@ -254,7 +270,7 @@ export default function App() {
         recommendedExpiration: timeframe,
         bestPair: defaultPair,
         detailedReport: {
-          mode: `Профиль: ${riskModeRef.current} | Мультивыбор (${timeframe}M)`,
+          mode: `Мультивыбор Fallback (${timeframe}M | Старшие TF: [${hTfs.join(', ')}]M)`,
           status: '✅ Анализ корзины мультивыбора успешно завершен',
           levelDetails: `Активные стратегии: ${strategies.filter(s => s.enabled).map(s => s.name).join(', ')}`,
           aiVerdictGPT: 'Направление сделки подтверждено правилами Price Action.',
@@ -292,7 +308,6 @@ export default function App() {
           if (nowMs >= trade.expireAt) {
             const pairKey = trade.pair;
             
-            // Корректный расчет цены в зависимости от типа актива (крипта или валюты)
             const isBtc = pairKey.includes('BTC');
             const isJpy = pairKey.includes('JPY');
             const decimals = isBtc ? 2 : (isJpy ? 3 : 5);
@@ -311,7 +326,7 @@ export default function App() {
             const pipsFormatted = `${finalWin ? '+' : '-'}${pipsNum} п.`;
 
             try {
-              const response = await fetch('/api/analyze', {
+              await fetch('/api/analyze', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -326,10 +341,6 @@ export default function App() {
                   pipsNum
                 })
               });
-              const data = await response.json();
-              if (data.success) {
-                // Сервер вернул результат
-              }
             } catch (e) {}
 
             setHistoryList(prev => prev.map(item => 
@@ -359,7 +370,7 @@ export default function App() {
         const nextTime = new Date(Date.now() + remaining * 1000);
         const candleOpenTimeStr = `${nextTime.getHours().toString().padStart(2, '0')}:${nextTime.getMinutes().toString().padStart(2, '0')}`;
 
-        const aiResult = await fetchAiAnalysisFromBackend(timeframeRef.current, remaining, candleOpenTimeStr);
+        const aiResult = await fetchAiAnalysisFromBackend(timeframeRef.current, selectedHigherTfsRef.current, remaining, candleOpenTimeStr);
         const chosenPairSymbol = aiResult.bestPair || selectedMultiPairsRef.current[0].displaySymbol;
 
         const foundPairObj = TRADING_PAIRS.find(p => p.displaySymbol === chosenPairSymbol);
@@ -425,7 +436,7 @@ export default function App() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [timeframe, strategies, newsFilterEnabled, atrFilterEnabled, safeModeEnabled]);
+  }, [timeframe, selectedHigherTfs, strategies, newsFilterEnabled, atrFilterEnabled, safeModeEnabled]);
 
   const handleStartAnalysis = async () => {
     setIsAnalyzing(true);
@@ -519,7 +530,7 @@ export default function App() {
                 <Sliders className="w-4 h-4 text-cyan-400"/>
                 <span>НАСТРОЙКИ СКАНИРОВАНИЯ И ИИ-РЕЖИМОВ</span>
                 <span className="text-[10px] text-slate-400 font-normal ml-2">
-                  (Safe Mode: <span className="text-emerald-400 font-bold">{safeModeEnabled ? 'ВКЛ' : 'ВЫКЛ'}</span> | Режим: <span className="text-amber-400 font-bold">{riskMode}</span>)
+                  (Мультивыбор: <span className="text-cyan-300 font-bold">{selectedMultiPairs.length} пар</span> | Старшие TF: <span className="text-cyan-300 font-bold">[{selectedHigherTfs.join(', ')}]M</span> | Режим: <span className="text-amber-400 font-bold">{riskMode}</span>)
                 </span>
               </div>
               <div className="flex items-center gap-1 text-[11px] text-slate-400">
@@ -548,6 +559,27 @@ export default function App() {
                   >
                     {safeModeEnabled ? 'ВКЛЮЧЕН' : 'ВЫКЛЮЧЕН'}
                   </button>
+                </div>
+
+                <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-cyan-500/30">
+                  <div className="flex items-center justify-between text-xs font-bold text-cyan-300">
+                    <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-cyan-400"/> СТАРШИЕ ТАЙМФРЕЙМЫ ДЛЯ МУЛЬТИАНАЛИЗА:</span>
+                    <span className="text-[10px] text-slate-400">Выбрано: [{selectedHigherTfs.join(', ')}]M</span>
+                  </div>
+                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 text-xs">
+                    {['5', '15', '30', '60', '240', 'D'].map((tfVal) => {
+                      const isSelected = selectedHigherTfs.includes(tfVal);
+                      return (
+                        <button 
+                          key={tfVal} 
+                          onClick={() => toggleHigherTf(tfVal)} 
+                          className={`p-2 rounded font-bold text-center border cursor-pointer transition-all ${isSelected ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-sm' : 'bg-slate-950 text-slate-400 border-slate-800'}`}
+                        >
+                          {tfVal === '60' ? '1H' : tfVal === '240' ? '4H' : tfVal === 'D' ? '1D' : `${tfVal}M`}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div className="flex flex-col gap-2 p-2.5 bg-slate-900/80 rounded-lg border border-amber-500/30">
