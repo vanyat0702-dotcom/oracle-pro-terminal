@@ -1,5 +1,13 @@
 # PROJECT_CONTEXT — ORACLE PRO TERMINAL v10.5.0
 
+> **Актуализация 2026-11-19: Phase 3B / Increment 2 — server-owned Source Registry и Market Service (§18).**
+> Изолированный сервис получает данные через существующий provider, но не включён в
+> HTTP/AI/график. Biquote разрешён только для DISPLAY; unknown tick/session дают DENIED.
+
+> **Актуализация 2026-11-19: Phase 3B / Increment 1 — независимые Quality/Eligibility contracts и pure evaluators (§17).**
+> Это только оценочные отчёты, без Runtime Guard, контекста допуска или интеграции
+> в Core/HTTP/AI. Диагностический Biquote и график не изменены, HTTP-анализ закрыт.
+
 > **Актуализация 2026-11-18: MDE Phase 2 — отдельный локальный график EURUSD M1 (§16).**
 > TradingView сохранён; диагностические свечи Biquote не поступают в AI/торговый путь.
 
@@ -785,3 +793,225 @@ Phase 1 сохранены. Query-параметры, другие пары/та
 Следующий рекомендуемый шаг: отдельная приёмка диагностического режима пользователем
 на штатном Node 24; дальнейшее подключение данных к торговле требует нового задания
 и обязательного Eligibility Gate.
+
+## 17. MDE Phase 3B — Increment 1: contracts and pure evaluators (2026-11-19)
+
+**Статус: первый инкремент реализован и проверен. Phase 3B целиком не завершена.**
+Базовое состояние — checkpoint `72e9f9f76ae3c508899840f91b14df3c916a54ab`, ветка
+`backup/mde-phase2-checkpoint`. В рамках инкремента ветка/HEAD не менялись,
+staging, commit, push, merge и rebase не выполнялись.
+
+### Созданные файлы
+
+- `core/market/contracts.d.ts`: отдельные совместимые типы MarketObservation,
+  ObservationCandle, QualityReport, QualityCheck, EligibilityDecision,
+  AnalysisRequirements, SkipReason и AnalysisPurpose:
+  DISPLAY / CLOSED_BAR_RESEARCH / LIVE_SIGNAL_ANALYSIS / EXECUTION.
+- `core/market/quality.js`, `quality.d.ts`: чистая `assessQuality(observation,
+  requirements, nowMs)`; явное время, новые отчёты, входные объекты не мутируются.
+- `core/market/eligibility.js`, `eligibility.d.ts`: чистая
+  `evaluateEligibility(observation, requirements, nowMs)`, которая повторно оценивает
+  фактический выбранный диапазон и не принимает supplied quality/eligible как доказательство.
+- `scripts/test-mde-quality.mjs`: 58 детерминированных mock-тестов.
+- `scripts/test-mde-quality-types.ts`: compile-only проверки публичных контрактов.
+- Из существующих файлов изменён только этот PROJECT_CONTEXT.md.
+
+Существующие `core/contracts.d.ts`, `core/index.*`, `biquote.js`/`biquote.d.ts`,
+HTTP entrypoints, Safe Mode, AI, frontend и его polling не менялись.
+Новые функции не экспортируются через существующий фасад и не подключены к приложению.
+
+### Семантика оценки
+
+MarketObservation содержит собственный snapshotId, EUR/USD M1-свечи с isOpen,
+source, session и timing. Время свечи/диапазона — Unix seconds UTC;
+все timestamps timing и аргумент nowMs — epoch milliseconds; acquisitionDurationMs
+— независимо измеренная длительность получения по монотонным часам. Поля timing
+могут быть null, но неизвестность не превращается в успешную проверку.
+
+AnalysisRequirements задаёт явные пороги возраста выбранного последнего бара,
+наблюдения, события источника и длительности получения; inclusive диапазон from/to,
+minCandles и allowOpenBar. Поддержана только EUR/USD M1. Скрытых порогов, чтения env
+и обращения к Date.now нет. Проверки принимают границу порога, превышение на 1 ms
+отклоняют. Обе известные длительности — монотонная и completed-started по wall clock —
+не должны превышать заданный предел. Неизвестная монотонная длительность не выводится
+из HTTP timestamps. Ошибочный порядок acquisition timestamps отклоняется.
+
+Quality проверяет идентичность окна, известный source (Biquote, фиксированный URL,
+mid), сессию, timestamps, будущие данные, OHLC, optional volume/tickVolume,
+isOpen относительно минуты получения observationCompletedAtMs, ascending order,
+дубликаты, пропуски и полное покрытие выбранного M1-диапазона, lookback и свежесть.
+Вход не сортируется, свечи не удаляются/не создаются, пробелы в истории не заполняются.
+Проверки OHLC/времени/порядка действуют на переданное окно; coverage/lookback/
+свежесть выбранного бара пересчитываются по указанному диапазону, без наследования
+quality от более свежей части исходного массива. Отсутствующие timestamps остаются
+null/UNKNOWN; HTTP receipt, checkedAt и начало свечи не заменяют время тика.
+
+Агрегация отчёта: любой FAIL -> FAIL; иначе любой UNKNOWN -> UNKNOWN;
+только все PASS -> PASS. Reasons и metrics показывают причины и раздельные
+candleAgeMs / observationAgeMs / quoteAgeMs / acquisitionDurationMs.
+Неизвестный источник/метаданные и отсутствие свечей дают неизвестность либо отказ;
+неизвестный purpose, неподдерживаемый рынок/диапазон и пустые свечи отклоняются.
+
+Eligibility имеет фиксированную policyVersion `mde-phase3b-increment1`:
+
+- PASS quality и отсутствие дополнительных запретов допускают только информационное
+  ALLOWED для DISPLAY или CLOSED_BAR_RESEARCH.
+- UNKNOWN и FAIL всегда дают DENIED. CLOSED_BAR_RESEARCH требует allowOpenBar=false
+  и выбранное окно без открытых свечей.
+- LIVE_SIGNAL_ANALYSIS и EXECUTION всегда DENIED в этом инкременте, даже при полной
+  успешной оценке Biquote и любых клиентских verified/eligible/allowLive.
+- `grantsRuntimeAccess:false` во всех случаях; внутреннего контекста/токена нет.
+
+**Консервативное ограничение:** все текущие проверки обязательны для новых evaluators,
+включая известные quote timestamp и session=OPEN даже для DISPLAY/research.
+Поэтому текущий диагностический BiquoteSnapshot нельзя автоматически считать ALLOWED:
+нужных observation metadata в нём нет. Это не меняет работающий график: он по-прежнему
+использует прежний диагностический quality.status=VALID и tradingEligible=false.
+Purpose-specific смягчение требований к историческому research требует отдельного задания.
+
+**Граница доверия:** совпадение source-полей — проверка заявленной идентичности,
+не криптографическое/серверное доказательство происхождения. Эти функции не могут
+отличить вручную подделанный полный объект от серверного. ALLOWED не является
+допуском к Core, AI или исполнению. Server-owned service/registry, Runtime Guard,
+неподделываемый контекст, его TTL и интеграция во все пути — последующие инкременты.
+Прямые legacy-вызовы Core остаются с прежними рисками; обязательный Gate ещё не установлен.
+
+### Выполненные проверки
+
+- **PASS** `node scripts/test-mde-quality.mjs`: 58 детерминированных тестов, включая
+  неправильные/пустые/разреженные данные, NaN/Infinity/строки/нуль в OHLC,
+  timestamp units, неизвестные/будущие timestamps, порядок/дубликаты/пропуски,
+  границы coverage/lookback, отдельные возраста, пределы и +1 ms, медленное получение,
+  границу минуты, поддельные флаги, полный отказ live/execution, frozen inputs и
+  одинаковый результат повторного вызова. Restricted VM без Date/fetch/process/
+  console/setTimeout подтверждает отсутствие ambient clock/network/env зависимостей.
+  Все вымышленные свечи находятся только в тестовых fixtures, не в runtime.
+- **PASS** `node scripts/test-p1-safety.mjs`: оба HTTP entrypoints остаются SKIP,
+  send_result отклоняется, health сохранён; 0 торговых импортов/внешних запросов.
+- **PASS** `node scripts/test-mde-biquote.mjs`: существующие 35 групп mock-проверок.
+- **PASS** `node scripts/test-mde-chart.mjs`: существующие проверки графика/polling.
+- **PASS** `node node_modules/typescript/bin/tsc --noEmit --incremental false`.
+- **PASS** `node node_modules/typescript/bin/tsc --noEmit --strict --target ES2022
+  --module ESNext --moduleResolution bundler --types node scripts/test-mde-quality-types.ts`:
+  публичные декларации, обязательное nowMs, readonly candles, nullable quote timestamp,
+  отсутствие context и grantsRuntimeAccess=false.
+- **PASS** production build через Vite API с текущим конфигом, configFile=false и
+  build.write=false; конфиг транспилирован в памяти, dist и другие outputs не записывались.
+
+Проверки выполнены на установленном Node v26.13.0, не на Node 24. Реальная сеть,
+Biquote live, AI API, Telegram и сделки не использовались. Текущий tsconfig не
+проверяет JS-реализацию ядра: новые декларации проверены отдельно, runtime — тестами.
+Зависимости и конфигурация не менялись. В следующем инкременте требуется отдельно
+согласовать серверное происхождение данных и Runtime Guard, не разблокируя HTTP/AI автоматически.
+
+## 18. MDE Phase 3B — Increment 2: Source Registry and Market Service (2026-11-19)
+
+**Статус: второй изолированный инкремент реализован и проверен. Полный обязательный
+Eligibility Gate и Phase 3B целиком ещё не завершены.**
+
+### Файлы и границы
+
+Созданы `core/market/sourceRegistry.js`, `sourceRegistry.d.ts`, `service.js`,
+`service.d.ts`, `scripts/test-mde-service.mjs`, `scripts/test-mde-service-types.ts`.
+Из существующих файлов изменён только PROJECT_CONTEXT.md. Работа Increment 1 сохранена
+без изменения Quality/Eligibility/contracts и тестов. Biquote provider/декларации,
+Express, Vercel, frontend, тестовый график/polling, Safe Mode и торговые модули не менялись.
+Сервис не реэкспортируется из core/index.js и никуда не подключён.
+
+### Registry
+
+Фиксированный immutable серверный allowlist версии `mde-phase3b-increment2`:
+
+- sourceId `biquote`, provider Biquote, фиксированный REST URL Phase 1, priceBasis=mid;
+- инструмент `EUR/USD`, timeframe `1`, единственное назначение `DISPLAY`;
+- CLOSED_BAR_RESEARCH, LIVE_SIGNAL_ANALYSIS, EXECUTION и неизвестные назначения запрещены.
+
+`resolveSource` принимает ровно четыре собственных строковых data-поля
+`sourceId/pair/timeframe/purpose`. Лишние source/quality/eligible/verified/timestamp/
+timing/session/candles/requirements/provider/fetchImpl/url отвергаются, не используются
+для изменения source, политики или provider. Кастомный prototype, symbol-поля и
+accessor-поля также отклоняются. Политика и вложенные массивы заморожены; функций
+регистрации источника из запроса нет. Отказ происходит до получения данных.
+
+### Market Service
+
+`createMarketService().observe(request)` самостоятельно создаёт существующий
+createBiquoteProvider для одобренного запроса и вызывает latest(). URL определяется
+registry, дополнительно сверяется перед fetch; клиент не задаёт URL, provider, пороги,
+источник или рыночные доказательства. Import/создание сервиса не обращаются к сети.
+
+Новый MarketObservation формируется из копии только нормализованных OHLC/time/isOpen/
+volume/tickVolume. Source берётся из server registry, snapshotId создаётся сервером;
+observation и все вложенные объекты/массивы, отчёты и результат заморожены.
+Supplied provider/client quality/eligible/session/timestamp не переносятся в доказательства.
+
+Временная семантика:
+
+- requestStartedAtMs: серверное начало получения;
+- provenance.responseHeadersReceivedAtMs: момент получения HTTP-заголовков fetch,
+  responseTimeMeaning=HEADERS_ONLY, не момент последнего тика или завершения тела;
+- observationCompletedAtMs: завершение получения и нормализации provider;
+- acquisitionDurationMs: Math.ceil разности монотонных performance.now, включает получение
+  и нормализацию, не является односторонней задержкой рыночного события;
+- quality.evaluatedAtMs: отдельное серверное время оценки после формирования observation;
+- providerQuoteUpdatedAtMs=null, session=UNKNOWN: текущий OHLC-контракт не подтверждает
+  время последнего тика и торговую сессию; HTTP receipt/checkedAt/close не подставляются.
+
+Некорректные или идущие назад acquisition/evaluation clocks дают SERVICE_CLOCK_INVALID.
+После запроса используется захваченный registry scope, а не изменяемый request;
+конкурентные получения имеют отдельные timestamps, id и данные.
+
+Серверные диагностические requirements: DISPLAY EUR/USD M1, весь полученный диапазон,
+minCandles=2, allowOpenBar=true, maxCandleAgeMs=120000, maxObservationAgeMs=5000,
+maxQuoteAgeMs=5000, maxAcquisitionDurationMs=5000. Эти пороги не торговая политика
+и не принимаются из client request.
+
+Вызывается неизменённый evaluateEligibility, который сам выполняет assessQuality.
+При текущем Biquote даже корректные свежие свечи дают quality UNKNOWN и eligibility
+DENIED из-за неизвестных quote timestamp/session. Диагностический свежий observation
+может присутствовать в результате DENIED для разбора причин; это не допуск к анализу.
+grantsRuntimeAccess=false, diagnosticOnly=true; context/token/capability отсутствуют.
+Тип результата резервирует ASSESSED для информационного ALLOWED; текущая реализация
+Biquote необходимых доказательств не имеет и такой результат не выдаёт.
+
+При ошибке provider/сети/JSON/неполных данных status=DENIED, observation/provenance/
+quality/eligibility=null, безопасный reason. Нет кэша последнего успешного окна,
+старого fallback, повторов, искусственных цен или свечей. Raw ошибки не раскрываются.
+
+### Проверки
+
+- **PASS** `node scripts/test-mde-service.mjs`: 42 детерминированных mock-теста:
+  immutable allowlist; неизвестный source/инструмент/timeframe; запрет research/live/
+  execution; поддельные клиентские поля; invalid prototypes/accessors/symbols;
+  server provenance и отдельные часы; null tick/UNKNOWN session -> DENIED;
+  fake upstream trust-поля не становятся доказательствами; ошибки сети/HTTP/JSON,
+  пустые/неполные/старые данные; отсутствие fallback после предшествующего observation;
+  некорректные/обратные часы, медленное получение, invalid id, конкурентные запросы
+  и изменение client request во время ожидания. Используется настоящий существующий
+  provider с mock fetch; внешние HTTP(S)/TCP/TLS/fetch и торговые импорты запрещены;
+  **0 попыток внешней сети/торговых импортов**.
+- **PASS** `node scripts/test-mde-quality.mjs`: все 58 тестов Increment 1.
+- **PASS** `node scripts/test-p1-safety.mjs`: Express/Vercel анализ остаётся SKIP,
+  send_result отклоняется; 0 торговых импортов/внешних запросов.
+- **PASS** `node scripts/test-mde-biquote.mjs`: все 35 групп mock-регрессии Phase 1.
+- **PASS** `node scripts/test-mde-chart.mjs`: существующие polling/chart проверки.
+- **PASS** основной TypeScript --noEmit --incremental false и отдельный strict typecheck
+  обоих compile-only файлов Increment 1/2 (ES2022, ESNext, bundler, node).
+- **PASS** production build в памяти через Vite API с build.write=false и configFile=false;
+  текущий конфиг транспилирован в памяти, dist и прочие outputs не записывались.
+
+### Ограничения
+
+Привилегированные constructor dependencies fetchImpl/wallNow/monotonicNow/idFactory
+предназначены только для серверного wiring и offline тестов; принимать их из HTTP
+нельзя. Обычный observation/provenance — сериализуемый отчёт серверного пути, не
+неподделываемое доказательство для других модулей. Runtime Guard, закрытый контекст,
+его сроки действия и защита прямых legacy-вызовов Core не реализуются этим инкрементом.
+HTTP fail-closed блокировка не снималась; текущий диагностический маршрут по-прежнему
+обращается к своему provider, график не получает новую консервативную оценку DENIED.
+
+Тесты выполнялись на Node v26.13.0, Node 24 и live Biquote в этом инкременте не проверялись.
+Декларации проверены TypeScript, JS runtime — mock-тестами; текущий tsconfig не проверяет
+JS ядра. Зависимости, env, конфигурация и торговые модули не менялись. Реальных AI,
+Telegram-запросов и торговых операций не было. Git-ветка и HEAD сохранены, staging,
+commit, push, merge/rebase не выполнялись. Дальнейшая интеграция требует отдельного разрешения.
