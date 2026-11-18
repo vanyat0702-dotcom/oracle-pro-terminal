@@ -29,6 +29,11 @@ import type {
   DetailedReport,
   Signal
 } from './contracts.js';
+import type { RuntimeContext } from './runtimeGuard.js';
+
+// Phase 3B Increment 3: these existing exports call the same guarded implementations
+// as direct imports. Missing/forged contexts deny before payload validation or AI work.
+// There is no positive live issuer: analysis/Gateway return SKIP and AI adapters null.
 
 export * from './contracts.js';
 
@@ -265,16 +270,16 @@ export interface AiMarketData {
 export declare function cleanJsonResponse(content: unknown): unknown;
 
 /** Запрос к OpenAI (gpt-4o). При ошибке/некорректном ответе возвращает `null`. */
-export declare function getGPTAnalysis(marketData: AiMarketData): Promise<AiModelVerdict | null>;
+export declare function getGPTAnalysis(marketData: unknown, runtimeContext?: RuntimeContext): Promise<AiModelVerdict | null>;
 
 /** Запрос к Google Gemini (gemini-1.5-pro). При ошибке/некорректном ответе возвращает `null`. */
-export declare function getGeminiAnalysis(marketData: AiMarketData): Promise<AiModelVerdict | null>;
+export declare function getGeminiAnalysis(marketData: unknown, runtimeContext?: RuntimeContext): Promise<AiModelVerdict | null>;
 
 /**
  * Главная функция консенсуса GPT + Gemini с защитой Safe Mode и Анти-Тильта.
  * Возвращает структуру, совместимую с `AnalyzeResult`.
  */
-export declare function getJointPrediction(marketData: AiMarketData): Promise<AnalyzeResult>;
+export declare function getJointPrediction(marketData: unknown, runtimeContext?: RuntimeContext): Promise<AnalyzeResult>;
 
 /* ============================================================================
  * core/analyze.js — оркестратор анализа (этап 3.6.4)
@@ -293,4 +298,4 @@ export declare function getJointPrediction(marketData: AiMarketData): Promise<An
  * Gateway оборачивается в безопасную `AnalysisError`; сигнал `CALL`/`PUT` при
  * ошибке не создаётся.
  */
-export declare function analyze(request: AnalyzeRequest): Promise<AnalyzeResult>;
+export declare function analyze(request: unknown, runtimeContext?: RuntimeContext): Promise<AnalyzeResult>;

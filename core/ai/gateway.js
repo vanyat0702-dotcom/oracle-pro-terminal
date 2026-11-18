@@ -1,4 +1,5 @@
 // core/ai/gateway.js — центральный orchestration layer AI Gateway.
+// Phase 3B Increment 3: mandatory deny-only guard precedes all legacy logic below.
 //
 // ЭТАП 3.6.3. Функция `getJointPrediction` перенесена 1:1 из `ai-consensus.js`:
 // порядок вызовов, правила Safe Mode, consensus, confidence, CALL/PUT/SKIP,
@@ -15,9 +16,12 @@
 import { getGPTAnalysis } from './openai.js';
 import { getGeminiAnalysis } from './gemini.js';
 import * as safeStrategy from '../trading/safeMode.js'; // Safe Mode + ключевые уровни
+import { checkRuntimeAccess, runtimeGuardSkip } from '../runtimeGuard.js';
 
 // Главная функция консенсуса с защитой Анти-Тильта и Safe Mode
-async function getJointPrediction(marketData) {
+async function getJointPrediction(marketData, runtimeContext) {
+  // Mandatory even for direct imports, facade and legacy shim; before random ID/Safe Mode.
+  if (!checkRuntimeAccess(runtimeContext).allowed) return runtimeGuardSkip();
   const tradeId = Math.floor(Math.random() * 90000) + 10000;
 
   // 🛡️ Если включен SAFE MODE, проверяем уровни М5/М15 перед вызовом ИИ
@@ -45,8 +49,8 @@ async function getJointPrediction(marketData) {
 
   // Параллельный опрос обеих нейросетей
   const [gptResult, geminiResult] = await Promise.all([
-    getGPTAnalysis(marketData),
-    getGeminiAnalysis(marketData)
+    getGPTAnalysis(marketData, runtimeContext),
+    getGeminiAnalysis(marketData, runtimeContext)
   ]);
 
   if (!gptResult || !geminiResult) {

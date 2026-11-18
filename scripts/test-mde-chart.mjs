@@ -7,16 +7,17 @@ const text = await readFile(new URL('../src/components/mdeChartData.ts', import.
 const js = ts.transpileModule(text, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
 const { readChartSnapshot, startChartPolling, localChartAllowed, MDE_CHART_ENDPOINT } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const minute = Math.floor(Date.now() / 60000) * 60;
+const testNow = Date.parse('2026-11-18T12:03:30Z');
+const minute = Math.floor(testNow / 60000) * 60;
 const data = () => ({ success: true, diagnosticOnly: true, snapshot: {
   pair: 'EUR/USD', timeframe: '1', source: { provider: 'Biquote' },
-  quality: { status: 'VALID', checkedAt: new Date().toISOString(), tradingEligible: false },
+  quality: { status: 'VALID', checkedAt: new Date(testNow).toISOString(), tradingEligible: false },
   candles: [minute - 60, minute].map((time, i) => ({ time, open: 1.1, high: 1.2, low: 1, close: 1.15, isOpen: i === 1 }))
 } });
 assert.equal(localChartAllowed(false, 'localhost'), false);
 assert.equal(localChartAllowed(true, 'public.example'), false);
 assert.equal(localChartAllowed(true, '127.0.0.1'), true);
-assert.deepEqual(readChartSnapshot(data()).candles, data().snapshot.candles);
+assert.deepEqual(readChartSnapshot(data(), testNow).candles, data().snapshot.candles);
 for (const mutate of [
   d => { d.snapshot.candles.reverse(); },
   d => { d.snapshot.candles[1].time = d.snapshot.candles[0].time; },
@@ -29,29 +30,45 @@ for (const mutate of [
   d => { d.snapshot.quality.checkedAt = 'bad'; },
   d => { d.snapshot.candles = []; }
 ]) {
-  const d = data(); mutate(d); assert.throws(() => readChartSnapshot(d));
+  const d = data(); mutate(d); assert.throws(() => readChartSnapshot(d, testNow));
 }
-assert.throws(() => readChartSnapshot(data(), Date.now() + 180000));
+assert.throws(() => readChartSnapshot(data(), testNow + 180000));
 console.log('PASS local-only gating, OHLC/UTC/order/open-bar/quality validation, stale rejection');
 
 const originalFetch = globalThis.fetch;
+const originalNow = Date.now;
 globalThis.fetch = () => { throw new Error('Real network forbidden'); };
+Date.now = () => testNow; // Freeze only fixture/validation time; polling timers remain real.
 try {
   let calls = 0, active = 0, maxActive = 0, shown = null, errors = 0;
-  const stop = startChartPolling({ intervalMs: 10, timeoutMs: 100,
-    onData: s => { shown = s; }, onError: () => { shown = null; errors++; }, onLoading() {},
-    fetchImpl: async (url, options) => {
-      assert.equal(url, MDE_CHART_ENDPOINT);
-      assert.equal(options.cache, 'no-store');
-      assert.equal(options.credentials, 'omit');
-      active++; maxActive = Math.max(maxActive, active); calls++;
-      await sleep(5); active--;
-      return calls === 1 ? Response.json(data()) : new Response('', { status: 503 });
-    }
+  let errorHandled, watchdog;
+  const errorProcessed = new Promise((resolve, reject) => {
+    errorHandled = resolve;
+    watchdog = setTimeout(() => reject(new Error('Polling did not handle the source error within 2000ms')), 2000);
   });
-  await sleep(80);
-  assert.equal(calls, 2); assert.equal(errors, 1); assert.equal(shown, null); assert.equal(maxActive, 1);
-  await sleep(30); assert.equal(calls, 2); stop();
+  let stop;
+  try {
+    stop = startChartPolling({ intervalMs: 10, timeoutMs: 100,
+      onData: s => { shown = s; }, onError: () => { shown = null; errors++; errorHandled(); }, onLoading() {},
+      fetchImpl: async (url, options) => {
+        assert.equal(url, MDE_CHART_ENDPOINT);
+        assert.equal(options.cache, 'no-store');
+        assert.equal(options.credentials, 'omit');
+        active++; maxActive = Math.max(maxActive, active); calls++;
+        await sleep(5); active--;
+        return calls === 1 ? Response.json(data()) : new Response('', { status: 503 });
+      }
+    });
+    await errorProcessed;
+    clearTimeout(watchdog);
+    assert.equal(calls, 2); assert.equal(errors, 1); assert.equal(shown, null); assert.equal(maxActive, 1);
+    // Observe three real polling intervals BEFORE stop(); this is a finite no-retry check,
+    // not a guarantee against arbitrarily delayed retries or event-loop starvation.
+    await sleep(30); assert.equal(calls, 2);
+  } finally {
+    clearTimeout(watchdog);
+    stop?.(); // A synchronous startup failure may not return a cancellation handle.
+  }
   console.log('PASS serial refresh; source error clears candles and stops retries');
 
   for (const response of [new Response('bad json'), new Response('', { status: 404 })]) {
@@ -81,7 +98,7 @@ try {
     fetchImpl: async () => { count++; return Response.json(data()); } });
   await sleep(10); cancelTimer(); await sleep(50); assert.equal(count, 1);
   console.log('PASS timeout and cancellation of scheduled refresh');
-} finally { globalThis.fetch = originalFetch; }
+} finally { globalThis.fetch = originalFetch; Date.now = originalNow; }
 
 // Check the proxy boundary that otherwise hides the original socket from Express.
 const viteSource = await readFile(new URL('../vite.config.ts', import.meta.url), 'utf8');

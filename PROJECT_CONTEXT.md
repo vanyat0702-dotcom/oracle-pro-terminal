@@ -1,5 +1,10 @@
 # PROJECT_CONTEXT — ORACLE PRO TERMINAL v10.5.0
 
+> **Актуализация 2026-11-19: Phase 3B / Increment 3 — обязательный deny-only Runtime Guard (§19).**
+> analyze/Gateway возвращают SKIP, оба торговых AI-адаптера — null до чтения payload,
+> API-ключей и сетевых вызовов. Положительный live-допуск не выдаётся. Прямые импорты,
+> facade и legacy shim защищены. Ранее описанные обходы этих функций теперь закрыты.
+
 > **Актуализация 2026-11-19: Phase 3B / Increment 2 — server-owned Source Registry и Market Service (§18).**
 > Изолированный сервис получает данные через существующий provider, но не включён в
 > HTTP/AI/график. Biquote разрешён только для DISPLAY; unknown tick/session дают DENIED.
@@ -1015,3 +1020,149 @@ HTTP fail-closed блокировка не снималась; текущий д
 JS ядра. Зависимости, env, конфигурация и торговые модули не менялись. Реальных AI,
 Telegram-запросов и торговых операций не было. Git-ветка и HEAD сохранены, staging,
 commit, push, merge/rebase не выполнялись. Дальнейшая интеграция требует отдельного разрешения.
+
+## 19. MDE Phase 3B — Increment 3: mandatory deny-only Runtime Guard (2026-11-19)
+
+**Статус: блокировка реализована; финальные Guard-тесты, Increment 1–2,
+HTTP/Biquote, стабилизированная chart-регрессия, typecheck и build PASS.
+История тайминговой нестабильности и её test-only исправления сохранена ниже.**
+Положительный live-анализ, CALL/PUT и торговое исполнение не включались.
+
+### Изменения и порядок проверки
+
+- Новые `core/runtimeGuard.js` и `runtimeGuard.d.ts`: process-local WeakSet идентичностей;
+  createUnprivilegedContext создаёт только пустой замороженный объект с null-prototype.
+  Guard не читает свойства контекста и всегда возвращает immutable отказ
+  allowed=false / RUNTIME_GUARD_DENIED, включая собственные зарегистрированные контексты.
+  Публичного положительного issuer, env-переключателя или тестового bypass нет.
+- `core/analyze.js`: Guard — первая операция, до валидации payload; отказ возвращает
+  фиксированный SKIP/confidence=0/tradeId=0 и skipReason категории ELIGIBILITY.
+- `core/ai/gateway.js`: собственная проверка до Math.random, Safe Mode, выбора пары,
+  моделей и логирования. Отказ — тот же SKIP. Прямой вызов не зависит от analyze().
+- `core/ai/openai.js`, `gemini.js`: собственная проверка первой операцией до промпта,
+  JSON.stringify, доступа к env/API-ключам, axios.post, аудита и обработки ответа.
+  Отказ — null, без логирования payload/контекста или секретов.
+- `core/index.d.ts`: optional opaque RuntimeContext вторым аргументом четырёх функций;
+  существующие вызовы с одним аргументом сохраняются, неверные параметры безопасно
+  отклоняются Guard до legacy validation. Контекст не извлекается из marketData/request.
+- Новые `scripts/test-runtime-guard.mjs`, `test-runtime-guard-types.ts`.
+- Этот PROJECT_CONTEXT.md: актуализация статуса и ограничений.
+
+Сами `core/index.js` и `ai-consensus.js` не менялись: их re-export ссылается на те же
+защищённые функции. Тесты проверили идентичность bindings и вызовы обоих путей.
+Прямой импорт каждого файла также защищён. Старое тело анализа/AI сохранено за
+проверкой, но недостижимо при текущем deny-only Guard; контекст передаётся отдельно
+вниз по цепочке, а не подмешивается в рыночный payload.
+
+### Контекст и границы гарантии
+
+JSON/копия/поддельный объект, context внутри HTTP-полей, source/quality/eligible/
+eligibility/runtimeContext, публичный ALLOWED EligibilityDecision не дают доступа.
+Даже подлинный context не имеет live-привилегий. Сериализация теряет WeakSet identity,
+однако результат отказа одинаков для любого контекста. Проверка ничего не получает
+из Market Service или диагностических свечей; Biquote не подключён к AI.
+
+Это намеренный запрет, а не готовая система положительных grants: выдача полномочий,
+TTL, отзыв, привязка положительного допуска к snapshot/policy требуют отдельного
+проектирования и разрешения. TypeScript-brand дополняет, но не заменяет runtime отказ.
+Гарантия относится к поддерживаемым функциям анализа и торговым AI-адаптерам;
+произвольный серверный код с возможностью менять модули/loader или делать собственные
+сетевые запросы не изолируется этим JavaScript Guard.
+
+### Фактические проверки
+
+- **PASS** `node scripts/test-runtime-guard.mjs`: 6408 entrypoint-вызовов, включая
+  288 параллельных. Девять путей: direct analyze/Gateway, facade analyze/Gateway,
+  legacy Gateway, оба direct AI-адаптера, оба AI-адаптера через facade.
+  Матрица включает отсутствующие/неверные параметры, Safe Mode off/on,
+  поддельные клиентские флаги, genuine/JSON-copy/structuredClone/proxy/revoked-proxy
+  контексты, настоящий публичный ALLOWED DISPLAY decision. Все дают SKIP либо null.
+- **PASS** Guard вызывается ровно один раз на каждый отрицательный entrypoint-вызов,
+  до validation/Safe Mode/payload inspection/сериализации/случайных ID/моделей.
+  Test-only loader stubs считают вызовы validation/Safe Mode/audit/parse; настоящий
+  исходник Guard инструментирован в памяти только счётчиком. Файлы не подменялись.
+  axios.post и внешние HTTP(S)/TCP/TLS/fetch заблокированы; API-key reads перехвачены
+  до оригинального process.env. Проверены режимы absent и mock-present без чтения
+  реальных значений ключей. Все счётчики побочных эффектов равны 0, CALL/PUT отсутствуют.
+- **PASS** `node scripts/test-mde-quality.mjs` — 58 тестов Increment 1.
+- **PASS** `node scripts/test-mde-service.mjs` — 42 теста Increment 2.
+- **PASS** `node scripts/test-p1-safety.mjs` — Express/Vercel остаются SKIP;
+  send_result отклоняется, health сохранён, 0 trading imports/external requests.
+- **PASS** `node scripts/test-mde-biquote.mjs` — 35 групп mock-регрессии.
+- **PASS** основной `tsc --noEmit --incremental false`; отдельный strict typecheck
+  test-mde-quality-types.ts, test-mde-service-types.ts, test-runtime-guard-types.ts
+  с ES2022/ESNext/bundler/node. Проверены opaque context и невозможность allowed=true
+  в публичном контракте. JS ядра не проверяется текущим tsconfig, runtime покрыт тестами.
+- **PASS** production Vite build в памяти (configFile=false, build.write=false),
+  без записи dist/outputs и без изменения конфигурации.
+- **CHART REGRESSION: FLAKY** обычный `node scripts/test-mde-chart.mjs` дал два FAIL
+  и один PASS на существующей строке 53: errors=0 вместо 1 в окне 80 ms. Один сбой
+  был при параллельной сборке, другой при отдельном запуске. Ни chartData, ни график,
+  ни этот тест не менялись и Guard ими не импортируется.
+  Дополнительный запуск неизменённого теста после инициализации Node Response
+  (`Response.json({}); await import('./scripts/test-mde-chart.mjs')` в отдельном Node
+  процессе) прошёл PASS по всем проверкам. Замеренная cold initialization Response
+  заняла 47 ms; это согласуется с чувствительностью 80 ms-теста к времени, но не
+  заменяет устранение нестабильности. Исходный тест не исправлялся и таймауты не менялись.
+
+### Сохранённые компоненты и ограничения
+
+Не изменены biquote.js/декларации, Market Service/Registry, Quality/Eligibility policies,
+Safe Mode, Express/Vercel, frontend, TradingView, тестовый Biquote-график и polling,
+существующие тесты, зависимости и production-конфигурация. Реальной сети, AI/Telegram
+и сделок не было. Проверки — на Node v26.13.0; Node 24 отдельно не проверен.
+Ветка backup/mde-phase2-checkpoint и HEAD fdfe1febf933a2258311359ac35c73d14c9d0d1f
+сохранены, staging/commit/push/merge/reset/rebase не выполнялись. Следующее действие
+требует отдельного задания; live-допуск автоматически не включается.
+
+### Test-only stabilization после диагностики (2026-11-19)
+
+Этот раздел обновляет исторический статус CHART REGRESSION: FLAKY выше.
+Изменён только `scripts/test-mde-chart.mjs`: sleep(80) заменён ожиданием onError,
+watchdog 2000 ms ограничивает зависание и очищается; stop() вызывается в finally.
+Сохранены calls=2, errors=1, shown=null, maxActive=1 и проверка отсутствия повторов
+в течение 30 ms до stop(). Это конечное окно реальных таймеров, а не доказательство
+отсутствия произвольно поздних повторов или устойчивости к starvation event loop.
+Фиксированные testNow/minute/checkedAt и временная подмена Date.now в тестовом
+процессе исключают гонку перехода минуты; реальные polling timers не заменены.
+
+- PASS: 20 последовательных свежих Node-процессов без прогрева Response,
+  по 6 проверок; 840–1128 ms на процесс.
+- PASS: ещё 9 запусков с задержкой первого Response 100/200/400 ms (по 3).
+  Инструментирование только в памяти; файл теста для этих сценариев не менялся.
+- PASS: намеренно пропущенное событие завершилось watchdog-ошибкой; намеренно
+  неверный assertion завершился assertion-ошибкой. В обоих случаях stop() выполнен
+  и Date.now восстановлен (диагностические подмены только в памяти).
+- PASS: Runtime Guard (6408 вызовов, 288 параллельных), Quality/Eligibility (58),
+  Market Service/Registry (42), HTTP Safety и Biquote mock (35).
+  HTTP-анализ остаётся SKIP; внешних сетевых/AI/Telegram/торговых вызовов не было.
+- PASS: основной и отдельный strict typecheck тестовых контрактов; production Vite
+  build в памяти (configFile=false, build.write=false), без записи dist.
+- PASS: git diff --check. Production-код и существующие изменения Increment 3
+  сохранены; текущая правка касается только теста и этого раздела документации.
+
+Ограничения: прочие короткие sleep в тесте сохраняются; 20 PASS не гарантируют
+стабильность при любой нагрузке. Проверки выполнены на Node v26.13.0, Node 24
+отдельно не проверен. Commit/push и изменение ветки/HEAD не выполнялись.
+
+### Финальная проверка перед локальным checkpoint (2026-11-19)
+
+Повторный аудит подтвердил deny-only Guard для direct/facade/legacy вызовов;
+положительного issuer нет. Analyze/Gateway дают SKIP, GPT/Gemini — null до эффектов.
+В chart-тесте запуск polling перенесён внутрь try/finally: watchdog очищается
+также при синхронном исключении запуска. Полученный stop вызывается через stop?.();
+если запуск бросил до возврата handle, вызывать ещё нечего. Date.now/fetch восстанавливаются
+внешним finally. Production polling и другой production-код при этой проверке не менялись.
+
+- PASS: 10 последовательных chart-запусков с --unhandled-rejections=strict,
+  по 6 проверок, 810–973 ms; предварительного прогрева Response нет.
+- PASS: 6 in-memory сценариев — обычный, sync throw запуска, throw после получения
+  handle, watchdog rejection, assertion failure, rejected fetch. После завершения
+  и 50 ms ожидания: 0 отслеживаемых таймеров, 0 unhandled rejection; часы/fetch
+  восстановлены, каждый полученный stop вызван. Подмены не записывались в файлы.
+- PASS: повторены Runtime Guard (6408/288), Quality/Eligibility (58), Service/Registry
+  (42), HTTP Safety, Biquote mock (35), основной и strict typecheck деклараций,
+  production build в памяти (write=false). Внешние AI/сеть/сделки не использовались.
+
+Предыдущие записи о неизменном HEAD и отсутствии commit описывают прошлые проверки.
+Текущее разрешение — только локальный checkpoint Increment 3; push не разрешён.

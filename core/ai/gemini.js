@@ -1,4 +1,5 @@
 // core/ai/gemini.js — адаптер Google Gemini (gemini-1.5-pro).
+// Phase 3B Increment 3: direct calls without live access return null before any AI work.
 //
 // ЭТАП 3.6.3. Функция `getGeminiAnalysis` перенесена 1:1 из `ai-consensus.js`:
 // модель, промпты, параметры запроса, формат ответа и обработка ошибок
@@ -12,9 +13,12 @@
 import axios from 'axios';
 import { cleanJsonResponse } from './parse.js';
 import * as aiDebugger from '../observability/audit.js'; // аудит: зона наблюдаемости ядра
+import { checkRuntimeAccess } from '../runtimeGuard.js';
 
 // Реальный запрос к Google Gemini
-async function getGeminiAnalysis(marketData) {
+async function getGeminiAnalysis(marketData, runtimeContext) {
+  // Must precede prompt serialization, env/API-key access, logging and axios.post.
+  if (!checkRuntimeAccess(runtimeContext).allowed) return null;
   try {
     const prompt = `Ты алгоритмический скальпер. Оцени рыночные условия и стратегии: ${JSON.stringify(marketData)}.
     Верни результат строго в формате JSON:
