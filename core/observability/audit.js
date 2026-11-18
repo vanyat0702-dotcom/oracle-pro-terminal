@@ -1,4 +1,5 @@
-// ai-debugger.js — Система сквозной диагностики передачи данных и скриншотов
+// core/observability/audit.js — Система сквозной диагностики передачи данных и скриншотов
+// Перенесено 1:1 из ai-debugger.js (этап 3.4.7). Реализация не изменялась.
 
 function auditIncomingPayload(reqBody) {
   const hasScreenshot = Boolean(reqBody.screenshot);
@@ -23,4 +24,4 @@ function auditModelResponse(modelName, rawResponse) {
   return success;
 }
 
-module.exports = { auditIncomingPayload, auditModelResponse };
+export { auditIncomingPayload, auditModelResponse };

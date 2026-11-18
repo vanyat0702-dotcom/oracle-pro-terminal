@@ -2,8 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Zap, LineChart, RefreshCw, BrainCircuit, Clock, Flame, Sliders, ChevronDown, ChevronUp, ChevronRight, Volume2, VolumeX } from 'lucide-react';
 import { TRADING_PAIRS, TradingPair } from './config/pairs';
 import { TerminalChart } from './components/TerminalChart';
+import { BiquoteTestChart } from './components/BiquoteTestChart';
+import { localChartAllowed } from './components/mdeChartData';
 
 export default function App() {
+  const [showMdeChart, setShowMdeChart] = useState(false);
+  const mdeChartAllowed = localChartAllowed(import.meta.env.DEV, window.location.hostname);
   const [selectedPair, setSelectedPair] = useState<TradingPair>(() => {
     try {
       const saved = localStorage.getItem('oracle_selected_pair');
@@ -113,6 +117,7 @@ export default function App() {
 
   const hasTriggeredCurrentCandleRef = useRef<boolean>(false);
   const currentCandleIndexRef = useRef<number>(0);
+  const latestAnalysisRequestIdRef = useRef<number>(0);
 
   const activeTradesRef = useRef<Array<{ tradeId: number; pair: string; direction: 'CALL' | 'PUT'; candleOpenTime: string; expireAt: number; expMins: number }>>([]);
 
@@ -201,86 +206,209 @@ export default function App() {
     });
   };
 
+  const buildSafeSkipResult = (
+    reasoning: string,
+    requestPayload: Record<string, unknown>,
+    bestPair: string,
+    recommendedExpiration: string,
+    responsePayload: unknown = null,
+    status = '⚠️ Безопасный пропуск (fail-closed)',
+    skipReason: { code: string; category: string; publicMessage: string } = {
+      code: 'ANALYSIS_SKIPPED',
+      category: 'TECHNICAL',
+      publicMessage: 'Trading analysis was skipped.'
+    }
+  ) => ({
+    signal: 'SKIP' as const,
+    confidence: 0,
+    tradeId: 0,
+    reasoning,
+    recommendedExpiration,
+    bestPair,
+    skipReason,
+    detailedReport: {
+      mode: `Профиль: ${riskModeRef.current} | Мультивыбор`,
+      status,
+      requestPayloadJson: JSON.stringify(requestPayload, null, 2),
+      responsePayloadJson: responsePayload == null ? '' : JSON.stringify(responsePayload, null, 2),
+      levelDetails: 'Торговый сигнал не сформирован: требуется подтверждённый и актуальный ответ сервера.',
+      aiVerdictGPT: 'Пропуск (без торгового решения)',
+      aiVerdictGemini: 'Пропуск (без торгового решения)',
+      riskLevel: 'Консервативный (fail-closed)'
+    }
+  });
+
   const fetchAiAnalysisFromBackend = async (tf: string, hTfs: string[], currentRemSec: number, openTimeStr: string) => {
+    const multiPairsSymbols = selectedMultiPairsRef.current.map(p => p.displaySymbol);
+    const activeStratNames = strategies.filter(s => s.enabled).map(s => s.name);
+    const fallbackPair = multiPairsSymbols[0] || selectedPair.displaySymbol || 'EUR/USD';
+    const recommendedExpiration = `${parseInt(tf, 10) || 1}M`;
+
+    const requestPayload = {
+      pairs: multiPairsSymbols,
+      timeframe: tf,
+      higherTimeframes: hTfs,
+      mode: riskModeRef.current,
+      safeModeEnabled: safeModeEnabled,
+      secondsRemaining: currentRemSec,
+      candleOpenTime: openTimeStr,
+      activeStrategies: activeStratNames,
+      strategy: activeStratNames[0] || 'Мульти-стратегия',
+      filters: { newsFilterEnabled, atrFilterEnabled, riskCapEnabled }
+    };
+
+    const controller = new AbortController();
+    const timeoutMs = 10000;
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
     try {
-      const multiPairsSymbols = selectedMultiPairsRef.current.map(p => p.displaySymbol);
-      const activeStratNames = strategies.filter(s => s.enabled).map(s => s.name);
-
-      const requestPayload = {
-        pairs: multiPairsSymbols,
-        timeframe: tf,
-        higherTimeframes: hTfs,
-        mode: riskModeRef.current,
-        safeModeEnabled: safeModeEnabled,
-        secondsRemaining: currentRemSec,
-        candleOpenTime: openTimeStr,
-        activeStrategies: activeStratNames,
-        strategy: activeStratNames[0] || 'Мульти-стратегия',
-        filters: { newsFilterEnabled, atrFilterEnabled, riskCapEnabled }
-      };
-
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestPayload),
+        signal: controller.signal,
       });
 
-      const data = await response.json();
-      if (data.success && data.result) {
-        return {
-          ...data.result,
-          detailedReport: data.result.detailedReport || {
+      if (!response.ok) {
+        return buildSafeSkipResult(
+          `Сервер вернул HTTP ${response.status}. Сигнал пропущен (fail-closed).`,
+          requestPayload,
+          fallbackPair,
+          recommendedExpiration,
+          { httpStatus: response.status },
+          '⚠️ Безопасный пропуск (fail-closed)',
+          {
+            code: 'HTTP_ERROR',
+            category: 'TRANSPORT',
+            publicMessage: 'The analysis service returned an HTTP error.'
+          }
+        );
+      }
+
+      let data: any;
+      try {
+        data = await response.json();
+      } catch {
+        return buildSafeSkipResult(
+          'Ответ сервера не является корректным JSON. Сигнал пропущен (fail-closed).',
+          requestPayload,
+          fallbackPair,
+          recommendedExpiration,
+          null,
+          '⚠️ Безопасный пропуск (fail-closed)',
+          {
+            code: 'INVALID_JSON_RESPONSE',
+            category: 'TRANSPORT',
+            publicMessage: 'The analysis service returned an unreadable response.'
+          }
+        );
+      }
+
+      const validSignals = new Set(['CALL', 'PUT', 'SKIP']);
+      const result = data && typeof data === 'object' ? data.result : null;
+      const isValid =
+        data &&
+        typeof data === 'object' &&
+        data.success === true &&
+        result &&
+        typeof result === 'object' &&
+        validSignals.has(result.signal);
+
+      if (!isValid) {
+        return buildSafeSkipResult(
+          'Структура ответа сервера недействительна. Сигнал пропущен (fail-closed).',
+          requestPayload,
+          fallbackPair,
+          recommendedExpiration,
+          data,
+          '⚠️ Безопасный пропуск (fail-closed)',
+          {
+            code: 'INVALID_RESPONSE_CONTRACT',
+            category: 'DATA_INTEGRITY',
+            publicMessage: 'The analysis service returned an invalid response structure.'
+          }
+        );
+      }
+
+      const safeResult: any = {
+        ...result,
+        signal: result.signal,
+        confidence: typeof result.confidence === 'number' && Number.isFinite(result.confidence) ? result.confidence : 0,
+        tradeId: typeof result.tradeId === 'number' && Number.isFinite(result.tradeId) ? result.tradeId : 0,
+        reasoning: typeof result.reasoning === 'string' && result.reasoning.trim() ? result.reasoning : 'Ответ сервера без обоснования.',
+        recommendedExpiration: typeof result.recommendedExpiration === 'string' && result.recommendedExpiration.trim() ? result.recommendedExpiration : recommendedExpiration,
+        bestPair: typeof result.bestPair === 'string' && result.bestPair.trim() ? result.bestPair : fallbackPair,
+      };
+
+      safeResult.detailedReport = result.detailedReport && typeof result.detailedReport === 'object'
+        ? {
+            ...result.detailedReport,
+            requestPayloadJson: result.detailedReport.requestPayloadJson || JSON.stringify(requestPayload, null, 2),
+            responsePayloadJson: result.detailedReport.responsePayloadJson || JSON.stringify(result, null, 2),
+          }
+        : {
             mode: `Профиль: ${riskModeRef.current} | Мультивыбор (${multiPairsSymbols.length} пар) | TF: ${tf}M`,
-            status: '✅ Анализ корзины мультивыбора успешно завершен',
+            status: 'Ответ сервера получен и проверен',
             requestPayloadJson: JSON.stringify(requestPayload, null, 2),
-            responsePayloadJson: JSON.stringify(data.result, null, 2),
+            responsePayloadJson: JSON.stringify(result, null, 2),
             levelDetails: `Просканировано пар: ${multiPairsSymbols.join(', ')}`,
-            aiVerdictGPT: data.result.reasoning || 'Сигнал подтвержден.',
-            aiVerdictGemini: 'Мультитаймфреймовая сетка стабильна.',
-            riskLevel: `Оптимальный (${riskModeRef.current})`
+            aiVerdictGPT: safeResult.reasoning,
+            aiVerdictGemini: 'Ответ сервера обработан.',
+            riskLevel: `Профиль: ${riskModeRef.current}`
+          };
+
+      // Боевой режим: не формировать торговые сигналы локально. Не-SKIP принимается только из проверенного ответа сервера.
+      if (safeResult.signal !== 'SKIP' && safeResult.signal !== 'CALL' && safeResult.signal !== 'PUT') {
+        return buildSafeSkipResult(
+          'Недопустимый тип сигнала. Сигнал пропущен (fail-closed).',
+          requestPayload,
+          fallbackPair,
+          recommendedExpiration,
+          result,
+          '⚠️ Безопасный пропуск (fail-closed)',
+          {
+            code: 'INVALID_SIGNAL_TYPE',
+            category: 'DATA_INTEGRITY',
+            publicMessage: 'The analysis service returned an unsupported signal type.'
           }
-        };
-      } else {
-        return { 
-          signal: 'SKIP', 
-          confidence: 0, 
-          tradeId: Math.floor(Math.random() * 9000) + 1000, 
-          reasoning: 'Шлюз: Мультивыбор не дал уверенных сигналов', 
-          recommendedExpiration: '1M', 
-          bestPair: multiPairsSymbols[0] || 'EUR/USD',
-          detailedReport: {
-            mode: `Профиль: ${riskModeRef.current} | Мультивыбор`,
-            status: '⚠️ Сигнал отклонен фильтрами корзины',
-            requestPayloadJson: JSON.stringify(requestPayload, null, 2),
-            responsePayloadJson: JSON.stringify(data, null, 2),
-            levelDetails: `Пары в корзине: ${multiPairsSymbols.join(', ')}`,
-            aiVerdictGPT: 'Ожидание сетапа',
-            aiVerdictGemini: 'Пропуск',
-            riskLevel: 'Консервативный'
-          }
+        );
+      }
+
+      // Если сервер вернул SKIP без структурированной причины, добавляем безопасную причину по умолчанию.
+      if (safeResult.signal === 'SKIP' && (!safeResult.skipReason || typeof safeResult.skipReason !== 'object')) {
+        safeResult.skipReason = {
+          code: 'ANALYSIS_NOT_CONFIRMED',
+          category: 'TECHNICAL',
+          publicMessage: 'Trading analysis did not produce a confirmed signal.'
         };
       }
+
+      return safeResult;
     } catch (err) {
-      const fallbackTradeId = Math.floor(Math.random() * 9000) + 1000;
-      const defaultPair = selectedMultiPairsRef.current[0]?.displaySymbol || 'EUR/USD';
-      return { 
-        signal: 'CALL', 
-        confidence: 93, 
-        tradeId: fallbackTradeId,
-        reasoning: `Автопилот мультивыбора: Импульс подтвержден`,
-        recommendedExpiration: timeframe,
-        bestPair: defaultPair,
-        detailedReport: {
-          mode: `Мультивыбор Fallback (${timeframe}M)`,
-          status: '⚡ Автономный анализ корзины выполнен',
-          requestPayloadJson: JSON.stringify({ pairs: selectedMultiPairsRef.current.map(p => p.displaySymbol), timeframe }, null, 2),
-          responsePayloadJson: JSON.stringify({ status: 'Multi-pair fallback executed' }, null, 2),
-          levelDetails: `Свечной анализ мультикорзины`,
-          aiVerdictGPT: 'Направление сделки строго соответствует правилам',
-          aiVerdictGemini: 'Синхронизировано',
-          riskLevel: 'Оптимальный'
-        }
-      };
+      const isAbort = err && typeof err === 'object' && (err as any).name === 'AbortError';
+      return buildSafeSkipResult(
+        isAbort
+          ? 'Таймаут ожидания ответа сервера. Сигнал пропущен (fail-closed).'
+          : 'Ошибка сети/запроса анализа. Сигнал пропущен (fail-closed).',
+        requestPayload,
+        fallbackPair,
+        recommendedExpiration,
+        null,
+        '⚠️ Безопасный пропуск (fail-closed)',
+        isAbort
+          ? {
+              code: 'TIMEOUT',
+              category: 'TRANSPORT',
+              publicMessage: 'The analysis request timed out.'
+            }
+          : {
+              code: 'NETWORK_ERROR',
+              category: 'TRANSPORT',
+              publicMessage: 'A network error occurred while requesting analysis.'
+            }
+      );
+    } finally {
+      clearTimeout(timeoutId);
     }
   };
 
@@ -309,59 +437,13 @@ export default function App() {
         const remainingTrades = [];
         for (const trade of activeTradesRef.current) {
           if (nowMs >= trade.expireAt) {
-            const pairKey = trade.pair;
-            const isBtc = pairKey.includes('BTC');
-            const isJpy = pairKey.includes('JPY');
-            const decimals = isBtc ? 2 : (isJpy ? 3 : 5);
-
-            if (!lastPricesRef.current[pairKey]) {
-              lastPricesRef.current[pairKey] = isBtc ? 75530.00 : (isJpy ? 152.500 : 1.11500);
-            }
-
-            const openPrice = lastPricesRef.current[pairKey];
-            const step = isBtc ? 10 : (isJpy ? 0.001 : 0.0001);
-            const pipsNum = Math.floor(Math.random() * 6) + 2; 
-
-            const finalWin = Math.random() < 0.6;
-            const isCall = trade.direction === 'CALL';
-
-            let closePrice = openPrice;
-            if (finalWin) {
-              closePrice = isCall ? (openPrice + (pipsNum * step)) : (openPrice - (pipsNum * step));
-            } else {
-              closePrice = isCall ? (openPrice - (pipsNum * step)) : (openPrice + (pipsNum * step));
-            }
-
-            closePrice = Number(closePrice.toFixed(decimals));
-            lastPricesRef.current[pairKey] = closePrice;
-
-            const pipsMultiplier = isBtc ? 1 : (isJpy ? 1000 : 10000);
-            const calculatedPips = Math.abs(Math.round((closePrice - openPrice) * pipsMultiplier));
-            const pipsFormatted = `${finalWin ? '+' : '-'}${calculatedPips} п.`;
-
-            setHistoryList(prev => prev.map(item => 
-              item.tradeId === trade.tradeId 
-                ? { ...item, result: finalWin ? 'WIN' : 'LOSS', pips: pipsFormatted, status: 'FINISHED', openPrice, closePrice } 
+            // Боевой режим (P0 fail-closed): не генерировать синтетические цены/исходы и не отправлять send_result.
+            setHistoryList(prev => prev.map(item =>
+              item.tradeId === trade.tradeId
+                ? { ...item, status: 'FINISHED', result: undefined, pips: undefined }
                 : item
             ));
-
-            addLog(`🎯 ИТОГ СДЕЛКИ #${trade.tradeId} [${pairKey}]: ${finalWin ? '🟢 WIN' : '🔴 LOSS'} (${pipsFormatted}) | Откр: ${openPrice} ➔ Закр: ${closePrice}`, finalWin ? 'sniper' : 'info');
-
-            try {
-              await fetch('/api/analyze', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  action: 'send_result',
-                  pair: pairKey,
-                  direction: trade.direction,
-                  candleOpenTime: trade.candleOpenTime,
-                  tradeId: trade.tradeId,
-                  openPrice,
-                  closePrice
-                })
-              });
-            } catch (e) {}
+            addLog(`⏹ Экспирация #${trade.tradeId} [${trade.pair}]: подтверждённый результат недоступен (fail-closed, без синтетики).`, 'info');
           } else {
             remainingTrades.push(trade);
           }
@@ -376,15 +458,37 @@ export default function App() {
 
       if (isAnalyzingRef.current && remaining === 12 && !hasTriggeredCurrentCandleRef.current) {
         hasTriggeredCurrentCandleRef.current = true;
+
+        const requestId = ++latestAnalysisRequestIdRef.current;
+        const triggerCandleIndex = candleIndex;
+        const tfSnapshot = timeframeRef.current;
+        const higherTfsSnapshot = [...selectedHigherTfsRef.current];
+        const pairsSnapshot = selectedMultiPairsRef.current.map(p => p.displaySymbol);
+
         setAuditStepText('🎯 Снайперское окно! Сканирование мультикорзины...');
         addLog('🤖 Автопилот: сработка на 12 секундах. Сканирование выбранных пар.', 'sniper');
 
         const nextTime = new Date(Date.now() + remaining * 1000);
         const candleOpenTimeStr = `${nextTime.getHours().toString().padStart(2, '0')}:${nextTime.getMinutes().toString().padStart(2, '0')}`;
 
-        const aiResult = await fetchAiAnalysisFromBackend(timeframeRef.current, selectedHigherTfsRef.current, remaining, candleOpenTimeStr);
-        const chosenPairSymbol = aiResult.bestPair || selectedMultiPairsRef.current[0].displaySymbol;
+        const aiResult = await fetchAiAnalysisFromBackend(tfSnapshot, higherTfsSnapshot, remaining, candleOpenTimeStr);
 
+        const isStale =
+          !isAnalyzingRef.current ||
+          latestAnalysisRequestIdRef.current !== requestId ||
+          currentCandleIndexRef.current !== triggerCandleIndex ||
+          timeframeRef.current !== tfSnapshot ||
+          JSON.stringify(selectedHigherTfsRef.current) !== JSON.stringify(higherTfsSnapshot) ||
+          JSON.stringify(selectedMultiPairsRef.current.map(p => p.displaySymbol)) !== JSON.stringify(pairsSnapshot);
+
+        if (isStale) {
+          if (isAnalyzingRef.current && currentCandleIndexRef.current === triggerCandleIndex) {
+            setAuditStepText('⏳ Автопилот активен. Ожидание следующей свечи...');
+          }
+          return;
+        }
+
+        const chosenPairSymbol = aiResult.bestPair || pairsSnapshot[0] || selectedPair.displaySymbol || 'EUR/USD';
         const foundPairObj = TRADING_PAIRS.find(p => p.displaySymbol === chosenPairSymbol);
         if (foundPairObj) {
           setSelectedPair(foundPairObj);
@@ -394,22 +498,35 @@ export default function App() {
 
         if (aiResult.signal === 'SKIP') {
           playBeep('alert');
-          addLog(`🛡 Автопилот [SKIP]: ${aiResult.reasoning}`, 'info');
+          addLog(`🛡 Автопилот [SKIP]: ${aiResult.reasoning || 'Сигнал пропущен (fail-closed).'}`, 'info');
           setAiSignal({
             pair: chosenPairSymbol,
             direction: 'SKIP',
             confidence: 0,
             reasoning: aiResult.reasoning,
-            recommendedExpiration: `${timeframeRef.current}M`
+            recommendedExpiration: aiResult.recommendedExpiration || `${tfSnapshot}M`
           });
           setAuditStepText('⏳ Автопилот активен. Ожидание следующей свечи...');
           return;
         }
 
+        if (aiResult.signal !== 'CALL' && aiResult.signal !== 'PUT') {
+          setAiSignal({
+            pair: chosenPairSymbol,
+            direction: 'SKIP',
+            confidence: 0,
+            reasoning: 'Недопустимый ответ сервера. Сигнал пропущен (fail-closed).',
+            recommendedExpiration: `${tfSnapshot}M`
+          });
+          setAuditStepText('⏳ Автопилот активен. Ожидание следующей свечи...');
+          return;
+        }
+
+        // Торговый сигнал принимается только из проверенного ответа сервера (без локальной генерации CALL/PUT).
         playBeep('sniper');
 
-        const expMins = parseInt(aiResult.recommendedExpiration || timeframeRef.current, 10) || 1;
-        
+        const expMins = parseInt(aiResult.recommendedExpiration || tfSnapshot, 10) || 1;
+
         activeTradesRef.current.push({
           tradeId: aiResult.tradeId,
           pair: chosenPairSymbol,
@@ -422,7 +539,7 @@ export default function App() {
         setAiSignal({
           pair: chosenPairSymbol,
           direction: aiResult.signal,
-          confidence: aiResult.confidence,
+          confidence: typeof aiResult.confidence === 'number' ? aiResult.confidence : 0,
           nextCandleTime: candleOpenTimeStr,
           reasoning: aiResult.reasoning,
           recommendedExpiration: `${expMins}M`,
@@ -430,12 +547,12 @@ export default function App() {
         });
 
         setHistoryList(prev => [
-          { 
-            id: Date.now(), 
-            tradeId: aiResult.tradeId, 
-            time: currentTimeStr, 
-            pair: chosenPairSymbol, 
-            direction: aiResult.signal, 
+          {
+            id: Date.now(),
+            tradeId: aiResult.tradeId,
+            time: currentTimeStr,
+            pair: chosenPairSymbol,
+            direction: aiResult.signal,
             status: 'ACTIVE',
             detailedReport: aiResult.detailedReport
           },
@@ -443,7 +560,7 @@ export default function App() {
         ]);
 
         addLog(`🧠 АВТОПИЛОТ [${chosenPairSymbol}]: Сигнал ${aiResult.signal} (#${aiResult.tradeId}) | Профиль: ${riskModeRef.current}`, 'vision');
-        setAuditStepText('⏳ Сигнал выдан! Ожидание экспирации...');
+        setAuditStepText('⏳ Сигнал выдан! Ожидание подтверждённого результата недоступно в fail-closed режиме.');
       }
     }, 1000);
 
@@ -458,6 +575,7 @@ export default function App() {
   };
 
   const handleStopAnalysis = () => {
+    latestAnalysisRequestIdRef.current += 1;
     setIsAnalyzing(false);
     setAuditStepText('');
     setAiSignal(null);
@@ -468,7 +586,7 @@ export default function App() {
     const base = parseFloat(startAmount) || 100;
     const payout = parseFloat(payoutPercent) || 85;
     const multiplier = 1 + (100 / payout);
-    let steps = [];
+    let steps: Array<{ step: number; amount: number; total: number; profit: number; isCapped: boolean }> = [];
     let current = base;
 
     for (let i = 1; i <= 4; i++) {
@@ -716,6 +834,13 @@ export default function App() {
             </div>
 
           </div>
+          {mdeChartAllowed && <div className="mt-3">
+            <button type="button" aria-expanded={showMdeChart} className="rounded-lg border border-cyan-800 bg-slate-950 px-4 py-2 text-sm text-cyan-300"
+              onClick={() => setShowMdeChart(show => !show)}>
+              {showMdeChart ? 'Скрыть тестовый график Biquote' : 'Тестовый график Biquote · EURUSD M1'}
+            </button>
+            {showMdeChart && <BiquoteTestChart />}
+          </div>}
         </section>
 
         <aside className="bg-slate-900/40 border border-slate-800 rounded-xl p-4 flex flex-col gap-3 backdrop-blur">
@@ -824,10 +949,12 @@ export default function App() {
                       <span>Время: {item.time}</span>
                       {item.status === 'ACTIVE' ? (
                         <span className="text-amber-400 animate-pulse font-bold">⏳ Сделка активна...</span>
-                      ) : (
+                      ) : item.result ? (
                         <span className={`font-bold ${item.result === 'WIN' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {item.result} ({item.pips})
+                          {item.result} {item.pips ? `(${item.pips})` : ''}
                         </span>
+                      ) : (
+                        <span className="text-slate-400 font-bold">Результат недоступен</span>
                       )}
                     </div>
                   </div>
@@ -852,8 +979,11 @@ export default function App() {
                       {selectedHistoryItem.closePrice && (
                         <div className="flex justify-between"><span className="text-slate-400">Цена закрытия:</span><span className="text-cyan-300 font-mono">{selectedHistoryItem.closePrice}</span></div>
                       )}
-                      {selectedHistoryItem.pips && (
-                        <div className="flex justify-between"><span className="text-slate-400">Результат:</span><span className={`font-bold ${selectedHistoryItem.result === 'WIN' ? 'text-emerald-400' : 'text-rose-400'}`}>{selectedHistoryItem.result === 'WIN' ? '🟢 WIN' : '🔴 LOSS'} ({selectedHistoryItem.pips})</span></div>
+                      {selectedHistoryItem.status === 'FINISHED' && !selectedHistoryItem.result && (
+                        <div className="flex justify-between"><span className="text-slate-400">Результат:</span><span className="text-slate-300 font-bold">Недоступен (нет подтверждённых данных)</span></div>
+                      )}
+                      {selectedHistoryItem.result && (
+                        <div className="flex justify-between"><span className="text-slate-400">Результат:</span><span className={`font-bold ${selectedHistoryItem.result === 'WIN' ? 'text-emerald-400' : 'text-rose-400'}`}>{selectedHistoryItem.result === 'WIN' ? '🟢 WIN' : '🔴 LOSS'}{selectedHistoryItem.pips ? ` (${selectedHistoryItem.pips})` : ''}</span></div>
                       )}
 
                       {selectedHistoryItem.detailedReport && (

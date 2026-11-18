@@ -26,62 +26,91 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ success: false, error: 'Server configuration error' });
     }
 
-    const { action, payload } = req.body || {};
+    const body = (req.body || {}) as any;
+    const action = body.action;
+    const payload = body.payload && typeof body.payload === 'object' ? body.payload : {};
 
-    if (action === 'monitor_state') {
-      const { currentPair, candleTimer, activeTradesCount, lastSignal, screenshotBase64 } = payload;
+    // Brain API: неторговой мониторинг. Изолирован от торгового анализа.
+    // Запрещено использовать для формирования или обходного получения CALL/PUT.
+    if (action !== 'monitor_state') {
+      return res.status(400).json({
+        success: false,
+        error: 'Unsupported action',
+        nonTrading: true,
+        message: 'Brain API supports only non-trading monitor_state requests.'
+      });
+    }
 
-      let messagesContent: any[] = [
-        {
-          type: "text",
-          text: `Ты — автономный ИИ-мозг торгового терминала Oracle Pro. 
+    const currentPair = typeof payload.currentPair === 'string' ? payload.currentPair : 'N/A';
+    const candleTimer = Number.isFinite(Number(payload.candleTimer)) ? Number(payload.candleTimer) : 'N/A';
+    const activeTradesCount = Number.isFinite(Number(payload.activeTradesCount)) ? Number(payload.activeTradesCount) : 'N/A';
+    const lastSignal = payload.lastSignal && typeof payload.lastSignal === 'object' ? payload.lastSignal : payload.lastSignal ?? null;
+    const screenshotBase64 = typeof payload.screenshotBase64 === 'string' ? payload.screenshotBase64 : '';
+
+    const messagesContent: any[] = [
+      {
+        type: 'text',
+        text: `Ты — монитор состояния торгового терминала Oracle Pro (ТОЛЬКО неторговой режим).
 Текущее состояние системы:
 - Активная пара: ${currentPair}
 - Время до конца свечи: ${candleTimer}с
 - Активных сделок: ${activeTradesCount}
-- Последний вердикт: ${JSON.stringify(lastSignal)}
+- Последний известный статус (справочно): ${JSON.stringify(lastSignal)}
 
-Дай краткий системный статусный вердикт по рынку (1-2 предложения) и оцени риски.`
-        }
-      ];
-
-      // Если прилетел скриншот графика, добавляем его для мультимодального анализа Vision API
-      if (screenshotBase64) {
-        messagesContent.push({
-          type: "image_url",
-          image_url: {
-            url: screenshotBase64
-          }
-        });
+Дай краткий системный статус (1-2 предложения) на русском языке.
+Строго запрещено: выдавать торговые сигналы или рекомендации (CALL/PUT), предлагать вход/выход из сделки, обходить торговый анализ, Safe Mode или фильтры.`
       }
+    ];
 
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [{ role: "user", content: messagesContent }],
-          max_tokens: 150,
-          temperature: 0.2
-        })
+    // Допустимая неторговая функция: визуальный мониторинг (если передан скриншот).
+    if (screenshotBase64) {
+      messagesContent.push({
+        type: 'image_url',
+        image_url: {
+          url: screenshotBase64
+        }
       });
+    }
 
-      const data = await response.json();
-      const brainStatus = data?.choices?.[0]?.message?.content || "Система мониторинга активна.";
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: messagesContent }],
+        max_tokens: 150,
+        temperature: 0.2
+      })
+    });
 
+    if (!response.ok) {
       return res.status(200).json({
-        success: true,
-        brainStatus,
+        success: false,
+        nonTrading: true,
+        brainStatus: 'Сервис мониторинга временно недоступен.',
         timestamp: new Date().toISOString()
       });
     }
 
-    return res.status(400).json({ success: false, error: 'Unknown action' });
+    const data = await response.json();
+    const brainStatusRaw = data?.choices?.[0]?.message?.content;
+    const brainStatus = typeof brainStatusRaw === 'string' && brainStatusRaw.trim()
+      ? brainStatusRaw.trim()
+      : 'Система мониторинга активна.';
 
-  } catch (err: any) {
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(200).json({
+      success: true,
+      nonTrading: true,
+      brainStatus,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (_err) {
+    // Публичный ответ не должен раскрывать внутренние детали/секреты.
+    console.error('Brain API Error: request failed');
+    return res.status(500).json({ success: false, nonTrading: true, error: 'Monitor failed' });
   }
 }
