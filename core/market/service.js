@@ -4,6 +4,18 @@ import { createBiquoteProvider, MarketDataError } from './biquote.js';
 import { resolveSource } from './sourceRegistry.js';
 import { evaluateEligibility } from './eligibility.js';
 
+// Trusted server bootstrap is the root of trust. Capture dependencies before later global
+// replacement; arbitrary code/loaders that control bootstrap are outside this boundary.
+const unavailableTransport = () => { throw new Error('Trusted market transport is unavailable.'); };
+const trustedDependencies = Object.freeze({ fetchImpl: typeof globalThis.fetch === 'function' ? globalThis.fetch : unavailableTransport, wallNow: Date.now,
+  monotonicNow: performance.now.bind(performance), idFactory: randomUUID });
+const registeredObservations = new WeakMap();
+const readRegistration = registeredObservations.get.bind(registeredObservations);
+const writeRegistration = registeredObservations.set.bind(registeredObservations);
+const unregistered = Object.freeze({ registered: false, code: 'UNREGISTERED_OBSERVATION',
+  diagnosticOnly: true, grantsRuntimeAccess: false });
+let trustedService;
+
 const epoch = n => Number.isSafeInteger(n) && n > 0 && n <= 8640000000000000;
 function freeze(value) {
   if (value && typeof value === 'object') { Object.values(value).forEach(freeze); Object.freeze(value); }
@@ -20,14 +32,14 @@ function denied(code, message) {
  * never HTTP input; registry policy, endpoint, tick time and session are not injectable.
  * No cache, retries, AI or runtime grant. Import/construction performs no requests.
  */
-function createMarketService({ fetchImpl = globalThis.fetch, wallNow = Date.now,
-  monotonicNow = () => performance.now(), idFactory = randomUUID } = {}) {
+function buildMarketService({ fetchImpl = globalThis.fetch, wallNow = Date.now,
+  monotonicNow = () => performance.now(), idFactory = randomUUID } = {}, registerObservation) {
   async function observe(request) {
-    const resolution = resolveSource(request);
-    if (resolution.status !== 'APPROVED') return denied(resolution.code, 'Market request is not approved by the server registry.');
-    // Capture trusted registry values before awaiting; later caller mutations cannot alter scope.
-    const source = resolution.source;
     try {
+      const resolution = resolveSource(request);
+      if (resolution.status !== 'APPROVED') return denied(resolution.code, 'Market request is not approved by the server registry.');
+      // Capture trusted registry values before awaiting; later caller mutations cannot alter scope.
+      const source = resolution.source;
       const requestStartedAtMs = wallNow();
       const started = monotonicNow();
       if (!epoch(requestStartedAtMs) || !Number.isFinite(started) || started < 0) {
@@ -79,7 +91,7 @@ function createMarketService({ fetchImpl = globalThis.fetch, wallNow = Date.now,
         maxCandleAgeMs: 120000, maxObservationAgeMs: 5000, maxQuoteAgeMs: 5000, maxAcquisitionDurationMs: 5000
       });
       const eligibility = evaluateEligibility(observation, requirements, evaluatedAtMs);
-      return freeze({ status: eligibility.status === 'ALLOWED' ? 'ASSESSED' : 'DENIED',
+      const result = freeze({ status: eligibility.status === 'ALLOWED' ? 'ASSESSED' : 'DENIED',
         diagnosticOnly: true, grantsRuntimeAccess: false, observation,
         provenance: { acquisition: 'SERVER_PROVIDER', sourceId: source.sourceId,
           registryVersion: resolution.registryVersion, responseHeadersReceivedAtMs,
@@ -87,12 +99,46 @@ function createMarketService({ fetchImpl = globalThis.fetch, wallNow = Date.now,
         quality: eligibility.quality, eligibility,
         reason: eligibility.reasons[0] ?? null
       });
+      // Only the private fixed service has this callback. Public DTO fields never register data.
+      if (registerObservation) registerObservation(service, result);
+      return result;
     } catch (error) {
       // A failed acquisition never returns the previous observation, raw upstream details or secrets.
       return denied(error instanceof MarketDataError ? error.code : 'SOURCE_UNAVAILABLE', 'Market observation could not be acquired.');
     }
   }
-  return Object.freeze({ observe });
+  const service = Object.freeze({ observe });
+  return service;
 }
 
-export { createMarketService };
+/** Compatible factory, intentionally NEVER registered, even without custom dependencies. */
+function createMarketService(dependencies) {
+  return buildMarketService(dependencies);
+}
+
+/** No dependency injection, registration callback or caller-selected service is accepted. */
+function getTrustedMarketService() {
+  if (arguments.length !== 0) throw new TypeError('Trusted market service accepts no arguments.');
+  if (!trustedService) {
+    trustedService = buildMarketService(trustedDependencies, (service, result) => {
+      writeRegistration(result.observation, Object.freeze({ service,
+        report: Object.freeze({ registered: true, code: 'REGISTERED_DIAGNOSTIC_OBSERVATION',
+          diagnosticOnly: true, grantsRuntimeAccess: false,
+          snapshotId: result.observation.snapshotId, sourceId: result.provenance.sourceId,
+          pair: result.observation.pair, timeframe: result.observation.timeframe, purpose: 'DISPLAY',
+          registryVersion: result.provenance.registryVersion }) }));
+    });
+  }
+  return trustedService;
+}
+
+/** Identity-only read; does not inspect candidate properties, proxy traps or trust flags.
+ * A repeated check proves the same historical origin, never freshness or permission.
+ */
+function inspectObservationProvenance(service, observation) {
+  if (!trustedService || service !== trustedService) return unregistered;
+  const record = readRegistration(observation);
+  return record?.service === service ? record.report : unregistered;
+}
+
+export { createMarketService, getTrustedMarketService, inspectObservationProvenance };

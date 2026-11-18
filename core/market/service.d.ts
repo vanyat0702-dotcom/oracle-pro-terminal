@@ -23,6 +23,24 @@ export interface MarketServiceDependencies {
   monotonicNow?: () => number;
   idFactory?: () => string;
 }
-export declare function createMarketService(dependencies?: MarketServiceDependencies): Readonly<{
+export interface MarketService {
   observe(request: unknown): Promise<MarketServiceResult>;
-}>;
+}
+declare const trustedServiceBrand: unique symbol;
+export interface TrustedMarketService extends MarketService {
+  readonly [trustedServiceBrand]: 'TRUSTED_DIAGNOSTIC_SERVICE';
+}
+/** Compatible diagnostic factory. Its observations never enter the private origin registry. */
+export declare function createMarketService(dependencies?: MarketServiceDependencies): Readonly<MarketService>;
+/** Fixed process-local service; no caller-supplied dependencies or registration API. */
+export declare function getTrustedMarketService(): Readonly<TrustedMarketService>;
+export type ObservationProvenanceReport = Readonly<{
+  diagnosticOnly: true; grantsRuntimeAccess: false;
+}> & (
+  | Readonly<{ registered: false; code: 'UNREGISTERED_OBSERVATION' }>
+  | Readonly<{ registered: true; code: 'REGISTERED_DIAGNOSTIC_OBSERVATION';
+      snapshotId: string; sourceId: 'biquote'; pair: 'EUR/USD'; timeframe: '1'; purpose: 'DISPLAY';
+      registryVersion: typeof REGISTRY_VERSION }>
+);
+/** Read-only origin check. Reports/JSON are never credentials; freshness is not assessed. */
+export declare function inspectObservationProvenance(service: unknown, observation: unknown): ObservationProvenanceReport;

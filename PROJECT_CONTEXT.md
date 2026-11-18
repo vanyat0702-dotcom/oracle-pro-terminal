@@ -1,5 +1,15 @@
 # PROJECT_CONTEXT — ORACLE PRO TERMINAL v10.5.0
 
+> **Актуализация 2026-11-19: Phase 3B / Increment 4C — process-local регистрация происхождения (§21).**
+> Только закрытый фиксированный экземпляр Market Service регистрирует свои observations.
+> Публичная DI-фабрика не регистрирует данные. Origin не означает свежесть, Eligibility
+> или runtime-допуск; Biquote остаётся DISPLAY-only, Guard — deny-only.
+
+> **Актуализация 2026-11-19: Phase 3B / Increment 4B — изолированные lifecycle contracts и pure state machine (§20).**
+> Только неизменяемые модели, явные часы, планирование и применение переходов.
+> Issuer/capability не создаются; каждый результат grantsRuntimeAccess=false.
+> Runtime Guard и все торговые HTTP-блокировки остаются без изменений.
+
 > **Актуализация 2026-11-19: Phase 3B / Increment 3 — обязательный deny-only Runtime Guard (§19).**
 > analyze/Gateway возвращают SKIP, оба торговых AI-адаптера — null до чтения payload,
 > API-ключей и сетевых вызовов. Положительный live-допуск не выдаётся. Прямые импорты,
@@ -1166,3 +1176,146 @@ watchdog 2000 ms ограничивает зависание и очищаетс
 
 Предыдущие записи о неизменном HEAD и отсутствии commit описывают прошлые проверки.
 Текущее разрешение — только локальный checkpoint Increment 3; push не разрешён.
+
+## 20. MDE Phase 3B — Increment 4B: runtime authorization contracts and state machine (2026-11-19)
+
+**Статус: фундамент lifecycle реализован изолированно. Положительного runtime-допуска,
+issuer, adapter permits, server-owned authority/store или интеграции с AI нет.**
+ISSUED/ACTIVE ниже — состояния описательной модели, не выданные полномочия.
+
+### Файлы и контракты
+
+- `core/runtime/contracts.d.ts`: RuntimeAuthorizationState, AnalysisSession,
+  RootCapabilityScope, AdapterPermitScope, AuthorizationPolicyVersion,
+  AuthorizationDenialReason, AuthorizationDeadline, RuntimeStage и вспомогательные типы.
+  Scope связывает snapshotId/sourceId/pair/timeframe/purpose, requirements/policy
+  fingerprints и strategyVersion. Deadline содержит явные epoch/monotonic issued/expiry
+  и maxClockDriftMs; session — policy/revocation generations, revision и lastClock.
+  AdapterPermitScope — только контракт с attempt=1 и согласованными adapter/stage.
+- `core/runtime/stateMachine.js` и `.d.ts`: createSessionModel, evaluateSessionModel,
+  planSessionTransition, applySessionTransition. Нет imports, IO, системных часов,
+  таймеров, mutable глобального store или положительного issuer.
+- `scripts/test-runtime-authorization.mjs` и `test-runtime-authorization-types.ts`:
+  offline lifecycle/adversarial/concurrency и compile-only проверки.
+- Этот PROJECT_CONTEXT.md. Существующие production-файлы не менялись.
+
+### Семантика и пределы гарантии
+
+Путь: ISSUED -> CONSUMED (ROOT) -> ACTIVE (ANALYSIS) -> FINALIZED (FINALIZATION).
+Из каждого нетерминального состояния явная оценка срока может привести к EXPIRED,
+а отзыв или несовпадение версии/fingerprint/generation политики — к REVOKED.
+FINALIZED, EXPIRED и REVOKED необратимы. Неверные команды/UNKNOWN отклоняются.
+Absolute/monotonic expiry срабатывают при now >= deadline. Откат часов, превышение
+явного maxClockDriftMs, отсутствующие/неверные часы дают отказ. TTL не выбирается:
+все сроки заданы явно; числовые mock-параметры находятся только в тестах.
+
+Модели/планы имеют приватные class fields, null prototype и замороженные собственные
+данные. JSON, spread, structuredClone, proxy или похожий объект не восстанавливают
+их идентичность. JSON spec может создать новую описательную модель, но не вернуть
+идентичность старой модели или дать право на AI. Все результаты modelOnly=true /
+grantsRuntimeAccess=false; LIVE_SIGNAL_ANALYSIS и EXECUTION даже для моделей отклоняются.
+Fingerprints здесь только связываются и сравниваются; их происхождение/вычисление,
+рыночные доказательства и права источника модуль не подтверждает.
+
+Переход двухшаговый: план связан с точным исходным экземпляром и revision; применение
+сравнивает его с переданным current и заново проверяет часы/политику. Отложенный план
+не переносит свежесть. Будущий владелец обязан атомарно заменить единственный current,
+включая возвращённый EXPIRED/REVOKED при ok=false. Проверка 100 конкурирующих планов
+при таком владельце даёт 1 переход и 99 REPLAY.
+Чистая функция не инвалидирует исторические snapshots глобально: передача старого
+current повторно позволяет повторное вычисление. Это явно проверенное ограничение,
+а не реализация глобальной одноразовости, блокировок или distributed CAS.
+
+### Проверки
+
+На Node v24.22.3 (bundled runtime) и v26.13.0 (основной node):
+
+- PASS новые lifecycle mock-тесты: 75, включая границы времени, независимые сроки,
+  отзыв/изменение политики, immutable inputs, JSON/proxy/accessors, replay, concurrency
+  и restricted VM без Date/process/performance/fetch/timers/WeakMap/WeakSet.
+- PASS Runtime Guard: 6408 entrypoint-вызовов, включая 288 параллельных; 0 торговых
+  эффектов/API-key reads/сетевых попыток. Отдельно новые модели/планы отклонены Guard.
+- PASS Quality/Eligibility: 58; Market Service/Registry: 42; Biquote mock: 35;
+  HTTP Safety: Express/Vercel SKIP, send_result отказ, health доступен; chart: 6 групп.
+- PASS основной typecheck и strict compile-only проверки всех четырёх наборов типов.
+- PASS production Vite build в памяти: configFile=false, build.write=false.
+- PASS git diff --check и whitespace-check новых файлов; запрещённых изменений нет.
+
+В HTTP/Biquote mock suites использовались только изолированные loopback-сокеты;
+внешних запросов, реального Biquote, AI, Telegram или сделок не было.
+Runtime Guard, Core/AI, Market Service/Registry, Quality/Eligibility, Biquote, Express,
+Vercel, Safe Mode, frontend, график/polling, зависимости/env/config не изменены.
+Ветка backup/mde-phase2-checkpoint и HEAD e9b30ba50fc9ebd72f1eb29839ae2e0e9b9f98d7
+сохранены. Staging/commit/push не выполнялись. Следующая интеграция требует разрешения.
+
+## 21. MDE Phase 3B — Increment 4C: trusted market provenance registration (2026-11-19)
+
+**Статус: внутренняя регистрация происхождения реализована. Runtime issuer/grant,
+live-анализ, EXECUTION и интеграция с торговым AI не создавались.**
+
+### Файлы и граница доверия
+
+- `core/market/service.js`: приватный WeakMap observation -> owning service/report.
+  Только закрытый callback фиксированного экземпляра регистрирует заново полученный,
+  нормализованный и глубоко замороженный observation после формирования результата.
+  Публичных register/authority factory или параметров подключения callback нет.
+- Существующий createMarketService(dependencies) сохраняет форму результата и DI,
+  но никогда не регистрирует observations, даже без DI или при совпадении функций
+  зависимостей. buildMarketService и callback не экспортируются.
+- getTrustedMarketService() без аргументов возвращает один frozen экземпляр в модуле.
+  Fetch/часы/ID захвачены при доверенной загрузке модуля. Поздняя подмена global fetch
+  не меняет канал. Если fetch отсутствовал на старте, позднего fallback на mock нет.
+  Запросов при импорте/конструировании не выполняется.
+- inspectObservationProvenance(service, observation) проверяет точные identity обоих
+  объектов, не читая поля кандидатов. SnapshotId/source/provider/SERVER_PROVIDER,
+  quality/eligibility, JSON и скопированные reports не являются credentials.
+  Отчёт immutable, diagnosticOnly=true, grantsRuntimeAccess=false.
+- Чтение/запись WeakMap привязаны при bootstrap; поздние prototype overrides не дают
+  перехватить реестр. Exception из request proxy теперь безопасно обрабатывается
+  существующим catch сервиса; сырые ошибки наружу не возвращаются.
+- `core/market/service.d.ts`: совместимый MarketService, branded TrustedMarketService,
+  диагностический union ObservationProvenanceReport; публичного runtime context нет.
+- Новые `scripts/test-market-provenance.mjs`, `test-market-provenance-types.ts`.
+- Этот PROJECT_CONTEXT.md. Код/тесты 4B и текст §20 сохранены без изменений.
+
+### Семантика и ограничения
+
+Origin подтверждает историческое серверное получение именно этого immutable объекта,
+а не истинность рыночной котировки, свежесть или право анализа. Даже диагностический
+DENIED observation может иметь подтверждённое происхождение: tick timestamp остаётся
+null, session UNKNOWN, Eligibility DENIED. Biquote разрешён только для DISPLAY.
+Ошибочная acquisition возвращает observation=null без старых данных или регистрации
+ошибочного результата. Ранее удерживаемый observation сохраняет исторический origin;
+повторная инспекция идемпотентна и не является consume или продлением свежести.
+Копия envelope с той же ссылкой observation сохраняет origin только самого observation;
+сериализация/копия observation теряет identity. Идентичные snapshotId не объединяются.
+
+Корень доверия — незакомпрометированный серверный bootstrap, модули и исходный канал.
+Произвольный код/loader, контролирующий процесс до загрузки, этим механизмом не
+изолируется. Проверка не является криптографической аттестацией provider или сети.
+WeakMap локален процессу/экземпляру модуля; worker/restart/другой authority не наследует
+регистрации. Registry защищён от HTTP/DI-подделок, но не от переписывания серверного кода.
+К Runtime Guard и lifecycle 4B этот реестр не подключён; положительный допуск отсутствует.
+
+### Фактические проверки
+
+На Node v24.22.3 и v26.13.0:
+
+- PASS provenance: 20 offline adversarial тестов, включая DTO/JSON, поддельный origin,
+  DI/mock fetch, late global replacement, отсутствие bootstrap fetch, proxy, immutable
+  данные, ошибки provider, repeat inspection и 24 параллельных observation с одинаковым ID.
+- Положительные origin-сценарии выполнены только в in-memory копиях service.js с
+  изолированным mock-каналом через test loader. Production-модуль эти observations
+  отклоняет. В production-коде нет test flags/backdoor или публичной mock-регистрации.
+- PASS Increment 4B: 75; Runtime Guard: 6408 вызовов (288 параллельных);
+  Quality/Eligibility: 58; Market Service/Registry: 42; Biquote mock: 35;
+  HTTP Safety: PASS (SKIP/отказ send_result/health); chart: 6 групп.
+- PASS основной typecheck и strict declarations всех пяти тестовых наборов.
+- PASS production Vite build в памяти на обеих версиях: configFile=false/write=false.
+- PASS git diff --check, whitespace/secret-pattern checks и проверка границ изменений.
+
+Внешних запросов/реального Biquote/AI/Telegram/сделок не было. HTTP mock suites
+использовали только изолированный loopback. Express/Vercel, frontend/polling, Biquote,
+Source Registry, Quality/Eligibility, Guard, Core/AI и Safe Mode не изменены.
+HEAD e9b30ba50fc9ebd72f1eb29839ae2e0e9b9f98d7, ветка backup/mde-phase2-checkpoint
+и staging сохранены; commit/push/reset/merge/rebase не выполнялись.
