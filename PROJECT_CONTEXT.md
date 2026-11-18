@@ -1,5 +1,10 @@
 # PROJECT_CONTEXT — ORACLE PRO TERMINAL v10.5.0
 
+> **Актуализация 2026-11-19: Phase 3B / Increment 4D — AnalyzeIntent / TrustedAnalysisInput isolation (§22).**
+> Строгий intent содержит только предпочтения; рыночные/доверенные поля отклоняются.
+> Изолированная readiness-проверка использует identity 4C, но всегда возвращает DENIED /
+> input=null: DISPLAY-only не превращается в торговой вход. Runtime grant/issuer отсутствуют.
+
 > **Актуализация 2026-11-19: Phase 3B / Increment 4C — process-local регистрация происхождения (§21).**
 > Только закрытый фиксированный экземпляр Market Service регистрирует свои observations.
 > Публичная DI-фабрика не регистрирует данные. Origin не означает свежесть, Eligibility
@@ -1319,3 +1324,108 @@ WeakMap локален процессу/экземпляру модуля; worke
 Source Registry, Quality/Eligibility, Guard, Core/AI и Safe Mode не изменены.
 HEAD e9b30ba50fc9ebd72f1eb29839ae2e0e9b9f98d7, ветка backup/mde-phase2-checkpoint
 и staging сохранены; commit/push/reset/merge/rebase не выполнялись.
+
+## 22. MDE Phase 3B — Increment 4D: trusted analysis input contracts and isolation (2026-11-19)
+
+**Статус: строгий intent, внутренние контракты и fail-closed readiness реализованы
+изолированно. Ни одного TrustedAnalysisInput или runtime grant не создаётся.**
+
+### Проверенная область и файлы
+
+Начальное состояние: backup/mde-phase2-checkpoint, HEAD
+37359dd9b2653a4a92c947c821d8897787a6b849, рабочее дерево/staging чистые; 4B/4C сохранены.
+За Guard legacy analyze по-прежнему передаёт исходный request в Gateway; Safe Mode
+читает candles/currentPrice, адаптеры сериализуют весь marketData. Этот путь не менялся
+и не включался. Файлы изменены только после подтверждения этой области в сообщении.
+
+- Новые `core/analysis/contracts.d.ts`, `input.js`, `input.d.ts`.
+- Новые `scripts/test-analysis-input.mjs`, `test-analysis-input-types.ts`.
+- Этот PROJECT_CONTEXT.md. Существующие production-контракты/API и 4B/4C не менялись.
+
+### Контракты и исполненное поведение
+
+AnalyzeIntent содержит ровно pairs/timeframe/higherTimeframes/mode/safeModeEnabled/filters.
+Режимы/timeframe ограничены существующими allowlists Core. Strategy preference — mode,
+а не произвольные инструкции/параметры. Фильтры — только пользовательское намерение,
+никогда доказательство NEWS/ATR/RISK. Legacy HH:MM и secondsRemaining не принимаются
+как рыночные часы. Никаких candles/currentPrice/sourceId/provenance/quality/eligibility/
+runtime fields или дополнительных keys. Пары нормализуются в XXX/YYY; синтаксис пары
+не означает разрешения источника. До 16 пар в intent, но readiness требует одну пару
+для одной будущей session; автоматического выбора первой/случайной пары нет.
+
+Parser проверяет собственные data descriptors; proxy/accessors/symbol keys/holes/extra
+array fields отклоняются. Нормализованные pairs/higherTimeframes/filters копируются и
+глубоко замораживаются. Запрошенные higher timeframe должны быть старше основного.
+
+Opaque TrustedAnalysisInput — зарезервированный контракт: sessionId, pair/timeframe,
+required higher frames, observation bundle с immutable candles/timing, provenance,
+отдельная quote с nullable bid/ask/mid/event/receipt timestamps и priceBasis,
+market session, server requirements/fingerprint, strategy/policy versions,
+Quality/Eligibility, filter evidence. Отсутствие предусмотрено null/UNKNOWN.
+Ни close свечи, ни время HTTP-ответа не подставляются как текущая котировка/время тика.
+В runtime приватный identity set намеренно пуст; writer/constructor/registration API
+для TrustedAnalysisInput отсутствует, isTrustedAnalysisInput всегда false в 4D.
+TypeScript brand сам по себе не является runtime-доказательством.
+
+assessAnalysisReadiness принимает intent и candidate selection, но не service, policy,
+requirements или решения от клиента. Owning service выбирается внутри и origin каждого
+observation проверяется через канонический 4C registry до чтения рыночных полей.
+Проверяются pair/timeframe, одиночная пара и наличие запрошенных higher observations.
+M1 не заменяет M5/M15, незарегистрированные копии не подтверждают покрытие.
+
+Даже зарегистрированный Biquote остаётся DISPLAY-only: quote timestamp null/session
+UNKNOWN, отдельная quote отсутствует. Server strategy requirements/version, analysis
+session binding и проверенные фильтры ещё не реализованы. Результат всегда DENIED /
+input=null / grantsRuntimeAccess=false с явными причинами; quote/requirements/strategy/
+session/Quality/Eligibility отсутствуют как null, filter evidence UNKNOWN независимо
+от UI-флагов. Публичные решения не наследуются; без server requirements повторная
+Quality/Eligibility не объявляется выполненной. Readiness не делает acquisition/AI,
+не выдаёт freshness attestations и не хранит ссылки на изменяемые массивы клиента.
+
+### Проверки
+
+На Node v24.22.3 и v26.13.0:
+
+- PASS новые isolation tests: 34, включая forged input, цены/свечи/доверенные поля
+  клиента, JSON/clone/mutation/proxy/accessors, mismatched scope, missing higher frames,
+  UNKNOWN quote/session, DISPLAY-only, forged decisions, DI service/different authority,
+  32 параллельные readiness-проверки и direct Gateway без допуска.
+- Зарегистрированные diagnostic fixtures проверены в in-memory test-копиях 4C/4D
+  с закрытым mock-каналом; канонический модуль отвергает origin другой authority.
+  Production test flags/backdoor не добавлены. Issued trusted inputs/grants: 0.
+- PASS 4B lifecycle: 75; 4C provenance: 20; Runtime Guard: 6408 вызовов/288 параллельных;
+  Quality/Eligibility: 58; Market Service: 42; Biquote mock: 35; HTTP Safety; chart: 6 групп.
+- PASS основной typecheck и strict declarations всех шести тестовых наборов.
+- PASS production Vite build в памяти на обеих версиях, configFile=false/write=false.
+- PASS git diff --check, whitespace/secret-pattern checks новых файлов и контроль scope.
+
+Внешних AI/рыночных/Telegram-запросов или сделок не было. HTTP mock suites использовали
+только изолированный loopback. Guard, analyze/Gateway/адаптеры, Safe Mode, Market Service,
+Registry/Eligibility/Quality, Biquote, Express/Vercel, frontend/polling, dependencies/config
+не изменены. Ветка/HEAD/staging сохранены; commit/push не выполнялись.
+
+Готовность: contracts и отрицательная граница доступны для следующего разрешённого
+инкремента. Реальное построение/регистрация TrustedAnalysisInput, server strategy catalog,
+requirements, quote и multi-timeframe bundle остаются отдельной работой. Текущий этап
+не доказывает корректность будущего положительного builder и не разрешает live-анализ.
+
+### 4D-D1 — коррекция timeframe requirements (2026-11-19)
+
+Исправлен дефект деклараций: ServerAnalysisRequirements использовал M1-only тип и
+не позволял представить M5/M15 требования. Добавлены локальная проекция
+AnalysisRequirementsFor<T> через Omit<AnalysisRequirements, 'timeframe'> и readonly
+PrimaryAnalysisRequirements<T>/HigherAnalysisRequirements<T> с ограничениями AnalyzeIntent.
+Primary: 1/5/15/60/240; higher: 5/15/30/60/240/D. M30 и D не добавлены в primary.
+Все остальные поля, ограничения пары и readonly сохранены. Observation bundle не менялся.
+
+Это только представимость типов: core/market/contracts.d.ts и существующие M1-evaluators,
+Market Service/Registry/Eligibility не расширены. Сетка диапазонов и runtime-поддержка
+старших timeframe требуют отдельной реализации; TrustedAnalysisInput builder/grant нет.
+
+Compile-only тест расширен положительными M1/M5/M15 и всеми допустимыми timeframe,
+согласованием с intent/bundle и 14 отрицательными примерами. Все 14 ошибок подтверждены
+компилятором в памяти; старый M1-контракт не принимает M5/D. На Node 24.22.3 и 26.13.0
+PASS: 4D 34, 4C 20, 4B 75, Guard 6408 вызовов, Quality 58, Service 42, HTTP Safety,
+Biquote mock 35, chart 6 групп, основной и strict typecheck шести наборов деклараций.
+Отдельно подтверждён отказ runtime для 5/15/30/60/240/D. Runtime JS не менялся;
+deny-only/HTTP SKIP сохранены. Commit/push/смена ветки или HEAD не выполнялись.
