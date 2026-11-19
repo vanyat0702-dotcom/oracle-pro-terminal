@@ -1,5 +1,10 @@
 # PROJECT_CONTEXT — ORACLE PRO TERMINAL v10.5.0
 
+> **Актуализация 2026-11-19: MVP-1A — offline historical M1 intake foundation (§26).**
+> Изолированный research-каталог 21 Forex + BTC/USDT, строгий JSON importer, SHA-256,
+> quality manifest и read-only CLI. Реальные файлы не предоставлены: 22 MISSING/NOT_READY.
+> MOCK — только unit fixtures; production Guard/AnalyzeIntent/AI/HTTP не изменены.
+
 > **Актуализация 2026-11-19: Increment 4F — private MODEL_ONLY stages/adapter attempts (§25).**
 > Записи связаны с оригинальным parent внутри owner и используют FIX1. OpenAI/Gemini
 > имеют независимые одноразовые модельные попытки. Production creation закрыта,
@@ -1741,3 +1746,147 @@ production orchestration потребует отдельного дизайна;
 Guard, AI Gateway/adapters, Safe Mode, Express/Vercel, frontend/polling, Biquote,
 Market Service/Eligibility и зависимости не изменены. Ветка/HEAD/staging сохранены.
 Commit/push не выполнялись; переход к следующему инкременту не начинался.
+
+## 26. MVP-1A — historical data intake foundation (2026-11-19)
+
+База a581a16a637d05adfc4ebe6aa71734382d250dff, ветка backup/mde-phase2-checkpoint.
+Рабочее дерево до начала было чистым. Добавлены core/research/catalog.js/.d.ts,
+contracts.d.ts, intake.js/.d.ts, scripts/audit-research-data.mjs,
+scripts/test-research-intake.mjs и test-research-intake-types.ts. Обновлён этот документ.
+Production MDE/Guard/AnalyzeIntent, Safe Mode, AI Gateway/adapters, HTTP и frontend
+не менялись. Каталог research отдельный: production BTC/USDT intent не исправлялся.
+
+### Каталог и честная доступность
+
+Каталог имеет те же 22 ID, что src/config/pairs.ts: audcad, audchf, audjpy, audnzd,
+audusd, cadjpy, euraud, eurchf, eurgbp, eurjpy, eurnzd, eurusd, gbpaud, gbpchf,
+gbpjpy, gbpnzd, gbpusd, nzdusd, usdcad, usdchf, usdjpy, btcusdt. BTC/USDT — CRYPTO,
+base=BTC, quote=USDT; остальные — FOREX. BTC/USD не является alias.
+
+Для каждого ID заданы pair/base/quote/class и поддерживаемый research timeframe ['1'].
+M5/M15/H1/H4 не объявляются реализованными. Без предоставленного файла sourceId,
+sourceSymbol и venue=null, priceBasis=UNKNOWN, historyStatus=MISSING, readiness=NOT_READY.
+Не приписываем архивам CAPITALCOM, TradingView или Biquote по наличию UI/live-адаптера.
+После явного импорта CLI показывает точные заявленные source/venue/basis из manifest.
+Каталог не мутируется, не сканирует диск и не запоминает ранее прочитанные datasets.
+MISSING означает, что файл не предоставлен этому запуску или выбранный файл отсутствует.
+
+### Поддерживаемый формат: один UTF-8 JSON-файл на instrument/source/basis
+
+CSV в 1A не поддержан. Верхний объект имеет строго эти поля:
+
+| Поле | Тип и допустимое значение |
+| --- | --- |
+| schemaVersion | число 1 |
+| kind | REAL или MOCK; REAL является заявлением, а не доказанной подлинностью |
+| instrument | точный canonical ID из research-каталога |
+| timeframe | строка '1' |
+| source | объект с sourceId, symbol, venue, priceBasis |
+| license | объект с reference, permission, permittedPurpose |
+| period | объект from/to: включительные UTC времена ОТКРЫТИЯ крайних свечей |
+| expectedCandles | положительный integer, равный (to-from)/60000 + 1 |
+| candles | непустой массив свечей в строго возрастающем порядке |
+
+sourceId и venue — непустые идентификаторы; symbol должен быть точным pair ('BTC/USDT')
+или base+quote ('BTCUSDT'). Неоднозначные vendor aliases/prefixes/suffixes в 1A запрещены.
+priceBasis: bid, ask, mid или last. UNKNOWN не заменяется на mid.
+license: reference — непустой идентификатор/ссылка на evidence, permission='DECLARED',
+permittedPurpose='CLOSED_BAR_RESEARCH'. UNKNOWN, отсутствие evidence и live/execution
+purpose отклоняются. Декларация лицензии не считается юридической проверкой.
+Идентификаторы/ссылки ограничены 128 символами [A-Za-z0-9_.:/-], первый символ
+буквенно-цифровой, значение UNKNOWN запрещено. Полные URL с query/credentials не нужны.
+
+Каждая свеча имеет строго instrument, sourceId, sourceSymbol, venue, priceBasis,
+timestamp, open, high, low, close, isOpen; volume необязателен. instrument и все
+source-поля должны совпадать с заголовком. OHLC — конечные положительные JSON numbers,
+low <= min(open,close), high >= max(open,close), low <= high. volume, если присутствует,
+конечное неотрицательное число; дробный volume разрешён для crypto. isOpen строго false.
+
+Timestamp: YYYY-MM-DDTHH:mm:ssZ или YYYY-MM-DDTHH:mm:ss.000Z, реальная дата после epoch.
+Свечи выровнены на начало UTC-минуты. Никаких timezone offsets, строковых цен, NaN,
+Infinity, BOM, дополнительных полей или повторяющихся JSON keys, включая escaped aliases.
+Файл ограничен 32 MiB, число баров — 100000, глубина JSON — 12; это resource limits
+импортера, не доказательство достаточного strategy lookback. Ошибки перечисляются до
+100 записей; итог quality FAIL и метрики покрытия не становятся PASS из-за лимита списка.
+
+### Закрытость, диапазон и checksum
+
+Вызов требует отдельные options {instrument, expectedChecksum, asOf}. Ожидаемый SHA-256 —
+64 lowercase hex символа, предоставляется отдельно от JSON, проверяется по исходным
+байтам до парсинга. asOf — явно заданное UTC-время: timestamp+60000 <= asOf для каждого
+бара и конца диапазона. Ambient Date.now, свежесть HTTP и live MDE не используются.
+Это исторический cutoff, а не доказательство времени реального тика/получения файла.
+
+Дубликаты, неупорядоченность, пропуски внутри диапазона/на границах, неверные counts,
+неполный header/license/period и смешанные instrument/source/symbol/venue/basis дают отказ.
+Не сортируем, не удаляем дубликаты, не интерполируем и не заполняем пропуски.
+В 1A нужна непрерывная сетка M1: выходные Forex/праздники пока считаются пропусками.
+Session calendar, разрешённые перерывы и объединение файлов — будущая отдельная работа.
+
+### Manifest и граница доверия
+
+Manifest содержит instrument/pair/timeframe, source/venue/basis, заявленную license,
+period/actualPeriod, candleCount/expectedCandles/missingCandles/duplicates, рассчитанный
+SHA-256 и matchesExpected, assessedAsOf, qualityStatus, permittedPurpose.
+При любой ошибке качества normalized candles пустые; доступные diagnostics сохраняются.
+При ошибке checksum/структуры header manifest=null, а причина явно указана в errors.
+Все результаты и нормализованные данные глубоко заморожены и повторяемы.
+
+VALIDATED/quality PASS означают только успешные технические проверки. Для MOCK
+historyStatus=MOCK_ONLY, dataKind=MOCK. Для заявленного REAL — PRESENT_UNVERIFIED и
+DECLARED_REAL. metadataEvidence=DECLARED_ONLY, readiness всегда NOT_READY,
+grantsRuntimeAccess всегда false. Не выдаём EligibilityDecision/RuntimeContext.
+Checksum не подтверждает подлинность котировок и лицензию без доверенного независимого
+источника ожидаемого hash/evidence. REAL-метка тоже не доказывает реальность цены.
+Очевидное переименование MOCK с сохранёнными MOCK metadata отвергается.
+
+Unit test печатает MOCK_MANIFEST_EXAMPLE с настоящим вычисленным hash именно тестовых
+байтов; это не реальная история и не пример готового рынка. Без входных файлов CLI
+возвращает 22 MISSING/NOT_READY, checksum=null и manifest=null. Реальных datasets в 1A
+не импортировано и не создано. Фиктивная демонстрационная история отсутствует.
+
+### Локальный запуск без сетевых запросов и записи результатов
+
+```powershell
+node scripts/audit-research-data.mjs
+```
+
+Для своего существующего JSON-файла (путь и cutoff выбирает владелец данных):
+
+```powershell
+$dataset = 'C:\data\your-existing-history.json'
+$sha = (Get-FileHash -LiteralPath $dataset -Algorithm SHA256).Hash.ToLowerInvariant()
+node scripts/audit-research-data.mjs --as-of '2026-11-19T12:03:00Z' --dataset eurusd $dataset $sha
+```
+
+Cutoff в примере не является автоматически правильным для другого архива. Повторяйте
+--dataset ID LOCAL_PATH SHA256 для разных инструментов; duplicate ID/unknown ID запрещены.
+Команда читает только явно переданные regular local files, отклоняет URLs/UNC shares
+и разрешённые через realpath UNC targets, не читает .env, не пишет файлы и не делает fetch.
+Проверка bounded read сохраняется и при росте файла. Доверие к локальной ОС/монтированным
+дискам остаётся вне границы импортера. Все результаты выводятся в stdout; без inputs
+CLI exit=0 означает только сформированный MISSING inventory, не готовность datasets.
+Ошибка переданного файла даёт ненулевой exit; error payload не раскрывает raw FS errors.
+
+### Фактические проверки и оставшаяся работа
+
+На Node v24.22.3 и v26.13.0 PASS: 49 новых MOCK unit-групп, включая все 22 IDs и parity
+с frontend, valid import, OHLC/volume, дубликаты/пропуски/порядок, UTC/closed cutoff,
+BTC/USD substitution, mixed metadata, incomplete manifest, checksum/tampering,
+corrupt JSON/UTF-8/duplicate keys, resources/proxy/getters, повторяемость/immutability,
+реальный local-file reader на временном MOCK-файле и отсутствие обхода Guard.
+MOCK файлы создаются исключительно unit-тестами во временном каталоге и удаляются
+по известным именам без recursive delete. Внешние HTTP/TCP/TLS/fetch заблокированы.
+
+PASS на обеих версиях: 4F 38; 4E-FIX1 84; 4B 75; 4C 20; 4D 34; Guard 6408 вызовов,
+Quality/Eligibility 58; Market Service 42; Biquote mock 35; HTTP Safety; chart 6 групп.
+PASS основной TypeScript, strict NodeNext declarations девяти наборов (новый — 9
+отрицательных примеров), Vite production build в памяти configFile=false/write=false:
+2104 модуля, четыре артефакта на каждой версии. Проверены diff --check, secrets и scope.
+
+Для настоящей загрузки нужны сами лицензированные M1 JSON-файлы, точные source/venue/
+price basis и symbol mapping, evidence использования, полный диапазон/число баров,
+независимо полученный checksum и осмысленный cutoff закрытости. Сетевой downloader,
+проверка authenticity/license evidence, session-aware coverage, resampling, replay strategy,
+paper/execution, production builder/grant в 1A не реализованы. Prod create=DENIED,
+Core/Gateway=SKIP, adapters=null; UI/HTTP/Safe Mode/Guard сохранены. Commit/push не было.
