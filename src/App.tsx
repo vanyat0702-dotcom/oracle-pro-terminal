@@ -4,8 +4,16 @@ import { TRADING_PAIRS, TradingPair } from './config/pairs';
 import { TerminalChart } from './components/TerminalChart';
 import { BiquoteTestChart } from './components/BiquoteTestChart';
 import { localChartAllowed } from './components/mdeChartData';
+import { BinanceObservation } from './components/BinanceObservation';
 
 export default function App() {
+  if (localChartAllowed(import.meta.env.DEV, window.location.hostname) && new URLSearchParams(window.location.search).get('privateAlpha') === '1') {
+    return <BinanceObservation />;
+  }
+  return <LegacyTerminal />;
+}
+
+function LegacyTerminal() {
   const [showMdeChart, setShowMdeChart] = useState(false);
   const mdeChartAllowed = localChartAllowed(import.meta.env.DEV, window.location.hostname);
   const [selectedPair, setSelectedPair] = useState<TradingPair>(() => {

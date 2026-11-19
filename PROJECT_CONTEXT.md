@@ -2416,3 +2416,36 @@ real datasets=0, grants=0. git diff --check, whitespace новых файлов,
 datasets не воспроизводились; многолетняя проверка использовала разреженный MOCK.
 Production build в этом инкременте не запускался. Git branch/HEAD не изменены,
 staging пуст; commit/push не выполнялись.
+
+### MVP-2B — BTCUSDT M1 Local Observation (ALPHA-0 foundation)
+
+Добавлены изолированный `core/market/binance.js` (+types), standalone
+`server/privateAlpha.js` на 127.0.0.1:3001, отдельный React-экран
+`BinanceObservation.tsx` и browser adapter `binanceObservationData.ts`.
+`App.tsx` выбирает его только DEV + loopback + `?privateAlpha=1`; legacy-терминал
+и демонстрационная история в этом режиме не монтируются. В обычном режиме
+терминал сохранён. Production Express/Vercel, Biquote, Registry/Market Service,
+Quality/Eligibility, Runtime Guard, Safe Mode и AI не изменены.
+
+Provider фиксирован на Binance Spot BTCUSDT M1 REST, без ключей, redirects,
+клиентских URL/symbol, fallback и записи данных. Проверяет размер/timeout,
+миллисекундные времена, OHLCV (включая дробный volume), порядок/duplicates/gaps,
+удаляет текущую открытую M1. Последняя ожидаемая закрытая минута обязательна;
+5s диагностическая grace на публикацию отмечена отдельно PUBLICATION_DELAY.
+HTTP headers receipt не является временем тика: tick=null/UNKNOWN, часы локальные.
+STRUCTURE_VALID не означает admission. Всегда NOT_READY / grantsRuntimeAccess=false.
+
+Маршрут требует server opt-in + development + loopback + точный Host/Origin,
+ограничивает частоту/параллельность. Polling serial 15s, timeout 8s, stop/unmount
+cleanup, hidden-tab pause, stale candles скрываются независимо от polling.
+Панель изначально остановлена. Реальный источник в этом инкременте не вызывался.
+Условия live-доступа требуют отдельной проверки; прежние license/export-блокировки
+не снимаются. Подробности и PowerShell-инструкции:
+[MVP-2B local observation](docs/research/MVP-2B-local-observation.md).
+
+Node v26.13.0: 30 новых MOCK-групп PASS (включая fake-scheduler polling); network=0,
+real datasets=0, grants=0. PASS: research 2A/1A/1B/1D = 38/49/67/55,
+Guard 6408, Biquote 35, chart 6, HTTP Safety, основной TypeScript, strict new types,
+production build в памяти write=false (3 outputs). HTTP-регрессии — только loopback,
+внешних AI/market-вызовов нет. Node 24 и реальный браузер/live transport здесь
+не проверялись. Commit/push не выполнялись; ALPHA-0 остаётся NOT_READY.
