@@ -1,5 +1,10 @@
 # PROJECT_CONTEXT — ORACLE PRO TERMINAL v10.5.0
 
+> **Актуализация 2026-11-19: Phase 3B / Increment 4E — private MODEL_ONLY session owner (§23).**
+> Состояние и revision принадлежат закрытому in-process owner; consume синхронный.
+> Production create всегда DENIED. Положительные lifecycle-модели существуют только
+> в изолированном offline test harness. Runtime Guard остаётся deny-only; grants нет.
+
 > **Актуализация 2026-11-19: Phase 3B / Increment 4D — AnalyzeIntent / TrustedAnalysisInput isolation (§22).**
 > Строгий intent содержит только предпочтения; рыночные/доверенные поля отклоняются.
 > Изолированная readiness-проверка использует identity 4C, но всегда возвращает DENIED /
@@ -1429,3 +1434,99 @@ PASS: 4D 34, 4C 20, 4B 75, Guard 6408 вызовов, Quality 58, Service 42, HT
 Biquote mock 35, chart 6 групп, основной и strict typecheck шести наборов деклараций.
 Отдельно подтверждён отказ runtime для 5/15/30/60/240/D. Runtime JS не менялся;
 deny-only/HTTP SKIP сохранены. Commit/push/смена ветки или HEAD не выполнялись.
+
+## 23. Phase 3B / Increment 4E — Private Analysis Session State Owner (2026-11-19)
+
+Работа продолжена от HEAD 78fd5cc645964fd9088e00275ba77254c8b58f1a в ветке
+backup/mde-phase2-checkpoint. Сохранены ранее созданные sessionOwner.js/.d.ts;
+добавлены offline runtime/type tests. Старые реализации 4B/4C/4D не изменены.
+
+### Приватное состояние и граница доверия
+
+core/runtime/sessionOwner.js экспортирует только getAnalysisSessionOwner() без
+аргументов. Конструктор, зависимости времени/политики и WeakMap записей закрыты.
+Production API не содержит writer/seed/registration, create всегда DENIED с
+session=null, в том числе для DISPLAY observations, readiness и публичных моделей 4B.
+Реального TrustedAnalysisInput builder по-прежнему нет. Production owner не создаёт
+никаких сессий и не обладает механизмом положительной выдачи доступа.
+
+Identity handle сопоставляется с записью только по WeakMap identity, без чтения
+свойств кандидата. JSON, structuredClone, proxy, DTO, одинаковый sessionId и handle
+другого owner не восстанавливают identity. Возвращается новая глубоко замороженная
+проекция без current model, исходных observations или ссылки на внутреннюю запись.
+Результаты имеют mode=MODEL_ONLY, modelOnly=true, grantsRuntimeAccess=false.
+ok=true означает исключительно переход описательной модели, никогда допуск к AI.
+
+ModelSessionBinding резервирует ссылки на оригинальные observations, input и scope;
+scope модели содержит snapshot/source/pair/timeframe/purpose и fingerprints требований,
+политики, версии стратегии. Это возможность хранения, а не новая проверка provenance.
+Только test harness заполняет такие записи; production registration отсутствует.
+В тестах writer внедряется loader hook только в отдельные in-memory копии модуля.
+В каноническом модуле нет test flags, DI-фабрики или seed API.
+
+### Атомарность, время и отзыв
+
+Owner использует существующие evaluate/plan/apply функции 4B. Проверка identity,
+revision, часов, политики, применение и сохранение выполняются синхронно, без await,
+таймеров и внешнего IO. Busy-флаг отклоняет reentrant consume. Сравнение revision и
+обновление записи не разделены асинхронной границей: из 2/100 конкурентных попыток
+в тестах успешна одна. Гарантия ограничена одним owner и одним JS-процессом;
+межпроцессная/межинстансовая атомарность и Vercel coordination не реализованы.
+
+Переходы: ISSUED --ROOT--> CONSUMED --ANALYSIS--> ACTIVE --FINALIZATION--> FINALIZED.
+GATEWAY/OPENAI/GEMINI возвращают STAGE_NOT_ENABLED и не создают AdapterPermit.
+Повторный ROOT отклоняется даже с обновлённым revision. Терминальные состояния
+FINALIZED/EXPIRED/REVOKED необратимы; чтение не превращает их в действующий доступ.
+
+Server epoch и monotonic clocks закрыты от вызывающего кода. Время/политика/отзыв
+повторно читаются непосредственно перед apply. Deadline неизменяемый, TTL не
+продлевается; произвольный production TTL не выбран. Тестовые 100 ms и допуск drift
+5 ms — явные параметры mock-модели, не production policy. Невалидные/убывающие часы
+и drift дают отказ, включая rollback между inspect и неуспешными командами.
+
+При валидных часах обнаруженные expiry, revocation и изменения policy version/
+fingerprint/generation либо revocation generation сохраняют терминальную модель,
+даже когда результат ok=false или клиент прислал stale revision. revoke — только
+sticky attenuation: клиент не может очистить флаг. При невалидных часах 4B сначала
+отказывает по времени; sticky revoke сохраняется приватно, а REVOKED фиксируется
+при следующей проверке с корректными часами. Продолжение до этого тоже запрещено.
+Фоновая очистка и production control plane политики/отзыва пока отсутствуют.
+
+### Фактически выполненные проверки
+
+На Node v24.22.3 и v26.13.0, для каждой версии:
+
+- PASS 4E: 36 offline групп, включая lifecycle/replay, 2 и 100 конкурентных consume,
+  разные owners/authority, JSON/clone/proxy/getters, immutable DTO, expiry во всех
+  нетерминальных состояниях, monotonic deadline, sticky revoke, изменения политики,
+  проверки перед apply, invalid/backwards clocks, reentrancy и отсутствие таймеров.
+- PASS прямые Core/Gateway/AI проверки с тестовыми handles/DTO: SKIP/SKIP/null/null;
+  production creation/grants: 0, внешние IO attempts в 4E: 0.
+- PASS 4B: 75; 4C: 20; 4D: 34; Guard: 6408 entrypoint calls, включая 288 параллельных;
+  Quality/Eligibility: 58; Market Service/Registry: 42; Biquote mock: 35;
+  HTTP Safety и chart (6 групп).
+- PASS основной tsc --noEmit --incremental false и strict NodeNext declarations всех
+  семи compile-only наборов, включая отрицательные @ts-expect-error примеры 4E.
+- PASS production Vite build в памяти: configFile=false, write=false, 2104 модуля,
+  четыре выходных артефакта в памяти на каждой версии; dist/config не записывались.
+
+Первый запуск нового 4E набора выявил ложное срабатывание статической проверки на
+слово await в комментарии. Проверка исправлена в новом тестовом файле; повторные
+запуски прошли. Прогрев Response и изменения polling не использовались.
+HTTP suites работают только через loopback/mocks; реальных AI/market/Telegram
+запросов и сделок не выполнялось. Проверены whitespace, secret patterns и scope diff.
+
+Runtime Guard, analyze/Gateway/AI adapters, Safe Mode, Express/Vercel, Biquote,
+Market Service/Registry/Quality/Eligibility, frontend/polling, зависимости и конфигурация
+не изменены. HTTP-анализ остаётся SKIP. Положительных runtime grants, issuer или
+AdapterPermit нет. Тестовый график не изменён. Commit/push не выполнялись.
+
+### Ограничения и следующий этап
+
+4E завершает только управление описательной offline-моделью. Он не доказывает live
+пригодность данных, provenance будущего builder или корректность будущего issuer.
+Отдельные стадии адаптеров закрыты до согласованного 4F; live/EXECUTION policy не
+ослаблена. Следующий шаг — аудит и контрактный дизайн отдельных попыток/стадий,
+отзыва и итоговой проверки без включения production grant. Положительная выдача
+потребует отдельного разрешения и доказательств, которых DISPLAY-only Biquote и
+текущий отрицательный readiness не предоставляют.
