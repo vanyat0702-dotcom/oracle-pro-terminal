@@ -2109,3 +2109,212 @@ venue / symbol / basis mapping, independently supplied checksums, evidence пр�
 источником. Ни один источник здесь не утверждён; все 22 реальных dataset status остаются
 MISSING/NOT_READY. Production create=DENIED, grantsRuntimeAccess=false, Core/Gateway=SKIP,
 adapters=null, HTTP fail-closed и диагностический график сохранены. MVP-2 не начинался.
+
+## 28. MVP-1D — offline real-data pilot adapter foundation
+
+### Scope, база и граница доверия
+
+База: `backup/mde-phase2-checkpoint`, HEAD `164bffc52a601c407da31a3dec9b424aab7a13d1`,
+pre-flight рабочее дерево/staging чистые. Реализован только изолированный research-слой.
+Созданы `core/research/sourceAdapterContracts.d.ts`, `sourceAdapters.js/.d.ts`,
+`pilotLocalIO.js`, `pilot.js/.d.ts`, `scripts/test-research-pilot.mjs`,
+`scripts/test-research-pilot-types.ts`. Обновлена эта документация. Старые MVP-1A/1B,
+Guard, AnalyzeIntent, Market Service, Safe Mode, Gateway/adapters, HTTP и frontend не менялись.
+
+Никаких datasets не скачано, реальных файлов истории не импортировано. Источники/права
+в этом инкременте не исследовались сетевыми запросами: использованы результаты MVP-1C.
+Все prices/CSV/documentary fixtures новых тестов — явно MOCK. Все 22 реальных инструмента
+каталога остаются MISSING/NOT_READY. Production create=DENIED; Core/Gateway=SKIP;
+AI adapters=null; grantsRuntimeAccess=false. Runtime issuer/AdapterPermit не создаются.
+Нет commit/push, установки зависимостей и изменения production configuration.
+
+### Versioned profiles и контракты
+
+`getOfflineAdapterProfile(id)` возвращает замороженный profile или null.
+`parseSourceLine(profileId,line,units)` — чистый parser одной строки, без IO/сети/часов.
+`convertResearchPilot(options)` — ограниченный по ресурсам локальный research pipeline.
+Это library API, не HTTP endpoint или автоматический downloader. CLI нового формата
+не добавлен; существующие CLI MVP-1A/1B сохранены.
+
+Два фиксированных profile v1:
+
+| Profile | Instrument/source | Market / basis | Source timezone / units |
+|---|---|---|---|
+| HISTDATA_ASCII_M1_V1 | eurusd / HISTDATA / EURUSD | FOREX / bid | EST_FIXED_UTC_MINUS_05 / EST_FIXED_TEXT |
+| BINANCE_SPOT_KLINE_V1 | btcusdt / BINANCE_SPOT / BTCUSDT | SPOT / last | UTC / MILLISECONDS или MICROSECONDS по cutover |
+
+`PilotOptions` требует inputRoot, profileId, REAL/MOCK, ordered files, venue, license,
+provenance reference/acquiredAt, requestedRange `{from,toExclusive}`, closedBarCutoff,
+calendar и явный output (null для preview). Каждый file descriptor содержит относительный
+path, expectedChecksum, точные sourceId/sourceSymbol/market, units и публичный originRef.
+Никакого AUTO timestamp units, BTCUSD alias, Futures или price-basis override.
+
+Venue явно UNKNOWN либо operator-declared id с локальным evidence file и его SHA-256.
+Для известного Binance venue требуется именно BINANCE_SPOT. HistData не объявляется биржей:
+если документального основания для venue нет, он остаётся UNKNOWN и запись запрещена.
+License UNKNOWN либо OPERATOR_REVIEWED_PERSONAL_RESEARCH с reference, локальным evidence
+и единственным назначением CLOSED_BAR_RESEARCH. Никакого LIVE/EXECUTION/commercial purpose.
+Options глубоко копируются до await, getters/proxies/prototype keys/classes/sparse arrays
+и дополнительные поля отклоняются. Возвращаемые DTO глубоко заморожены.
+
+**Существенная граница:** operator-reviewed — декларация оператора, не криптографически
+проверенное юридическое право. Pipeline проверяет наличие и hash документа, не его смысл,
+подпись, применимость к оператору или подлинность. Во всех результатах evidenceStatus=
+DECLARED_ONLY, readiness=NOT_READY, grantsRuntimeAccess=false, commercialPermission и
+redistributionPermission=NOT_GRANTED. WRITTEN означает только проверенный локальный export,
+не trusted provenance 4C, research-ready, live eligibility или production authority.
+PUBLIC JSON/флаг/скопированное evidence не могут разблокировать существующий Guard.
+
+### HistData CSV
+
+Ровно шесть полей: `YYYYMMDD HHMMSS;open;high;low;close;volume`, seconds=00.
+Сдвиг всегда +5 часов к UTC; America/New_York и летний DST для timestamp не применяются.
+Проверены зимний, летний и переход через полночь. После сдвига UTC проверяется диапазон
+дат MVP-1A: переполнение четырёхзначного года отклоняется. Basis всегда BID, не MID.
+Volume проверяется как неотрицательное число, но не выдаётся как действительный Forex
+volume: исходное значение сохраняется, volumeMeaning=UNAVAILABLE, normalized volume отсутствует.
+
+### Binance Spot CSV
+
+Ровно 12 полей без header: open time, OHLC, base volume, close time, quote volume,
+trade count, taker base/quote volumes, ignore. Строки с quotes/exponents/пробелами в числах,
+NaN/Infinity, неверным OHLC и повреждёнными полями отклоняются. Profile первой версии
+сознательно не является универсальным CSV parser с произвольным delimiter/quoting.
+
+До `2025-01-01T00:00:00Z` — MILLISECONDS; с границы — MICROSECONDS. Units задаются явно
+на файл; raw integers разбираются через BigInt. Open должен лежать точно на UTC M1,
+close должен равняться open + 1 minute - 1 source unit. Не округляем смещённые/частичные
+бары. CSV одного profile не может содержать оба режима единиц: переход представляется
+двумя ordered files. Original open/close timestamps и все 12 полей сохраняются.
+
+Для Binance originRef должен указывать на public data.binance.vision /data/spot/
+daily|monthly/klines/BTCUSDT/1m/BTCUSDT-1m-DATE.zip; проверяются дата/месяц и принадлежность
+строк указанному периоду. Futures/другая пара/таймфрейм/host/query credentials отклоняются.
+HistData originRef ограничен HTTPS histdata.com/www.histdata.com без credentials/query.
+Ссылки никогда не запрашиваются. Сам URL и одинаковая 12-column форма не доказывают,
+что переименованный сторонний CSV действительно получен с Binance Spot.
+
+### Preview, покрытие и bounded-memory processing
+
+Вызов без output всегда только preview. Неизвестные venue/license, недоступный или
+изменённый evidence и coverage UNKNOWN/FAIL блокируют запись даже при заданном output.
+Ошибки входного CSV/checksum/пути дают REJECTED, не частичный успешный import.
+В отчёте максимум восемь preview bars и 16 примеров gaps; суммарные counters учитывают
+все выбранные строки/разрывы. Original values остальных баров сохраняются при export
+в потоковом lineage.ndjson, а не многолетним массивом в RAM.
+
+Pilot invocation: 1–16 локальных CSV, каждый максимум 32 MiB / 100000 rows; строка до
+64 KiB. Это лимиты пилотного converter, не новые глобальные лимиты архива MVP-1B.
+Чтение блоками 64 KiB. На файл сначала проверяется SHA-256 bytes, затем при повторном
+потоковом чтении parser снова вычисляет hash. Выходной fragment buffer максимум 1000
+свечей, остальные state/counters/samples ограничены; все file handles закрываются finally.
+Повторная конверсия при записи снова проверяет source/evidence и сравнивает итог с preview.
+
+Проверяются строгий порядок и дубликаты во всех исходных строках, даже вне выбранного
+range. Строки вне `[from,toExclusive)` явно считаются в skippedOutsideRange и не экспортируются.
+Каждый выбранный бар должен быть закрыт к closedBarCutoff и заявленному acquiredAt;
+получение файла раньше закрытия выбранной свечи отклоняется (равенство допустимо).
+parseSourceLine сам по себе проверяет только формат кандидата, не доказывает закрытость
+или доверенное происхождение; временные ограничения применяет pipeline. Дополнительно оцениваются
+пропуски до первой и после последней выбранной свечи относительно requestedRange.
+Пустой selected range даёт отказ. Внутренние разрывы создают границы fragment, не новые
+свечи. Weekly Forex breaks оценивает source-bound календарь MVP-1B; weekdays не прощаются.
+Calendar UNKNOWN/неподтверждённые exceptions дают UNKNOWN; BTC 24/7 не оправдывает outages.
+Синтетики, сортировки, дедупликации, интерполяции или price fallback нет.
+
+### Provenance и checksum chain
+
+```text
+operator-declared originRef + acquisition reference/time
+  -> supplied local CSV + expected SHA-256 (checked before/after read)
+    -> source file / row number / original timestamp, units, fields
+      -> normalized UTC candle in lineage.ndjson
+        -> fragments + SHA-256 entries in index.ndjson
+          -> index SHA-256 + lineage SHA-256 + report in conversion.json
+            -> conversion.json SHA-256 returned separately
+```
+
+Venue/license evidence находятся под inputRoot, ограничены 1 MiB и проверяются по
+SHA-256; наружу сохраняются только relative refs/hashes, не содержимое документов.
+Права и происхождение остаются DECLARED_ONLY. SHA-256 проверяет byte identity, не факт
+рыночной сделки или законность использования.
+
+В первой версии вход — только уже извлечённый CSV. ZIP/GZIP не читаются и не распаковываются.
+`expectedChecksum` относится именно к CSV bytes, не к Binance ZIP .CHECKSUM! Состояние
+containerVerification=NOT_VERIFIED фиксируется для каждого исходного файла. При извлечении
+файла оператору нужно отдельно сохранить исходный ZIP, его published checksum и сведения
+об extraction; автоматической проверки связи CSV с контейнером в MVP-1D нет.
+
+### Atomic output и filesystem limits
+
+Output — существующий явно выбранный local root вне checkout и новое одноуровневое имя.
+Любая запись внутри проекта, включая ignored dist/node_modules/.git, отклоняется.
+Path traversal, абсолютные paths в descriptors, ADS/reserved names, symlink/junction
+в root/компонентах запрещены. Проверяются realpath containment, regular file и dev/ino.
+
+Создаются cooperative wx lock и уникальный stage directory внутри outputRoot.
+Файлы: `fragment-000001.json` и далее, `index.ndjson`, `lineage.ndjson`, `conversion.json`.
+До публикации scanner MVP-1B повторно проверяет все fragments/index/coverage/counts,
+затем проверяются lineage/report hashes. Только после этого stage directory переименовывается
+в конечное имя. Существующий output не перезаписывается; параллельные pipeline используют
+exclusive lock. До публикации ошибки приводят к удалению только известных созданных файлов
+и пустого stage directory, без recursive delete. Unknown files автоматически не удаляются.
+
+Если cleanup ошибся после успешного rename, возвращается WRITTEN с реальным output и
+errors=[OUTPUT_CLEANUP_FAILED], а не ложный REJECTED/output=null. Пользователь должен
+проверять errors и при таком предупреждении вручную проверить lock/stage. OS crash,
+power-loss durability/fsync и враждебная подмена directories/hardlinks не покрываются
+моделью atomic visibility: root и локальная ОС должны быть доверенными. При аварийном
+завершении могут остаться lock/stage; автоматическое небезопасное удаление не реализовано.
+
+### Примеры MOCK conversion preview
+
+Из теста HistData с неизвестными metadata, не реальный dataset:
+
+```json
+{
+  "status": "PREVIEW_ONLY",
+  "timestamp": "2025-01-07T12:00:00.000Z",
+  "original": "20250107 070000",
+  "blockedReasons": ["COVERAGE_UNKNOWN", "VENUE_UNKNOWN", "LICENSE_UNKNOWN"],
+  "grantsRuntimeAccess": false
+}
+```
+
+Тестовый Binance переход: `2024-12-31T23:59:00Z` с MILLISECONDS и
+`2025-01-01T00:00:00Z` с MICROSECONDS даёт две **MOCK** строки,
+один непрерывный fragment. WRITTEN в этом тесте основан только на MOCK operator-evidence;
+archive historyStatus=MOCK_ONLY, readiness=NOT_READY. Никакой реальной истории не создано.
+
+Для будущего программного вызова импортировать `convertResearchPilot` из
+`core/research/pilot.js`, передать полный `PilotOptions`. Сначала использовать output=null
+и UNKNOWN venue/license. Запись в отдельный research-output выбирать только после
+проверки законно полученных файлов/документов и разбора preview. Никаких автоматически
+разрешённых venues/licenses или встроенных реальных документальных evidence здесь нет.
+
+### Проверки и готовность к первому настоящему файлу
+
+На Node v24.22.3 и v26.13.0 PASS: 55 MOCK-групп (53 сохранённых и две добавленные при
+продолжении работы), включая fixed EST лето/зима, UTC year overflow и acquiredAt boundary,
+ms/us cutover, raw timestamp retention, OHLC/fields/UTF-8/BOM/truncation, checksum,
+Spot/Futures/source/symbol/period mismatch, weekend/weekday/boundary gaps, UNKNOWN
+metadata/evidence, getters/proxies/prototype keys, traversal/junction, size/row/line bounds,
+1001 candles -> 2 fragments, deterministic hashes, output corruption, write/close errors,
+post-publication cleanup warning, изменённый source между проходами, parallel writers,
+no overwrite и невозможность обойти Core/Gateway/direct AI adapters. Network attempts=0,
+peak descriptors=5, read<=65536, real imports=0, grants=0. MOCK файлы удалены после тестов.
+
+На обеих версиях PASS: MVP-1A 49, MVP-1B 67, 4F 38, owner/FIX1 84, 4B 75, 4C 20,
+4D 34, Guard 6408, Quality/Eligibility 58, Service 42, Biquote mock 35, HTTP Safety,
+chart 6, основной TypeScript, strict declarations 11 наборов (новые 10 отрицательных
+примеров), production build в памяти write=false/configFile=false, 2104 modules / 4 outputs.
+HTTP-регрессии используют только изолированный loopback; внешних AI/market requests нет.
+
+Первый настоящий файл требует: явно выбранный profile; CSV документированного формата
+без header/quoting; точные symbol/market/basis/units; independently supplied CSV hash;
+source receipt/extraction records; честный venue или UNKNOWN; применимые license evidence
+и operator review именно personal research; explicit UTC range/cutoff; подтверждённые
+source session rules либо UNKNOWN. Реальные dataset/evidence/output хранить вне GitHub.
+При UNKNOWN возможен только preview, никакого положительного доверия или runtime grant.
+Сбор/проверка настоящего источника, ZIP verification, license authenticity, MID из ticks,
+Intrade settlement equivalence и более широкие инструменты — отдельные будущие этапы.
