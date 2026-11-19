@@ -2337,3 +2337,82 @@ FIX2 проверки на Node v26.13.0: pilot 55, archive 67, intake 49 MOCK-�
 7 положительных и 7 отрицательных MOCK-путей PASS, ни один из 106 tracked-файлов
 не скрыт. Проверки diff/whitespace и секретов PASS; build и сетевые регрессии
 для изменения только ignore/документации не запускались. Commit/push не выполнялись.
+
+### MVP-2A — deterministic offline M1 replay и UTC aggregation
+
+Добавлены изолированные `core/research/replay.js` / `replay.d.ts` и
+`scripts/test-research-replay.mjs` / `test-research-replay-types.ts`.
+Production Guard, Safe Mode, Gateway, Market Service, HTTP, frontend и eligibility
+не изменены. Runtime-допуск не создаётся; каждый event имеет readiness=NOT_READY,
+grantsRuntimeAccess=false. Реальные Binance-файлы в MVP-2A не открывались.
+
+API:
+
+```js
+import { replayM1, replayHistoricalFiles } from './core/research/replay.js';
+// mockRows: Iterable/AsyncIterable<HistoricalInputCandle>, только закрытые M1.
+for await (const event of replayM1(mockRows, { dataKind: 'MOCK' })) {
+  if (event.type === 'step') {
+    // event.replayTimestamp — конец текущей M1, не системные часы.
+    // event.completedM1; event.completed — только закрытые старшие свечи.
+    // event.incompleteIntervals; event.detectedGaps — отдельные записи без цен.
+  }
+}
+// mockFiles: поток { path, expectedChecksum } для существующих MVP-1A JSON fragments.
+for await (const event of replayHistoricalFiles(mockFiles, {
+  dataKind: 'MOCK', instrument: 'btcusdt', asOf: '2025-01-02T00:00:00Z'
+})) { /* Обрабатывать по одному event, не собирать многолетний массив. */ }
+```
+
+`replayM1` читает один элемент по запросу потребителя, держит до шести активных
+агрегатов и предыдущий timestamp. Ни сетевых запросов, ни записи файлов, ни
+Date.now нет. Выходные значения скопированы и глубоко заморожены. OHLC проверяется,
+source/instrument/venue/price basis фиксируются по первой строке и не смешиваются.
+Дубликаты, неверный порядок, неизвестные metadata, открытые M1 и invalid OHLC дают
+исключение с code, без сортировки/исправления/дедупликации. Iterable producers —
+исполняемый код вызывающего; это не security sandbox для недоверенных функций.
+
+M5/M15/M30/H1/H4/D1 выравниваются относительно UTC epoch. Open берётся из первой
+M1, high/low — экстремумы, close — последняя M1. Volume суммируется только при
+наличии во всех исходных M1; иначе поле отсутствует. D1 — ровно UTC 00:00–24:00,
+не брокерская сессия. Завершённая свеча появляется только при полном наборе M1
+и достижении её closeTimestamp историческим временем. Ни текущий агрегат, ни
+следующий элемент потока не предоставляются потребителю раньше времени.
+
+Неполные интервалы возвращаются без OHLC при закрытии/смене bucket или EOF;
+missingMinutes означает недостаток до полного UTC bucket, включая края входа.
+Глобальные detectedGaps относятся только к отсутствующим минутам между входными M1.
+Полностью пустые buckets представлены одним диапазоном gap, а не миллионами
+синтетических записей. Forex weekend тоже UNCLASSIFIED: session calendar здесь
+не применяется и разрывы не объявляются допустимыми автоматически. EOF не
+продвигает replayTimestamp к будущей границе незавершённой свечи.
+
+Step events provisional до успешного `end`: поздняя ошибка не отзывает уже
+потреблённые события, но успешный end не выдаётся. Сама валидация архива/прав не
+заменяется replay. `replayHistoricalFiles` использует существующий bounded intake
+по одному файлу (его лимиты 32 MiB / 100000 M1); многолетнего массива нет. Checksum
+и структура всего fragment проверяются перед replay его строк: это проверка
+целостности файла, а не использование будущих цен в агрегации. Следующий fragment
+заранее не открывается. Kind/source/license reference файлов должны совпадать.
+Автоматическое чтение archive index, стратегии, UI и settlement отсутствуют.
+REAL — декларация caller, не доказательство происхождения/лицензии; Binance REAL
+разрешены только при отдельно подтверждённом личном некоммерческом исследовании.
+LICENSE_UNKNOWN и прежние блокировки archive export остаются в силе.
+
+Для Private Alpha уже можно offline воспроизводить разрешённые research fragments,
+проверять последовательность закрытий и строить собственный потребитель событий
+без будущих свечей. Торговые сигналы, runtime builder/grants и AI не подключены.
+
+Проверки MVP-2A на Node v26.13.0: 38 MOCK-групп PASS (все TF/OHLC, UTC midnight/year,
+leading/trailing partial, missing minute, BTC weekend, Forex gap, отсутствие read-ahead,
+prefix independence, upstream failure/cleanup, immutable results, invalid/duplicate/
+unordered/mixed metadata, четыре года почасового MOCK-потока — 35040 входных M1,
+без накопления истории, файл/checksum/kind/license mismatch и lazy file adapter).
+Полные MOCK UTC-сутки: 288 M5 / 96 M15 / 48 M30 / 24 H1 / 6 H4 / 1 D1.
+Регрессии PASS: MVP-1A 49, MVP-1B 67, MVP-1D 55, Runtime Guard 6408; основной
+TypeScript и strict declarations всех четырёх research-наборов. Новые тесты network=0,
+real datasets=0, grants=0. git diff --check, whitespace новых файлов, scope и поиск
+секретов/сырых Binance-строк PASS. Полная плотная многолетняя история и реальные
+datasets не воспроизводились; многолетняя проверка использовала разреженный MOCK.
+Production build в этом инкременте не запускался. Git branch/HEAD не изменены,
+staging пуст; commit/push не выполнялись.
