@@ -1890,3 +1890,222 @@ price basis и symbol mapping, evidence использования, полный
 проверка authenticity/license evidence, session-aware coverage, resampling, replay strategy,
 paper/execution, production builder/grant в 1A не реализованы. Prod create=DENIED,
 Core/Gateway=SKIP, adapters=null; UI/HTTP/Safe Mode/Guard сохранены. Commit/push не было.
+
+## 27. MVP-1B — offline multi-file historical archive и session-aware coverage
+
+### Scope и статус
+
+Реализован изолированный research-сканер многолетних архивов. База перед работой:
+`backup/mde-phase2-checkpoint`, HEAD `e32d73cb6ce195be93e14f352fa32eae62d3ef21`,
+рабочее дерево чистое. Реальных исторических файлов не предоставлено. Все 22 инструмента
+каталога сохраняют MISSING / NOT_READY. MOCK существуют только в unit fixtures и
+временных файлах тестов; их prices/calendar/license не являются рыночными доказательствами.
+
+Новые файлы: `core/research/archive.js/.d.ts`, `archiveContracts.d.ts`,
+`calendar.js/.d.ts`, `scripts/audit-research-archive.mjs`,
+`scripts/test-research-archive.mjs`, `scripts/test-research-archive-types.ts`.
+Обновлена только эта документация. MVP-1A intake/catalog и production-код не изменены.
+Нет commit/push, внешних API, AI-запросов, runtime issuer/grants и перехода к MVP-2.
+
+### Архивный формат v1
+
+Один архив относится ровно к одному canonical instrument / M1 / source / symbol /
+venue / priceBasis / kind / license. Нельзя склеивать инструменты, источники, биржи,
+bid/ask/mid/last или MOCK/REAL. BTC/USDT — только `btcusdt`, не BTC/USD.
+
+Корневой каталог выбирается явно. В нём NDJSON index и относительные пути фрагментов.
+Первая строка — header, последующие — fragment descriptors в исходном порядке:
+
+```text
+root/
+  index.ndjson
+  fragments/2020-01-part1.json
+  fragments/2020-01-part2.json
+  ...
+```
+
+Каждая строка индекса должна быть результатом `JSON.stringify(object)`, без отступов
+или дополнительных пробелов; LF и CRLF поддерживаются, финальный LF необязателен.
+Пустые строки, BOM, duplicate JSON keys, дополнительные поля и некорректный UTF-8
+отклоняются. Лимит строки 64 KiB; лимита размера всего индекса/числа фрагментов/лет нет.
+Поля header:
+
+```typescript
+{
+  type: 'archive', schemaVersion: 1, instrument: ResearchInstrumentId,
+  kind: 'REAL' | 'MOCK', timeframe: '1',
+  source: { sourceId, symbol, venue, priceBasis },
+  license: { reference, permission: 'DECLARED', permittedPurpose: 'CLOSED_BAR_RESEARCH' },
+  provenance: { declaration, evidence: 'DECLARED_ONLY' },
+  calendar: ResearchCalendarSpec
+}
+```
+
+Descriptor: `{type:'fragment',path,expectedChecksum,period:{from,to},expectedCandles}`.
+`from/to` — включительные UTC timestamps открытия первой/последней свечи.
+Checksum — lowercase SHA-256 точных bytes файла. Сам файл — существующий строгий
+JSON MVP-1A со всеми per-candle metadata и закрытыми M1 барами. На один фрагмент
+сохраняются 32 MiB / 100000 свечей. Общего лимита глубины или количества свечей нет,
+кроме точной представимости счётчиков JS; overflow даёт явный отказ.
+
+Важная совместимость: внутри фрагмента пока нужна непрерывная M1-сетка MVP-1A.
+Session breaks представляются границами файлов. Файл, содержащий внутренние выходные
+пропуски, нужно заранее разбить по реальным непрерывным диапазонам; scanner не сортирует,
+не разрезает, не удаляет дубликаты и не исправляет данные автоматически.
+
+Fragment event содержит полный manifest MVP-1A, включая sourceId/sourceSymbol (source.symbol),
+venue/basis, period/count/checksum/license/quality, плюс provenance declaration архива,
+которая применяется ко всем его фрагментам. Если декларация различается, нужен отдельный
+архив. Ни header, ни строка REAL, ни checksum не доказывают подлинность рыночных цен.
+
+### Чтение, backpressure и файловая безопасность
+
+`scanResearchArchive({root,indexPath,expectedIndexChecksum,instrument,asOf})` — async
+generator. Ожидаемый checksum индекса передаётся отдельно. Первый потоковый проход по
+индексу проверяет его hash до любого fragment IO; второй читает строки и повторно
+проверяет hash и stat в конце. Изменение файла между проходами даёт отказ. Не создаются
+temporary index, output datasets или скрытые disk caches.
+
+Чтение блоками 64 KiB. В памяти одновременно только один фрагмент (с ограниченными
+копиями парсера MVP-1A), остаток строки и текущие month/year counters. Ни весь индекс,
+ни все свечи/fragment descriptors, ни карта всех лет не накапливаются. Объём памяти
+зависит от максимального фрагмента, а не длительности архива. Потребитель должен также
+обрабатывать generator потоково, а не собирать все events в массив.
+
+Между `next()` чтение следующих фрагментов не начинается. Все file handles закрываются
+через finally при успехе, отказе, consumer exception и `return()`/выходе из for-await.
+Если потребитель просто бросит незакрытый suspended generator, немедленное закрытие
+не гарантируется: вызывающий обязан использовать for-await/finally и return().
+
+Относительные пути проверяются по компонентам: запрещены traversal, абсолютные/UNC/
+URL paths, ADS, drive paths, пустые компоненты, Windows reserved names. Все symlinks и
+junctions внутри root отклоняются, даже если ведут обратно внутрь root. Применяются
+lstat каждого компонента, realpath containment, проверка regular file и dev/ino/stat
+открытого дескриптора. Сам root не может быть symlink/junction или UNC.
+Это защита обычного offline intake, не полноценная OS sandbox: доверие к владельцу root,
+монтированным дискам, hardlinks и отсутствию враждебной одновременной подмены родительских
+директорий остаётся обязательным. Абсолютно race-free openat/openat2 на Windows не заявлен.
+Raw filesystem errors, содержимое секретов или посторонних файлов не выводятся.
+
+### Календарь: явно заданная модель, не подтверждённый provider calendar
+
+`createResearchCalendar(spec,binding)` не читает сеть, системные часы или env.
+Только явно переданные UTC boundaries. Нет default Forex schedule для всех источников.
+Forex profile: `FOREX_WEEKLY`, sourceId, venue, reference, timeZone (IANA),
+openMinute (локальная минута воскресенья), closeMinute (локальная минута пятницы),
+exceptions: []. Расписание привязывается к точным sourceId/venue и классу FOREX.
+UTC offset и DST вычисляет Intl/IANA, не фиксированный UTC сдвиг. Алгоритм проходит
+UTC hours и границы недели; в час смены offset применяется минутная классификация.
+Не хранит календарь всех минут или растущий многолетний cache.
+
+Профиль BTC/USDT: `CRYPTO_24_7` с sourceId/venue/reference/exceptions: []. Каждая минута
+в наблюдаемом диапазоне ожидается; неизвестные outages не объявляются допустимыми.
+`{profile:'UNKNOWN'}`, неверный timezone, несоответствие источника/класса или неподтверждённые
+exceptions дают UNKNOWN. Публичный `confirmed:true` не подтверждает holiday/outage.
+Ни одного подтверждённого provider calendar/exception сейчас нет. Механизм независимой
+проверки опубликованных исключений ещё не реализован; любые непустые exceptions дают
+EXCEPTION_EVIDENCE_UNCONFIRMED и UNKNOWN, а не освобождают от weekday coverage.
+
+В MOCK-тестах только моделируется NY 17:00 Sun/Fri. Это не утверждение о реальном
+источнике. Модель даёт `calendarConfidence=DECLARED_ONLY`, а не VERIFIED.
+Версия timezone database зависит от установленного Node/ICU; для воспроизводимого
+аудита конкретного реального источника потребуется закрепить версию и его evidence.
+
+### Непрерывность и coverage events
+
+Фрагменты должны идти строго по возрастанию: новый from > предыдущий to.
+Перекрытия/повторы и обратный порядок дают отказ, с отдельными overlaps/orderViolations.
+Внутренние дубликаты/пропуски проверяет MVP-1A. Между файлами оценивается полуоткрытый
+интервал [previousTo+1minute,nextFrom): trading minutes считаются пропущенными,
+non-trading minutes/intervals считаются отдельно по заявленной модели. Любая trading
+часть разрыва остаётся unexplained. Наличие свечей в заявленной закрытой сессии тоже
+даёт coverage FAIL. При неизвестном календаре missingTradingMinutes=null и UNKNOWN.
+Никаких вставленных свечей/цен, интерполяции или fallback на старые данные.
+
+Сохраняется диапазон timestamps исходного MVP-1A: строгий четырёхзначный UTC year,
+время после Unix epoch. Это ограничение формата одного фрагмента, а не лимит числа лет
+или свечей архива; импорт до 1970 потребует отдельного согласованного расширения 1A.
+Неподдерживаемые даты дают отказ, не обрезаются и не заменяются.
+
+Generator выдаёт header, fragment, gap, month/year candle-count events и final coverage.
+Month/year events перечисляют реально представленные календарные buckets, а не все
+годы между первой и последней свечой. Отсутствующие годы отражаются разрывами, не пустой
+выдуманной историей. Все intermediate events provisional до итогового structure PASS.
+При отказе итоговые counters описывают только принятый префикс, не весь архив.
+Проверяется покрытие между фактическими первой/последней свечой; обязательный внешний
+целевой диапазон пока не задаётся, поэтому недостающие данные до/после этих границ не
+выводятся из предположений.
+
+Пример итоговых ключевых полей из **MOCK** weekend-теста (полный report печатает test):
+
+```json
+{
+  "instrument": "eurusd", "dataKind": "MOCK", "historyStatus": "MOCK_ONLY",
+  "status": "NOT_READY", "readiness": "NOT_READY", "grantsRuntimeAccess": false,
+  "structure": "PASS", "coverage": "PASS", "calendarConfidence": "DECLARED_ONLY",
+  "originEvidence": "DECLARED_ONLY", "licenseEvidence": "DECLARED_NOT_VERIFIED",
+  "firstCandle": "2026-01-09T21:59:00.000Z", "lastCandle": "2026-01-11T22:00:00.000Z",
+  "candleCount": 2, "fragmentCount": 2, "missingTradingMinutes": 0,
+  "nonTradingMinutes": 2880, "nonTradingIntervals": 1, "unexplainedGaps": 0,
+  "overlaps": 0, "orderViolations": 0, "mixedSources": 0, "duplicates": 0,
+  "unexpectedClosedCandles": 0, "monthsCovered": 1, "yearsCovered": 1,
+  "indexChecksumVerified": true
+}
+```
+
+Итог также содержит заявленные source/license/provenance/calendar, cutoff, checksum
+индекса, permittedPurpose и errorCodes. structure PASS — техническая валидность файлов;
+coverage PASS — только полнота относительно явно заданной модели, не подтверждение
+реальной сессии. Origin и license остаются раздельными неподтверждёнными evidence.
+Для DECLARED_REAL с технически полным покрытием status=PRESENT_UNVERIFIED; при ошибке,
+UNKNOWN или MOCK — NOT_READY. VALIDATED_FOR_RESEARCH_METADATA предусмотрен в контракте,
+но не выдаётся: независимого evidence-review механизма в этом инкременте нет.
+Даже будущий metadata validation не должен выдавать production runtime grant.
+
+### CLI без записи файлов и сети
+
+```powershell
+node scripts/audit-research-archive.mjs
+```
+
+Без аргументов stdout содержит 22 inventory rows MISSING/NOT_READY.
+Для существующего архива, с отдельно проверенным SHA-256 индекса и осмысленным cutoff:
+
+```text
+node scripts/audit-research-archive.mjs --as-of UTC --archive ID ROOT RELATIVE_INDEX SHA256
+```
+
+Можно передать до 22 уникальных инструментов; порядок строк сохраняется. Events пишутся
+в stdout последовательно, остальные инструменты выводятся MISSING. Ошибки structure/
+coverage дают ненулевой exit; успешный scan не подтверждает лицензию или market readiness.
+Нет автоматического downloader, чтения .env, записи datasets или подключения к MDE/AI.
+
+### Фактическая проверка и оставшаяся работа
+
+На Node v24.22.3 и v26.13.0 PASS: 67 новых offline MOCK-групп, включая все 22 IDs,
+1999/2010/2025 fragments, последовательное соединение и календарные buckets, overlap/
+order, weekday gaps, winter/summer Sunday/Friday boundaries, DST 47h/49h weekends,
+сверку с независимой минутной Intl-классификацией, UNKNOWN calendars, BTC 24/7,
+checksum/index mutation, отсутствующие файлы, mixed metadata/license, malformed JSON,
+duplicate keys/BOM/line bound, traversal/reserved paths, proxy/getter options, реальный
+Windows junction escape (SKIPPED=0), oversized file, backpressure/early return/consumer
+exception, повторяемость и freeze. Network attempts=0, peak descriptors=2, chunk<=65536.
+Отдельный MOCK архив: 200000 свечей / 8 фрагментов / 43603136 bytes — больше обоих
+лимитов одного файла. Временные MOCK файлы удалены по известным именам без recursive
+delete. Это boundary/resource tests, не доказательство полного реального многолетнего
+покрытия или абсолютного RSS ceiling конкретной версии V8.
+
+На обеих версиях PASS: MVP-1A 49; 4F 38; 4E-FIX1 84; 4B 75; 4C 20; 4D 34;
+Guard 6408 entrypoint calls; Quality/Eligibility 58; Market Service 42; Biquote mock 35;
+HTTP Safety; chart 6; основной TypeScript и strict NodeNext declarations 10 наборов,
+включая восемь отрицательных archive compile-time примеров; production build в памяти
+configFile=false/write=false, 2104 модуля / 4 outputs. Diff whitespace/scope/secret review
+проверяются перед итоговым отчётом. Node 26 — дополнительная проверка, engines остаётся Node24.
+
+Для реальных данных всё ещё нужны лицензированные исторические файлы, точное source /
+venue / symbol / basis mapping, independently supplied checksums, evidence происхождения
+и разрешённого использования, подтверждённое расписание конкретного источника и его
+праздники/исключения. Нельзя автоматически считать DISPLAY-only Biquote исследовательским
+источником. Ни один источник здесь не утверждён; все 22 реальных dataset status остаются
+MISSING/NOT_READY. Production create=DENIED, grantsRuntimeAccess=false, Core/Gateway=SKIP,
+adapters=null, HTTP fail-closed и диагностический график сохранены. MVP-2 не начинался.
