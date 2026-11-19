@@ -1,5 +1,10 @@
 # PROJECT_CONTEXT — ORACLE PRO TERMINAL v10.5.0
 
+> **Актуализация 2026-11-19: Increment 4F — private MODEL_ONLY stages/adapter attempts (§25).**
+> Записи связаны с оригинальным parent внутри owner и используют FIX1. OpenAI/Gemini
+> имеют независимые одноразовые модельные попытки. Production creation закрыта,
+> новая finalization всегда DENIED; Guard/AI/HTTP не изменены, grants отсутствуют.
+
 > **Актуализация 2026-11-19: Increment 4E-FIX1 — terminal persistence, clock tracking, sticky revocation (§24).**
 > Последнее environment проверяется даже для недопустимого перехода. Валидированное
 > время учитывается при отказе; rollback необратимо блокирует продолжение. Подтверждённый
@@ -1628,3 +1633,111 @@ Production сессии по-прежнему не создаются. Recovery 
 Clock/policy validation owner повторяет ограничения 4B и требует согласованности
 при будущих изменениях 4B. Guard, AI, HTTP, Safe Mode, frontend/polling, Biquote,
 Market Service и dependencies/config сохранены. Commit/push не выполнялись.
+
+## 25. Increment 4F — private model-only stage & adapter attempt isolation (2026-11-19)
+
+База: 81eda0feba80f9908d20ee1c7d32afd12f013659, ветка
+backup/mde-phase2-checkpoint. После согласования минимального расширения owner
+изменены только sessionOwner.js/.d.ts, добавлены stageContracts.d.ts,
+scripts/test-stage-owner.mjs и scripts/test-stage-owner-types.ts; обновлён этот документ.
+StateMachine и контракты 4B, существующие 84 группы 4E-FIX1 не изменены.
+
+### Граница создания и приватное связывание
+
+Внутри того же createSessionOwner размещены WeakMap stageEntries, закрытый конструктор
+createStageRecords и отдельная Map цепочки конкретного parent. Каждая запись имеет
+отдельный opaque handle, прямую ссылку на оригинальную parent record, chain и binding,
+stage, revision, lifecycle state, scope/fingerprints, policy/generation и фиксированный
+deadline. Одна цепочка на parent; повторное создание отвергается. Строковые sessionId/
+snapshotId и копии DTO не подтверждают identity. Binding/scope/policy сверяются с
+закрытой записью родителя, а не с данными вызывающего кода.
+
+Production getAnalysisSessionOwner по-прежнему не принимает зависимости, create всегда
+DENIED/session=null. Конструктор стадий не вызывается production API и не экспортируется.
+Создание parent и стадий возможно только в отдельных in-memory test-копиях через loader
+hook, без production switches/NODE_ENV/seed/registration API. Публичный namespace
+owner.stages содержит только inspect/consume/complete/finalize. Он readonly/frozen и
+non-enumerable для сохранения существующей enumerable поверхности 4E. Это документированный
+API модельных операций, а не скрытый режим допуска. Экспорт модуля остаётся единственным
+getAnalysisSessionOwner. Никаких действующих AdapterPermit или runtime grants нет.
+
+### Семантика стадий
+
+Стадии ROOT → ANALYSIS → GATEWAY, затем независимые OPENAI/GEMINI. Это отдельный
+модельный журнал внутри уже ACTIVE parent 4B, а не повторный root consume 4B и не
+подключение реального Gateway. Операции стадий не переводят parent в новое состояние.
+Каждая стадия: READY → CONSUMED → COMPLETED. Последовательность проверяется через
+приватные записи prerequisites, без клиентских success flags. Consume одноразовый;
+completion — только описательный шаг, не доказательство выполнения или качества AI.
+OPENAI/GEMINI имеют отдельные handles/revisions, поэтому cross-adapter replay запрещён,
+а обе модельные попытки могут независимо завершаться. Чужой parent/owner/chain не подходит.
+
+FINALIZATION существует как отдельная запись, но положительных операций для неё нет:
+FINALIZATION_DISABLED, затем DENIED с увеличением revision. Повторения отклоняются.
+Одинаково закрыты consume/complete/finalize для FINALIZATION. Завершение обеих модельных
+попыток не снимает запрет. Legacy FINALIZED из 4B не считается проверенным AI-результатом:
+он только делает parent terminal и блокирует незавершённые дочерние попытки.
+
+### Parent safety, время и атомарность
+
+stageOperation выполняется под существующим operate(parentHandle) lock. Проверяются
+identity parent и stage, их прямое связывание, затем checkStage вызывает существующий
+checked(parent) FIX1. Для каждой изменяющей операции checked повторяется перед применением,
+даже при ошибке команды/replay/wrong adapter. Sticky server evidence, clock high-water
+mark и clockFault не дублируются упрощённой логикой. Неизвестные handles не раскрывают DTO
+чужого parent. Между проверками и применением нет await, сетевых операций или таймеров.
+
+Deadline дочерней цепочки наследуется от parent или может быть только сокращён закрытым
+fixture; issued timestamps/drift policy не подменяются. Клиентские TTL не принимаются.
+Дополнительная проверка epoch/monotonic expiry дочерней записи использует время, уже
+валидированное FIX1; parent clock является общим high-water mark для всех siblings.
+Продления deadline/TTL нет. Parent expiry/revocation переводят незавершённую попытку в
+EXPIRED/REVOKED при её использовании, FINALIZED — CANCELLED, clockFault — DENIED.
+Обход через старое поколение или исправленные часы невозможен. Инвалидация siblings
+ленивая: их DTO не обновляются фоном, но ни одна операция не проходит без актуального
+parent check. Исторический COMPLETED не превращается в разрешение при чтении.
+
+DTO глубоко заморожены и содержат только копии scope/policy/deadline и описательные
+поля. Parent/chain/binding/handle не раскрываются. Успех inspect означает чтение модели,
+а не действительность попытки или право вызвать AI. Все результаты имеют mode=MODEL_ONLY,
+modelOnly=true, grantsRuntimeAccess=false. Атомарность ограничена одним owner/JS-процессом;
+multi-process coordination и механизм привилегированной выдачи отсутствуют.
+
+### Фактические проверки
+
+На Node v24.22.3 и v26.13.0, для каждой версии:
+
+- PASS 4F: 38 offline групп. По 100 конкурентных consume каждого адаптера дают ровно
+  один успех; независимое модельное consume/complete обеих ветвей работает без AI.
+- PASS cross-adapter/stage/session replay, одинаковые строковые IDs, чужие owners,
+  forged handles/revisions, JSON/clone/proxy/getters, immutable DTO, попытки продлить TTL,
+  child/parent expiry, terminal parent, revocation/policy changes между стадиями и перед
+  apply, возврат старого поколения, clock rollback/invalid clock, malformed environment,
+  reentrancy, приватная порча binding через test-only injection, отрицательная finalization.
+- PASS проверки прямых Core/Gateway/legacy/adapters с handles/DTO: SKIP/SKIP/null/null;
+  production sessions/grants/AdapterPermit: 0, внешние IO attempts в 4F: 0.
+- PASS 4E-FIX1: 84; 4B: 75; 4C: 20; 4D: 34; Guard: 6408 вызовов/288 параллельных;
+  Quality/Eligibility: 58; Market Service/Registry: 42; Biquote mock: 35; HTTP Safety;
+  chart: 6 групп. Реальных AI/market/Telegram-запросов или сделок не было;
+  HTTP suites используют только изолированные mocks/loopback.
+- PASS основной TypeScript --noEmit --incremental false, strict NodeNext declarations
+  всех восьми наборов, включая 13 отрицательных compile-only примеров 4F.
+- PASS production Vite build в памяти, configFile=false/write=false: 2104 модуля,
+  четыре артефакта в памяти на каждой версии. Dist/config не записывались.
+
+При разработке нового теста исправлены пропущенный async у callback статической проверки
+и fixture для проверки PARENT_MISMATCH: нужны два parent одного owner; другой owner
+корректно получает UNKNOWN_HANDLE. Это не изменения production-политики допуска.
+Проверены git diff --check, secret/private-data patterns и scope изменений.
+
+### Ограничения и нерешённые вопросы
+
+4F — только MODEL_ONLY foundation. Текущий parent binding не доказывает provenance
+будущего TrustedAnalysisInput builder. Ни origin 4C, ни DISPLAY Biquote, ни COMPLETED
+модельного адаптера не доказывают live suitability. Production создание parent/stages,
+проверенный AI-result contract, положительная finalization, issuer и реальные permits
+остаются за пределами этого инкремента. Согласование stage bookkeeping с будущей
+production orchestration потребует отдельного дизайна; legacy-пути не переподключались.
+Guard, AI Gateway/adapters, Safe Mode, Express/Vercel, frontend/polling, Biquote,
+Market Service/Eligibility и зависимости не изменены. Ветка/HEAD/staging сохранены.
+Commit/push не выполнялись; переход к следующему инкременту не начинался.

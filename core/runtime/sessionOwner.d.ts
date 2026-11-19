@@ -2,6 +2,7 @@ import type { AuthorizationDeadline, AuthorizationDenialReason, RootCapabilitySc
   RuntimeAuthorizationState, RuntimeStage } from './contracts.js';
 import type { MarketObservation } from '../market/contracts.js';
 import type { TrustedAnalysisInput } from '../analysis/contracts.js';
+import type { ModelStageOperations } from './stageContracts.js';
 
 declare const handleBrand: unique symbol;
 /** Identity for a MODEL_ONLY owner record; never a RuntimeContext or AdapterPermit. */
@@ -41,6 +42,8 @@ export interface OwnerModelResult {
   readonly session: ModelSessionView | null;
 }
 export interface AnalysisSessionOwner {
+  /** Immutable, non-enumerable MODEL_ONLY namespace; contains no stage factory. */
+  readonly stages: Readonly<ModelStageOperations>;
   create(input: unknown): Readonly<OwnerModelResult> & Readonly<{ ok: false; status: 'DENIED' }>;
   inspect(handle: unknown): Readonly<OwnerModelResult>;
   consume(handle: unknown, expectedRevision: number): Readonly<OwnerModelResult>;

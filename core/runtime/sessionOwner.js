@@ -40,10 +40,38 @@ const response = (ok, reason, record = null) => Object.freeze({
 });
 
 // Private constructor. No caller of the exported API can supply dependencies, current
-// models, policy, clocks, evidence or registration callbacks. No model creation/writer here.
+// models, policy, clocks, evidence or registration callbacks. No parent model writer here.
 function createSessionOwner(dependencies) {
   const records = new WeakMap();
   const readRecord = records.get.bind(records);
+  const stageEntries = new WeakMap();
+  const readStage = stageEntries.get.bind(stageEntries);
+  const stageNames = Object.freeze(['ROOT', 'ANALYSIS', 'GATEWAY', 'OPENAI', 'GEMINI', 'FINALIZATION']);
+  const stageTerminal = state => ['COMPLETED', 'EXPIRED', 'REVOKED', 'CANCELLED', 'DENIED'].includes(state);
+  // Private model constructor, reached only by isolated offline fixtures in 4F.
+  // No production entrypoint creates parents or calls this constructor.
+  function createStageRecords(parent, deadline = parent.current.deadline) {
+    if (parent.stageChain) throw new TypeError('Model stage chain already exists.');
+    const d = fields(deadline, ['issuedAtMs', 'expiresAtMs', 'issuedMonotonicMs', 'deadlineMonotonicMs', 'maxClockDriftMs']);
+    const p = parent.current.deadline;
+    if (!d || d.issuedAtMs !== p.issuedAtMs || d.issuedMonotonicMs !== p.issuedMonotonicMs ||
+      d.maxClockDriftMs !== p.maxClockDriftMs || !Number.isSafeInteger(d.expiresAtMs) ||
+      d.expiresAtMs <= p.issuedAtMs || d.expiresAtMs > p.expiresAtMs ||
+      typeof d.deadlineMonotonicMs !== 'number' || !Number.isFinite(d.deadlineMonotonicMs) ||
+      d.deadlineMonotonicMs <= p.issuedMonotonicMs || d.deadlineMonotonicMs > p.deadlineMonotonicMs) {
+      throw new TypeError('Invalid model stage deadline.');
+    }
+    const chain = new Map(), handles = Object.create(null);
+    for (const stage of stageNames) {
+      const handle = Object.freeze(Object.create(null));
+      const entry = { parent, chain, stage, revision: 0, state: 'READY', reason: null,
+        binding: parent.binding, scope: parent.current.scope, policy: parent.current.policy,
+        revocationGeneration: parent.current.revocationGeneration, deadline: Object.freeze({ ...d }) };
+      chain.set(stage, entry); stageEntries.set(handle, entry); handles[stage] = handle;
+    }
+    parent.stageChain = chain;
+    return Object.freeze(handles);
+  }
   function environment(record) {
     // Read independently: unavailable clocks/policy must not hide valid revocation evidence.
     const read = (fn, keys) => { try { return fields(fn(), keys); } catch { return null; } };
@@ -132,7 +160,92 @@ function createSessionOwner(dependencies) {
       return response(r.ok, r.reason, record);
     });
   }
-  const owner = Object.freeze({
+  function stageView(entry) {
+    if (!entry) return null;
+    return Object.freeze({ mode: 'MODEL_ONLY', modelOnly: true, grantsRuntimeAccess: false,
+      parentSessionId: entry.parent.current.sessionId, stage: entry.stage, revision: entry.revision,
+      state: entry.state, reason: entry.reason, scope: Object.freeze({ ...entry.scope }),
+      policy: Object.freeze({ ...entry.policy }), revocationGeneration: entry.revocationGeneration,
+      deadline: Object.freeze({ ...entry.deadline }) });
+  }
+  const stageResult = (ok, reason, entry = null) => Object.freeze({
+    mode: 'MODEL_ONLY', modelOnly: true, grantsRuntimeAccess: false,
+    status: ok ? 'MODEL_ONLY' : 'DENIED', ok, reason, entry: stageView(entry)
+  });
+  function stopStage(entry, state, reason) {
+    if (!stageTerminal(entry.state)) { entry.state = state; entry.reason = reason; entry.revision++; }
+  }
+  function checkStage(parent, entry) {
+    // FIX1 is the single authority for time, sticky evidence and parent transitions.
+    const check = checked(parent);
+    if (check.denial) {
+      const state = parent.current.state;
+      if (state === 'EXPIRED' || state === 'REVOKED') stopStage(entry, state, check.denial);
+      else if (state === 'FINALIZED') stopStage(entry, 'CANCELLED', 'PARENT_TERMINAL');
+      else if (parent.clockFault) stopStage(entry, 'DENIED', 'CLOCK_BACKWARDS');
+      return check;
+    }
+    if (parent.current.state !== 'ACTIVE') return { denial: 'PARENT_NOT_ACTIVE' };
+    if (entry.binding !== parent.binding || entry.scope !== parent.current.scope ||
+      entry.policy !== parent.current.policy || entry.revocationGeneration !== parent.current.revocationGeneration ||
+      entry.chain !== parent.stageChain || entry.chain.get(entry.stage) !== entry) {
+      stopStage(entry, 'DENIED', 'STAGE_BINDING_MISMATCH');
+      return { denial: 'STAGE_BINDING_MISMATCH' };
+    }
+    if (check.env.clock.epochMs >= entry.deadline.expiresAtMs ||
+      check.env.clock.monotonicMs >= entry.deadline.deadlineMonotonicMs) {
+      stopStage(entry, 'EXPIRED', 'STAGE_EXPIRED');
+      return { denial: 'STAGE_EXPIRED' };
+    }
+    return check;
+  }
+  function stageOperation(parentHandle, stageHandle, action, command) {
+    // One parent lock also serializes all sibling mutations and prevents reentrant revoke.
+    const result = operate(parentHandle, parent => {
+      const entry = readStage(stageHandle);
+      if (!entry) return stageResult(false, 'UNKNOWN_STAGE_HANDLE');
+      if (entry.parent !== parent) return stageResult(false, 'PARENT_MISMATCH');
+      const first = checkStage(parent, entry);
+      if (first.denial) return stageResult(false, first.denial, entry);
+      if (action === 'inspect') return stageResult(true, null, entry);
+      const c = fields(command, ['stage', 'expectedRevision']);
+      let denial = null;
+      if (!c || typeof c.stage !== 'string' || !generation(c.expectedRevision)) denial = 'INVALID_COMMAND';
+      else if (c.stage !== entry.stage) denial = 'STAGE_MISMATCH';
+      else if (c.expectedRevision !== entry.revision) denial = 'REPLAY';
+      else if (stageTerminal(entry.state)) denial = 'STAGE_TERMINAL';
+      else if (entry.revision > Number.MAX_SAFE_INTEGER - 2) denial = 'REVISION_EXHAUSTED';
+      else if (action === 'finalize') denial = entry.stage === 'FINALIZATION' ? 'FINALIZATION_DISABLED' : 'STAGE_MISMATCH';
+      else if (entry.stage === 'FINALIZATION') denial = 'FINALIZATION_DISABLED';
+      else if (action === 'consume') {
+        if (entry.state !== 'READY') denial = 'STAGE_ALREADY_CONSUMED';
+        else {
+          const prerequisites = { ROOT: [], ANALYSIS: ['ROOT'], GATEWAY: ['ANALYSIS'],
+            OPENAI: ['GATEWAY'], GEMINI: ['GATEWAY'] }[entry.stage];
+          if (!prerequisites.every(stage => entry.chain.get(stage).state === 'COMPLETED')) denial = 'STAGE_ORDER';
+        }
+      } else if (entry.state !== 'CONSUMED') denial = 'STAGE_NOT_CONSUMED';
+      // Recheck even rejected commands: FIX1 terminal/high-water updates must not be lost.
+      const latest = checkStage(parent, entry);
+      if (latest.denial) return stageResult(false, latest.denial, entry);
+      if (denial) {
+        if (denial === 'FINALIZATION_DISABLED') stopStage(entry, 'DENIED', denial);
+        return stageResult(false, denial, entry);
+      }
+      entry.state = action === 'consume' ? 'CONSUMED' : 'COMPLETED';
+      entry.revision++;
+      return stageResult(true, null, entry);
+    });
+    // operate() handles unknown parent/reentrancy/errors without leaking a parent DTO.
+    return Object.hasOwn(result, 'entry') ? result : stageResult(false, result.reason);
+  }
+  const stages = Object.freeze({
+    inspect(parent, entry) { return stageOperation(parent, entry, 'inspect'); },
+    consume(parent, entry, command) { return stageOperation(parent, entry, 'consume', command); },
+    complete(parent, entry, command) { return stageOperation(parent, entry, 'complete', command); },
+    finalize(parent, entry, command) { return stageOperation(parent, entry, 'finalize', command); }
+  });
+  const owner = Object.freeze(Object.defineProperty({
     create(input) {
       // 4D has no input constructor. Even future genuine data cannot create a session here.
       return response(false, isTrustedAnalysisInput(input) ? 'SESSION_CREATION_DISABLED' : 'TRUSTED_INPUT_REQUIRED');
@@ -154,7 +267,8 @@ function createSessionOwner(dependencies) {
         return response(false, check.denial ?? 'REVOKED', record);
       });
     }
-  });
+  // Non-enumerable namespace preserves the existing enumerable 4E API surface.
+  }, 'stages', { value: stages }));
   return owner;
 }
 
