@@ -2449,3 +2449,25 @@ Guard 6408, Biquote 35, chart 6, HTTP Safety, основной TypeScript, stric
 production build в памяти write=false (3 outputs). HTTP-регрессии — только loopback,
 внешних AI/market-вызовов нет. Node 24 и реальный браузер/live transport здесь
 не проверялись. Commit/push не выполнялись; ALPHA-0 остаётся NOT_READY.
+
+### MVP-2D — Private Alpha Offline MOCK Preview
+
+Добавлен явный DEV/loopback режим `?privateAlpha=mock` для существующей
+BinanceObservation. Отдельный MOCK child не монтирует LIVE polling effects.
+`binanceMockPreview.ts` содержит фиксированные искусственные OHLCV с UTC-временами,
+три кадра 4/8/12 свечей; после трёх кадров показ завершается. Ни HTTP, ни providers,
+ни Market Service/Eligibility/AI не импортируются. Типы/источник отделены от market
+DTO: BTCUSDT_MOCK / OFFLINE_UI_FIXTURE / MOCK_NOT_MARKET_DATA; grantsRuntimeAccess=false.
+Постоянная заметная маркировка MOCK / НЕ РЕАЛЬНЫЕ КОТИРОВКИ, SVG-watermark,
+остановка, сброс и моделирование ошибки со скрытием свечей. Общий ObservationCandles
+используется обеими панелями только для отображения; live provider не изменён.
+Инструкция: [MVP-2D mock preview](docs/research/MVP-2D-mock-preview.md).
+
+Node v26.13.0: 10 новых transport-blocked MOCK-тестов PASS; LIVE validator,
+provenance/owner, Market Service/Eligibility и Core/AI отвергают MOCK и JSON-копии.
+PASS: MVP-2B 30, research 2A/1A/1B/1D 38/49/67/55, Guard 6408, chart 6,
+HTTP Safety и TypeScript. В локальном браузере проверены свечи/таблица OHLCV,
+завершение анимации, ошибка, остановка и сброс. Live-сервер не запускался,
+реальные Binance/market/AI запросы не выполнялись. HTTP-регрессия — только loopback.
+MVP-2C = BLOCKED_PENDING_JURISDICTION_AND_PERMISSION;
+ALPHA-0 LIVE = NOT_READY; ALPHA-1 = NOT_READY. Commit/push не выполнялись.

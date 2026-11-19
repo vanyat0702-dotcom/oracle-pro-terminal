@@ -7,8 +7,9 @@ import { localChartAllowed } from './components/mdeChartData';
 import { BinanceObservation } from './components/BinanceObservation';
 
 export default function App() {
-  if (localChartAllowed(import.meta.env.DEV, window.location.hostname) && new URLSearchParams(window.location.search).get('privateAlpha') === '1') {
-    return <BinanceObservation />;
+  const alphaMode = new URLSearchParams(window.location.search).get('privateAlpha');
+  if (localChartAllowed(import.meta.env.DEV, window.location.hostname) && ['1', 'mock'].includes(alphaMode ?? '')) {
+    return <BinanceObservation mode={alphaMode === 'mock' ? 'MOCK' : 'LIVE'} />;
   }
   return <LegacyTerminal />;
 }
