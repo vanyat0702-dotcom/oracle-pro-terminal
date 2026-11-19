@@ -192,9 +192,12 @@ try {
   await test('rollback between inspections/failed commands and clock drift are rejected', () => {
     const s = setup(); s.controls.elapsed = 20; s.api.inspect(s.handle);
     s.controls.elapsed = 19; assertDenied(s.api.consume(s.handle, 0), 'CLOCK_BACKWARDS');
-    s.controls.elapsed = 30; assertDenied(s.api.transition(s.handle, { stage: 'bad', expectedRevision: 0 }), 'INVALID_COMMAND');
-    s.controls.elapsed = 29; assertDenied(s.api.inspect(s.handle), 'CLOCK_BACKWARDS');
-    s.controls.clockValue = { epochMs: START + 40, monotonicMs: 56 }; assertDenied(s.api.inspect(s.handle), 'INVALID_CLOCK');
+    s.controls.elapsed = 30; assertDenied(s.api.consume(s.handle, 0), 'CLOCK_BACKWARDS');
+    const rejected = setup(); rejected.controls.elapsed = 30;
+    assertDenied(rejected.api.transition(rejected.handle, { stage: 'bad', expectedRevision: 0 }), 'INVALID_COMMAND');
+    rejected.controls.elapsed = 29; assertDenied(rejected.api.inspect(rejected.handle), 'CLOCK_BACKWARDS');
+    const drifted = setup(); drifted.controls.clockValue = { epochMs: START + 40, monotonicMs: 56 };
+    assertDenied(drifted.api.inspect(drifted.handle), 'INVALID_CLOCK');
   });
   await test('invalid clocks cannot clear a sticky revoke; terminal state is persisted when time becomes valid', () => {
     const s = setup(); s.controls.clockValue = { epochMs: null, monotonicMs: null };
@@ -264,6 +267,165 @@ try {
     assert.doesNotMatch(executableSource, /\basync\b|\bawait\s+|setTimeout\s*\(|setInterval\s*\(/);
     assert.doesNotMatch(source, /createSessionModel\s*\(|records\.set\s*\(/);
   });
+  const originalGroups = count;
+  assert.equal(originalGroups, 36);
+  const changes = [
+    ['expiry', c => { c.elapsed = 100; }, 'ABSOLUTE_EXPIRY', 'EXPIRED'],
+    ['policy version', c => { c.policy.version = 'changed'; }, 'POLICY_VERSION_MISMATCH', 'REVOKED'],
+    ['policy fingerprint', c => { c.policy.fingerprint = 'changed'; }, 'POLICY_FINGERPRINT_MISMATCH', 'REVOKED'],
+    ['policy generation', c => { c.policy.generation++; }, 'POLICY_GENERATION_MISMATCH', 'REVOKED'],
+    ['revocation generation', c => { c.revocation.generation++; }, 'REVOCATION_GENERATION_MISMATCH', 'REVOKED'],
+    ['server revoked', c => { c.revocation.revoked = true; }, 'REVOKED', 'REVOKED']
+  ];
+  const activate = s => { s.api.consume(s.handle, 0); s.api.transition(s.handle, { stage: 'ANALYSIS', expectedRevision: 1 }); };
+  const restore = s => {
+    s.controls.clockHook = null; s.controls.clockValue = null;
+    s.controls.policy = policy(); s.controls.revocation = { generation: 3, revoked: false };
+  };
+  for (const phase of ['ISSUED', 'ACTIVE']) for (const [name, change, reason, state] of changes) {
+    await test(`FIX1 D1 ${phase}: invalid ANALYSIS persists second-read ${name}`, () => {
+      const s = setup(); if (phase === 'ACTIVE') activate(s);
+      const revision = s.api.inspect(s.handle).session.revision, beforeReads = s.controls.clockReads;
+      const deadline = s.api.inspect(s.handle).session.deadline;
+      const startReads = s.controls.clockReads;
+      s.controls.clockHook = () => { if (s.controls.clockReads === startReads + 2) change(s.controls); };
+      const r = s.api.transition(s.handle, { stage: 'ANALYSIS', expectedRevision: revision });
+      assertDenied(r, reason); assert.equal(r.session.state, state); assert.equal(r.session.revision, revision + 1);
+      assert.deepEqual(r.session.deadline, deadline); assert.ok(s.controls.clockReads > beforeReads);
+      restore(s); s.controls.elapsed = 0;
+      const again = s.api.transition(s.handle, { stage: 'FINALIZATION', expectedRevision: revision + 1 });
+      assertDenied(again, 'TERMINAL_STATE'); assert.equal(again.session.state, state);
+    });
+  }
+  await test('FIX1 D1 absence of terminal evidence preserves INVALID_TRANSITION and revision', () => {
+    for (const phase of ['ISSUED', 'ACTIVE']) {
+      const s = setup(); if (phase === 'ACTIVE') activate(s);
+      const revision = phase === 'ACTIVE' ? 2 : 0;
+      const r = s.api.transition(s.handle, { stage: 'ANALYSIS', expectedRevision: revision });
+      assertDenied(r, 'INVALID_TRANSITION'); assert.equal(r.session.state, phase); assert.equal(r.session.revision, revision);
+    }
+  });
+  await test('FIX1 D2 second-read +50 survives invalid transition; +30 rollback locks owner permanently', () => {
+    const s = setup(), deadline = s.api.inspect(s.handle).session.deadline;
+    const start = s.controls.clockReads;
+    s.controls.clockHook = () => { if (s.controls.clockReads === start + 2) s.controls.elapsed = 50; };
+    assertDenied(s.api.transition(s.handle, { stage: 'ANALYSIS', expectedRevision: 0 }), 'INVALID_TRANSITION');
+    s.controls.clockHook = null; s.controls.elapsed = 30;
+    assertDenied(s.api.consume(s.handle, 0), 'CLOCK_BACKWARDS');
+    for (const elapsed of [50, 60, 90]) {
+      s.controls.elapsed = elapsed; const r = s.api.consume(s.handle, 0);
+      assertDenied(r, 'CLOCK_BACKWARDS'); assert.equal(r.session.revision, 0); assert.deepEqual(r.session.deadline, deadline);
+    }
+    s.controls.elapsed = 100;
+    const expired = s.api.inspect(s.handle); assertDenied(expired, 'ABSOLUTE_EXPIRY'); assert.equal(expired.session.state, 'EXPIRED');
+  });
+  await test('FIX1 D2 rollback of either coherent clock between first and second reads is sticky', () => {
+    for (const key of ['epochMs', 'monotonicMs']) {
+      const s = setup(); s.controls.elapsed = 20;
+      s.controls.clockHook = () => { if (s.controls.clockReads === 2) {
+        s.controls.clockValue = { epochMs: START + 20, monotonicMs: 30 }; s.controls.clockValue[key]--;
+      } };
+      assertDenied(s.api.consume(s.handle, 0), 'CLOCK_BACKWARDS');
+      restore(s); s.controls.elapsed = 30;
+      assertDenied(s.api.consume(s.handle, 0), 'CLOCK_BACKWARDS');
+      s.controls.revocation.revoked = true;
+      const r = s.api.inspect(s.handle); assertDenied(r, 'REVOKED'); assert.equal(r.session.state, 'REVOKED');
+    }
+  });
+  await test('FIX1 D2 excessive drift cannot conceal a rollback of bounded numeric clocks', () => {
+    const s = setup(); s.controls.elapsed = 50; s.api.inspect(s.handle);
+    s.controls.clockValue = { epochMs: START + 30, monotonicMs: 80 };
+    assertDenied(s.api.inspect(s.handle), 'CLOCK_BACKWARDS');
+    restore(s); s.controls.elapsed = 60;
+    assertDenied(s.api.consume(s.handle, 0), 'CLOCK_BACKWARDS');
+  });
+  for (const bad of [undefined, null, NaN, Infinity, -1, 'UNKNOWN', true]) {
+    await test(`FIX1 D2 invalid second-read ${String(bad)} never becomes trusted clock`, () => {
+      for (const key of ['epochMs', 'monotonicMs']) {
+        const s = setup(); s.controls.clockHook = () => { if (s.controls.clockReads === 2) {
+          s.controls.clockValue = { epochMs: START + 50, monotonicMs: 60 }; s.controls.clockValue[key] = bad;
+        } };
+        assertDenied(s.api.transition(s.handle, { stage: 'ANALYSIS', expectedRevision: 0 }), 'INVALID_CLOCK');
+        restore(s); s.controls.elapsed = 1;
+        assert.equal(s.api.consume(s.handle, 0).ok, true);
+      }
+    });
+  }
+  await test('FIX1 D2 inconsistent drift and out-of-range clocks are never remembered', () => {
+    for (const value of [{ epochMs: START + 50, monotonicMs: 1000 },
+      { epochMs: 8640000000000001, monotonicMs: 10 }, { epochMs: START, monotonicMs: Number.MAX_SAFE_INTEGER + 1 }]) {
+      const s = setup(); s.controls.clockHook = () => { if (s.controls.clockReads === 2) s.controls.clockValue = value; };
+      assertDenied(s.api.consume(s.handle, 0), 'INVALID_CLOCK'); restore(s); s.controls.elapsed = 1;
+      assert.equal(s.api.consume(s.handle, 0).ok, true);
+    }
+  });
+  for (const phase of ['ISSUED', 'ACTIVE']) for (const read of [1, 2]) {
+    for (const [name, change, reason] of changes.filter(c => c[0] !== 'expiry')) {
+      await test(`FIX1 D3 ${phase}: sticky ${name} with invalid clock at read ${read}`, () => {
+        const s = setup(); if (phase === 'ACTIVE') activate(s);
+        const revision = phase === 'ACTIVE' ? 2 : 0, start = s.controls.clockReads;
+        s.controls.clockHook = () => { if (s.controls.clockReads === start + read) {
+          change(s.controls); s.controls.clockValue = { epochMs: null, monotonicMs: null };
+        } };
+        const command = { stage: phase === 'ACTIVE' ? 'FINALIZATION' : 'ROOT', expectedRevision: revision };
+        const first = s.api.transition(s.handle, command); assertDenied(first, 'INVALID_CLOCK');
+        assert.equal(first.session.state, phase); assert.equal(first.session.revision, revision);
+        restore(s);
+        const r = s.api.transition(s.handle, command); assertDenied(r, reason);
+        assert.equal(r.session.state, 'REVOKED'); assert.equal(r.session.revision, revision + 1);
+        restore(s); assertDenied(s.api.inspect(s.handle), 'TERMINAL_STATE');
+      });
+    }
+  }
+  await test('FIX1 D3 malformed policy/revocation cannot create sticky evidence', () => {
+    const invalidPolicies = [null, { version: 'changed', fingerprint: 'offline-fingerprint', generation: NaN },
+      { version: 'UNKNOWN', fingerprint: 'changed', generation: 2 }, { ...policy(), extra: true },
+      new Proxy({ ...policy(), generation: 99 }, {}),
+      Object.defineProperty({ ...policy() }, 'generation', { get() { assert.fail('No policy getters'); } })];
+    const invalidRevocations = [null, { generation: 99, revoked: 'UNKNOWN' }, { generation: -1, revoked: true },
+      { generation: NaN, revoked: true }, { generation: 99, revoked: true, extra: true }, new Proxy({ generation: 99, revoked: true }, {})];
+    for (const [key, values] of [['policy', invalidPolicies], ['revocation', invalidRevocations]]) for (const value of values) {
+      const s = setup(); s.controls[key] = value; s.controls.clockValue = { epochMs: null, monotonicMs: null };
+      assertDenied(s.api.consume(s.handle, 0), 'OWNER_ENVIRONMENT_UNAVAILABLE'); restore(s);
+      assert.equal(s.api.consume(s.handle, 0).ok, true);
+    }
+  });
+  await test('FIX1 D3 independent readers retain valid evidence despite another dependency throwing', () => {
+    for (const failure of ['clock', 'policy', 'revocation']) {
+      const controls = { broken: true, changed: true };
+      const harness = a.createOfflineOwner({
+        clock() { if (controls.broken && failure === 'clock') throw Error('hidden clock error'); return { epochMs: START, monotonicMs: 10 }; },
+        policy() { if (controls.broken && failure === 'policy') throw Error('hidden policy error'); return controls.changed && failure === 'revocation' ? { ...policy(), generation: 99 } : policy(); },
+        revocation() { if (controls.broken && failure === 'revocation') throw Error('hidden revocation error'); return { generation: 3, revoked: controls.changed && failure !== 'revocation' }; }
+      });
+      const h = harness.seedOffline(spec()); const first = harness.api.consume(h, 0);
+      assertDenied(first, 'OWNER_ENVIRONMENT_UNAVAILABLE'); assert.equal(JSON.stringify(first).includes('hidden'), false);
+      controls.broken = controls.changed = false;
+      const r = harness.api.consume(h, 0); assertDenied(r); assert.equal(r.session.state, 'REVOKED');
+    }
+  });
+  await test('FIX1 concurrent consume/transition and stale revisions never restore revoked owner', async () => {
+    const s = setup();
+    const roots = await Promise.all(Array.from({ length: 32 }, () => Promise.resolve().then(() => s.api.consume(s.handle, 0))));
+    assert.equal(roots.filter(r => r.ok).length, 1);
+    s.controls.clockValue = { epochMs: null, monotonicMs: null }; s.controls.revocation.generation++;
+    assertDenied(s.api.inspect(s.handle), 'INVALID_CLOCK'); restore(s);
+    const results = await Promise.all(Array.from({ length: 64 }, (_, i) => Promise.resolve().then(() => i % 2 ?
+      s.api.consume(s.handle, 0) : s.api.transition(s.handle, { stage: 'ANALYSIS', expectedRevision: 1 }))));
+    assert.equal(results.some(r => r.ok), false);
+    for (const r of results) { assertDenied(r); assert.equal(r.session.state, 'REVOKED'); assert.equal(r.session.revision, 2); }
+  });
+  await test('FIX1 production exports and guards remain deny-only after all correction scenarios', async () => {
+    const owner = production.getAnalysisSessionOwner();
+    for (const candidate of [setup().handle, {}, { eligible: true, grantsRuntimeAccess: true }, diagnostic, readiness]) {
+      const r = owner.create(candidate); assertDenied(r); assert.equal(r.session, null);
+      assert.equal(checkRuntimeAccess(candidate).allowed, false);
+      assert.equal((await core.getJointPrediction(null, candidate)).signal, 'SKIP');
+      assert.equal(await core.getGPTAnalysis(null, candidate), null); assert.equal(await core.getGeminiAnalysis(null, candidate), null);
+    }
+    assert.deepEqual(Object.keys(production), ['getAnalysisSessionOwner']);
+  });
+  console.log(`FIX1: ${count - originalGroups} adversarial groups PASS; original 4E: ${originalGroups} groups PASS`);
   assert.equal(network, 0);
   console.log(`Session owner: ${count} tests PASS; production sessions/grants: 0; external IO attempts: 0`);
 } finally {

@@ -16,6 +16,9 @@ const isProxy = types.isProxy;
 const edges = Object.freeze({ ROOT: 'CONSUMED', ANALYSIS: 'ACTIVE', FINALIZATION: 'FINALIZED' });
 const closedStages = Object.freeze(['GATEWAY', 'OPENAI', 'GEMINI']);
 const terminal = state => ['FINALIZED', 'EXPIRED', 'REVOKED'].includes(state);
+const generation = value => Number.isSafeInteger(value) && value >= 0;
+const identifier = value => typeof value === 'string' && value.length > 0 && value.length <= 512 &&
+  value.trim() === value && value.toUpperCase() !== 'UNKNOWN';
 
 function fields(value, keys) {
   if (!value || typeof value !== 'object' || isProxy(value) || Array.isArray(value) ||
@@ -42,20 +45,30 @@ function createSessionOwner(dependencies) {
   const records = new WeakMap();
   const readRecord = records.get.bind(records);
   function environment(record) {
-    const clock = fields(dependencies.clock(), ['epochMs', 'monotonicMs']);
-    const p = fields(dependencies.policy(), ['version', 'fingerprint', 'generation']);
-    const r = fields(dependencies.revocation(), ['generation', 'revoked']);
-    if (!clock || !p || !r || typeof r.revoked !== 'boolean' || !Number.isSafeInteger(r.generation) || r.generation < 0) {
-      return null;
+    // Read independently: unavailable clocks/policy must not hide valid revocation evidence.
+    const read = (fn, keys) => { try { return fields(fn(), keys); } catch { return null; } };
+    const clock = read(() => dependencies.clock(), ['epochMs', 'monotonicMs']);
+    const p = read(() => dependencies.policy(), ['version', 'fingerprint', 'generation']);
+    const r = read(() => dependencies.revocation(), ['generation', 'revoked']);
+    const validPolicy = p && identifier(p.version) && identifier(p.fingerprint) && generation(p.generation);
+    const validRevocation = r && typeof r.revoked === 'boolean' && generation(r.generation);
+    if (validPolicy && (p.version !== record.current.policy.version ||
+      p.fingerprint !== record.current.policy.fingerprint || p.generation !== record.current.policy.generation)) {
+      record.latchedPolicy ??= Object.freeze({ ...p });
     }
-    return { clock, policy: p, revocationGeneration: r.generation, revoked: record.revoked || r.revoked };
+    if (validRevocation) {
+      if (r.revoked) record.revoked = true;
+      if (r.generation !== record.current.revocationGeneration) record.latchedRevocationGeneration ??= r.generation;
+    }
+    if (!clock || !validPolicy || !validRevocation) return null;
+    return { clock, policy: record.latchedPolicy ?? p,
+      revocationGeneration: record.latchedRevocationGeneration ?? r.generation, revoked: record.revoked || r.revoked };
   }
   function persist(record, plan, env) {
     const r = applySessionTransition(record.current, plan, env);
     // In particular retain terminal denial states even when r.ok is false.
     if (r.session && r.session !== record.current) {
       record.current = r.session;
-      record.lastClock = Object.freeze({ ...r.session.lastClock });
     }
     return r;
   }
@@ -64,21 +77,31 @@ function createSessionOwner(dependencies) {
     let env;
     try { env = environment(record); } catch { return { denial: 'OWNER_ENVIRONMENT_UNAVAILABLE' }; }
     if (!env) return { denial: 'OWNER_ENVIRONMENT_UNAVAILABLE' };
-    const assessment = evaluateSessionModel(record.current, env);
-    if (!assessment.ok && !assessment.terminalState) return { denial: assessment.reason };
-    // 4B tracks clocks at transitions; the owner also rejects rollback between reads,
-    // including previously valid reads accompanying replay or an unsupported command.
+    // Match 4B clock bounds and drift before trusting any observation of time.
+    const c = env.clock, d = record.current.deadline;
+    if (!Number.isSafeInteger(c.epochMs) || c.epochMs <= 0 || c.epochMs > 8640000000000000 ||
+      typeof c.monotonicMs !== 'number' || !Number.isFinite(c.monotonicMs) || c.monotonicMs < 0 ||
+      c.monotonicMs > Number.MAX_SAFE_INTEGER) {
+      return { denial: 'INVALID_CLOCK' };
+    }
     const last = record.lastClock;
-    if (last && (env.clock.epochMs < last.epochMs || env.clock.monotonicMs < last.monotonicMs)) {
+    if (last && (c.epochMs < last.epochMs || c.monotonicMs < last.monotonicMs)) {
+      record.clockFault = true; // No automatic recovery policy exists for a detected rollback.
       return { denial: 'CLOCK_BACKWARDS' };
     }
-    record.lastClock = Object.freeze({ ...env.clock });
+    if (Math.abs((c.epochMs - d.issuedAtMs) - (c.monotonicMs - d.issuedMonotonicMs)) > d.maxClockDriftMs) {
+      return { denial: 'INVALID_CLOCK' };
+    }
+    record.lastClock = Object.freeze({ ...c });
+    const assessment = evaluateSessionModel(record.current, env);
+    if (!assessment.ok && !assessment.terminalState) return { denial: assessment.reason };
     if (!assessment.ok) {
       const plan = planSessionTransition(record.current, { target: 'CONSUMED', stage: 'ROOT',
         expectedRevision: record.current.revision }, env);
       const r = persist(record, plan, env);
       return { denial: r.reason };
     }
+    if (record.clockFault) return { denial: 'CLOCK_BACKWARDS' };
     return { env };
   }
   function operate(handle, action) {
@@ -102,10 +125,10 @@ function createSessionOwner(dependencies) {
       const plan = planSessionTransition(record.current, { stage: c.stage, target: edges[c.stage],
         expectedRevision: c.expectedRevision }, check.env);
       // Re-read server time/policy immediately before application; no await in this section.
-      let latest;
-      try { latest = environment(record); } catch { return response(false, 'OWNER_ENVIRONMENT_UNAVAILABLE', record); }
-      if (!latest) return response(false, 'OWNER_ENVIRONMENT_UNAVAILABLE', record);
-      const r = persist(record, plan, latest);
+      // Check/persist terminal causes even when the original plan has no next state.
+      const latest = checked(record);
+      if (latest.denial) return response(false, latest.denial, record);
+      const r = persist(record, plan, latest.env);
       return response(r.ok, r.reason, record);
     });
   }

@@ -1,5 +1,10 @@
 # PROJECT_CONTEXT — ORACLE PRO TERMINAL v10.5.0
 
+> **Актуализация 2026-11-19: Increment 4E-FIX1 — terminal persistence, clock tracking, sticky revocation (§24).**
+> Последнее environment проверяется даже для недопустимого перехода. Валидированное
+> время учитывается при отказе; rollback необратимо блокирует продолжение. Подтверждённый
+> серверный отзыв сохраняется при ошибках часов. Production create — DENIED, grants нет.
+
 > **Актуализация 2026-11-19: Phase 3B / Increment 4E — private MODEL_ONLY session owner (§23).**
 > Состояние и revision принадлежат закрытому in-process owner; consume синхронный.
 > Production create всегда DENIED. Положительные lifecycle-модели существуют только
@@ -1530,3 +1535,96 @@ AdapterPermit нет. Тестовый график не изменён. Commit/
 отзыва и итоговой проверки без включения production grant. Положительная выдача
 потребует отдельного разрешения и доказательств, которых DISPLAY-only Biquote и
 текущий отрицательный readiness не предоставляют.
+
+## 24. Increment 4E-FIX1 — корректировка D1/D2/D3 (2026-11-19)
+
+База: ad0bdfbce9bab3ff7fa43db5133324f8c9659dd0, ветка
+backup/mde-phase2-checkpoint. Изменены только core/runtime/sessionOwner.js,
+scripts/test-session-owner.mjs и этот документ. StateMachine 4B, контракты 4B/4E,
+provenance 4C и isolation 4D не изменялись. Утверждения §23 о защите всех веток
+terminal persistence и rollback уточняются результатами независимого аудита и FIX1.
+
+### D1 — сохранение terminal state независимо от исходного плана
+
+Оба чтения environment теперь проходят checked(). Последнее чтение оценивает
+terminal-причины и сохраняет EXPIRED/REVOKED до применения первоначального плана,
+включая план без next state. Для terminal-отказа используется существующий механизм
+4B с актуальным внутренним revision; фиктивный успешный переход не создаётся.
+INVALID_TRANSITION сохраняется только при отсутствии terminal-причины.
+
+### D2 — учёт часов и отсутствие автоматического восстановления rollback
+
+Каждое чтение, прошедшее проверку окружения, bounds, drift и monotonic/epoch ordering,
+обновляет приватную lastClock, включая второе чтение при INVALID_TRANSITION.
+Сохранение модели больше не перезаписывает этот high-water mark старым lastClock 4B.
+NaN/Infinity, неподдерживаемые типы, out-of-range значения и drift не становятся
+доверенным временем. Числовой rollback проверяется до drift: несогласованность
+двух часов не скрывает подтверждённое уменьшение допустимой числовой отметки.
+
+При обнаружении rollback сохраняется приватный clockFault. Возврат часов вперёд
+не разрешает дальнейшие переходы: автоматической recovery policy нет. DTO может
+содержать прежнее нетерминальное состояние, но операция возвращает CLOCK_BACKWARDS.
+При последующем корректном времени могут сохраняться terminal expiry/revocation,
+однако успешного продолжения быть не может. Deadline и TTL не продлеваются.
+Некорректное чтение без подтверждённого rollback само по себе не объявляет отзыв:
+после корректного времени модель может продолжиться только при отсутствии sticky denial.
+
+### D3 — независимое сохранение server-owned evidence
+
+Clock, policy и revocation читаются раздельно с локальным перехватом ошибок.
+Недоступность одной зависимости не скрывает валидированное свидетельство от другой.
+Policy проверяется на точную структуру, идентификаторы и допустимую generation;
+revocation — на точную структуру, boolean revoked и допустимую generation.
+Невалидные данные/accessors/proxy не считаются свидетельством отзыва.
+
+Подтверждённые несовместимая policy и revocation generation сохраняются в закрытых
+latchedPolicy/latchedRevocationGeneration; server revoked=true сохраняет sticky revoked.
+Никакого публичного управления этими полями нет. При invalid clock выдаётся отказ,
+но evidence не теряется. Возврат прежней policy/generation не очищает запрет.
+После восстановления корректного окружения/часов существующая 4B фиксирует REVOKED
+с сохранённым evidence, без выдуманных timestamps и без промежуточного успеха.
+Если зависимости остаются недоступны или часы некорректны, terminal DTO может быть
+отложен; все операции продолжения остаются запрещёнными.
+
+### Проверки и воспроизведения
+
+Старый код из Git HEAD и исправленный код сравнены в отдельных in-memory модулях
+без checkout или изменения рабочего дерева:
+
+| Сценарий | До FIX1 | После FIX1 |
+| --- | --- | --- |
+| Invalid ANALYSIS + expiry на втором чтении | INVALID_TRANSITION, ISSUED | ABSOLUTE_EXPIRY, EXPIRED |
+| Invalid ANALYSIS + смена policy/revocation на втором чтении | INVALID_TRANSITION, ISSUED | соответствующий mismatch, REVOKED |
+| Время 0 → 50 → отказ → 30 | consume успешен | CLOCK_BACKWARDS, продолжение закрыто |
+| Invalid clock + server revoked, затем восстановление | consume успешен | REVOKED |
+| Invalid clock + policy/revocation generation, затем прежняя generation | consume успешен | mismatch, REVOKED |
+
+На Node v24.22.3 и v26.13.0:
+
+- PASS owner: 84 группы = прежние 36 групп 4E + 48 FIX1 adversarial groups.
+  Прежняя rollback-группа усилена проверкой sticky-блокировки; проверки invalid
+  command и drift сохранены на независимых fixtures, чтобы их не маскировал clockFault.
+- FIX1 покрывает ISSUED/ACTIVE, оба чтения, policy version/fingerprint/generation,
+  revocation generation/revoked, INVALID_TRANSITION без terminal-причины, invalid
+  clocks, drift/rollback, malformed evidence, независимые ошибки зависимостей,
+  конкурентные consume/transition, stale revisions и отрицательный production API.
+- PASS 4B: 75; 4C: 20; 4D: 34; Guard: 6408 entrypoint calls/288 параллельных;
+  Quality/Eligibility: 58; Market Service/Registry: 42; Biquote mock: 35;
+  HTTP Safety и chart: 6 групп.
+- PASS основной TypeScript --noEmit --incremental false и strict NodeNext declarations
+  всех семи наборов. PASS Vite production build в памяти, configFile=false/write=false:
+  2104 модуля, четыре артефакта в памяти на каждой версии Node.
+
+Проверены git diff --check, secret/private-data patterns и scope изменений.
+Runtime Guard остаётся deny-only; production create всегда DENIED/session=null,
+все результаты MODEL_ONLY/grantsRuntimeAccess=false. Seed существует только в
+изолированном in-memory offline harness; issuer/AdapterPermit не создавались.
+Прямые Core/Gateway — SKIP, AI adapters — null. Внешние AI/market/Telegram-запросы
+и сделки не выполнялись; HTTP mock suites использовали только loopback.
+
+Ограничения: один owner/JS-процесс; multi-process coordination отсутствует.
+Production сессии по-прежнему не создаются. Recovery после rollback не реализован;
+положительный builder, runtime issuer и стадии адаптеров не входят в FIX1.
+Clock/policy validation owner повторяет ограничения 4B и требует согласованности
+при будущих изменениях 4B. Guard, AI, HTTP, Safe Mode, frontend/polling, Biquote,
+Market Service и dependencies/config сохранены. Commit/push не выполнялись.
