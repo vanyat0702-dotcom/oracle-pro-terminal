@@ -2318,3 +2318,22 @@ source session rules либо UNKNOWN. Реальные dataset/evidence/output 
 При UNKNOWN возможен только preview, никакого положительного доверия или runtime grant.
 Сбор/проверка настоящего источника, ZIP verification, license authenticity, MID из ticks,
 Intrade settlement equivalence и более широкие инструменты — отдельные будущие этапы.
+
+### MVP-1E-FIX2 — защита данных и техническое свидетельство пилота
+
+Добавлены адресные ignore-правила для локальных research-data/output и корневых
+BTCUSDT M1 ZIP/CSV; глобальных исключений CSV/JSON/ZIP нет. Технический отчёт
+[MVP-1E evidence](docs/research/MVP-1E-evidence.md) фиксирует 1440 корректных свечей
+2025-01-07 UTC, нулевые пропуски/дубликаты, ZIP/CSV SHA-256 и официальные ссылки.
+Повторно сверены локальный ZIP с CHECKSUM и CSV с содержимым ZIP, без записи данных.
+Фактическая дата загрузки UNKNOWN. Документ не выдаёт license/runtime grant:
+PREVIEW_ONLY / NOT_READY, LICENSE_UNKNOWN и блокировки archive export сохранены.
+Binance Vision Dataset Terms v1.0 от 26.08.2026 описаны отдельно от технической
+целостности/покрытия; разрешение для коммерческого Oracle не подтверждено.
+Production-код и production eligibility не изменены; реальные datasets в Git не добавлены.
+FIX2 проверки на Node v26.13.0: pilot 55, archive 67, intake 49 MOCK-групп PASS;
+основной TypeScript и strict pilot declarations PASS. Offline перепроверка всех
+1440 реальных строк/границ минут PASS, network=0, записи данных нет. Ignore-проверки:
+7 положительных и 7 отрицательных MOCK-путей PASS, ни один из 106 tracked-файлов
+не скрыт. Проверки diff/whitespace и секретов PASS; build и сетевые регрессии
+для изменения только ignore/документации не запускались. Commit/push не выполнялись.

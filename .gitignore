@@ -37,3 +37,10 @@ Thumbs.db
 .cache/
 .vite/
 coverage/
+
+# Local market datasets and converted research output (never commit)
+/oracle-research-data/
+/research-data/
+/research-output/
+/BTCUSDT-1m-*.zip*
+/BTCUSDT-1m-*.csv
